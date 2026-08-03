@@ -111,6 +111,11 @@ attribute in place if the name already exists in either region; otherwise
 pack it into the in-inode region alongside what's already there, if it
 fits; otherwise take over the in-inode region on its own if that's not
 already used; otherwise fall into the external block, if one exists.
+An occupied in-inode region is never replaced with only the new attribute
+when the combined set does not fit. Existing attributes stay in their
+original region; the new attribute goes into an allocated external block
+or the write fails. Capacity and shared-block checks finish before any
+image write, so these rejected operations leave the image unchanged.
 Creating a *new* external block, when none is allocated and no existing
 region has room, is refused. `storeXattrRegion` also refuses to mutate an
 external block whose `refcount` is above 1, since two inodes share it and
@@ -200,3 +205,9 @@ on an image produced by a real Linux install and pin down exact on-disk
 layout assumptions: extent-header validation, xattr entry packing in both
 the in-inode and external-block layouts, and the split second/nanosecond
 timestamp encoding.
+
+`xattr_capacity_test.go` covers a full inode-body region with and without
+an external block, shared external-block rejection, and external capacity
+failure. It checks existing values after external fallback and deletion,
+and compares the whole image before and after rejected additions and
+replacements to ensure no unrelated bytes change.

@@ -314,8 +314,10 @@ func (f *FS) writeXattr(number uint32, name string, data []byte) error {
 		}
 	}
 	// Keep new attributes with existing inode-body attributes when they fit.
+	bodyOccupied := false
 	for i := range rs {
 		if rs[i].block == 0 {
+			bodyOccupied = true
 			attrs := cloneXattrs(rs[i].attrs)
 			attrs[name] = append([]byte(nil), data...)
 			if _, e := encodeXattrs(len(raw)-rs[i].bodyStart, 4, attrs); e == nil {
@@ -331,7 +333,7 @@ func (f *FS) writeXattr(number uint32, name string, data []byte) error {
 	}
 	start := 128 + extra
 	candidate := xattrRegion{attrs: map[string][]byte{name: append([]byte(nil), data...)}, bodyStart: start}
-	if start+4 <= len(raw) {
+	if !bodyOccupied && start+4 <= len(raw) {
 		if _, e := encodeXattrs(len(raw)-start, 4, candidate.attrs); e == nil {
 			return f.storeXattrRegion(number, raw, off, candidate)
 		}
