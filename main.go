@@ -1,7 +1,7 @@
 package main
 
-import "fmt"
+import "github.com/sahithyandev/nemo/cmd"
 
 func main() {
-	fmt.Println("nemo")
+	cmd.Execute()
 }
