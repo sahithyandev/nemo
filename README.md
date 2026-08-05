@@ -2,6 +2,11 @@
 
 a CLI tool for hiding files.
 
+## Docs
+
+- [docs/overall-plan.md](docs/overall-plan.md) — goals, scope, targeted filesystems
+- [docs/user-interface.md](docs/user-interface.md) — modes and commands
+
 ## Development
 
 ### Prerequisites
@@ -11,11 +16,11 @@ a CLI tool for hiding files.
 
 ### Dependencies
 
-| Name | Description |
-| --- | --- |
-| [spf13/cobra](https://github.com/spf13/cobra) | CLI framework (commands, flags, help/usage) |
-| spf13/pflag | transitive dep of Cobra, POSIX-style flags |
-| inconshreveable/mousetrap | transitive dep of Cobra, Windows double-click detection |
+| Name                                          | Description                                             |
+| --------------------------------------------- | ------------------------------------------------------- |
+| [spf13/cobra](https://github.com/spf13/cobra) | CLI framework (commands, flags, help/usage)             |
+| spf13/pflag                                   | transitive dep of Cobra, POSIX-style flags              |
+| inconshreveable/mousetrap                     | transitive dep of Cobra, Windows double-click detection |
 
 ### Commands
 
@@ -29,3 +34,8 @@ make fmt     # gofmt all files
 
 Version is read from `cmd/VERSION` and embedded into the binary at compile time (`nemo version`).
 
+## Authors
+
+- Bandara S.A.N.K
+- Sahithyan K.
+- Senanayake H.P.V.R
