@@ -6,6 +6,7 @@ a CLI tool for hiding files.
 
 - [docs/overall-plan.md](docs/overall-plan.md) — goals, scope, targeted filesystems
 - [docs/user-interface.md](docs/user-interface.md) — modes and commands
+- [docs/architecture.md](docs/architecture.md) — package layout, interfaces
 
 ## Development
 
