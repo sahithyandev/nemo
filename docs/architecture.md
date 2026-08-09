@@ -8,8 +8,10 @@ Adding a filesystem (e.g. FAT32 later) or a technique should mean writing a new 
 
 ```
 nemo/
+  main.go
   cmd/
-    main.go
+    root.go
+    VERSION
   internal/
     image/
       image.go          // Image interface: ReadAt, WriteAt, Size, Path
