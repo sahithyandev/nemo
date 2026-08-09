@@ -7,7 +7,7 @@ Nemo runs in one of two modes, chosen per command:
 - **Image mode** (default when `--image` is given): operates offline against a raw disk image. Filesystem type is detected from the image, not specified by the user.
 - **Live mode** (default when `--image` is omitted): operates directly on a file on the local, running machine, using the OS's native filesystem calls. This is the mode an everyday user reaches for to hide a file on their own machine.
 
-Five commands make up the interface: `hide`, `detect`, `clear`, `version`, and `help`.
+Six commands make up the interface: `hide`, `detect`, `clear`, `features`, `version`, and `help`.
 
 ## `nemo hide`
 
@@ -86,6 +86,16 @@ nemo version
 ```
 
 The version string is embedded into the binary at compile time from `cmd/VERSION`.
+
+## `nemo features`
+
+Prints the feature-set matrix: which filesystems (`ntfs`, `apfs`, `ext4`) support which techniques (`named-stream`, `slack-space`, `timestomp`). One row per filesystem/technique pair, with a supported/unsupported indicator. Takes no arguments or options.
+
+```
+nemo features
+```
+
+Useful for checking capabilities before running `hide` against a given image, without consulting the docs. The matrix is built from the same `internal/filesystem` and `internal/technique` registrations used at runtime, so it can't drift from actual behavior.
 
 ## `nemo help`
 

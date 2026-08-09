@@ -22,21 +22,27 @@ nemo/
       ntfs/
         ntfs.go
         mft.go
-        namedstream.go     // ADS
+        namedstream.go     // ADS (image-mode Entry)
         slack.go
         timestomp.go
+        live_windows.go    // live-mode Entry: direct syscalls, no MFT parsing
+        live_stub.go        // "unsupported on this OS" on non-Windows builds
       apfs/
         apfs.go
         btree.go
-        namedstream.go     // xattr + resource fork
+        namedstream.go     // xattr + resource fork (image-mode Entry)
         slack.go
         timestomp.go
+        live_darwin.go     // live-mode Entry: direct syscalls, no B-tree parsing
+        live_stub.go        // "unsupported on this OS" on non-macOS builds
       ext4/
         ext4.go
         inode.go
-        namedstream.go     // xattr
+        namedstream.go     // xattr (image-mode Entry)
         slack.go
         timestomp.go
+        live_linux.go      // live-mode Entry: direct syscalls, no inode parsing
+        live_stub.go        // "unsupported on this OS" on non-Linux builds
     technique/
       technique.go         // NamedStreamTechnique, SlackSpaceTechnique, TimestompTechnique interfaces, Finding/Result types
     custody/
@@ -67,6 +73,20 @@ cmd_hide.go / cmd_detect.go / cmd_clear.go   (Cobra commands)
 
 Each layer only depends on the interfaces of the layer below it, never on a concrete sibling. `internal/technique` code never imports `internal/filesystem/ntfs` directly — it calls through the `FileSystem` interface. This is what makes filesystems and techniques independently pluggable.
 
+## Live mode vs. image mode
+
+Image mode and live mode do not share one code path per filesystem — they split by *technique*, not by a mode flag on a single `Entry`:
+
+- **Named-stream and timestomp** never need volume-level parsing. An NTFS ADS is `os.OpenFile("target:stream")`, an ext4/APFS xattr is a syscall, timestomping is a `SetFileTime`/`utimes`-family call. None of that touches an MFT, a B-tree, or an inode table.
+- **Slack-space** is inherently volume-level: the unused tail bytes of an allocated cluster/block aren't exposed by any normal file API on any OS. Doing it live means opening the raw block device (`\\.\PhysicalDriveN`, `/dev/diskN`) and running the *same* parser image mode uses — which requires admin/root, unlike the other two techniques. This is in scope (per `docs/overall-plan.md`), so `hide`/`clear`/`detect` with `--technique slack-space` and no `--image` must detect a missing-privilege condition and fail with a clear error rather than silently degrading.
+
+Concretely, each filesystem package ships **two `Entry` implementations**, not two modes bolted onto one:
+
+- **image-mode `Entry`**: backed by a parsed `Image` (a disk-image file or an opened raw device), implements all three capability interfaces, including `SlackSpaceCapable`.
+- **live-mode `Entry`**: backed by a single OS path, implements `NamedStreamCapable`/`TimestompCapable` via direct syscalls, and additionally implements `SlackSpaceCapable` only when constructed against an opened raw device (i.e. running elevated).
+
+`registry.go`'s signature-based `Sniff` detection only applies to image mode — it identifies a filesystem from bytes. Live mode never sniffs: "which filesystem" is just "which OS this binary is running on," so live mode picks its `Entry` implementation via `runtime.GOOS` (or a Go build-tag file per package, e.g. `ntfs/live_windows.go`, `apfs/live_darwin.go`, `ext4/live_linux.go`), each a no-op/"unsupported on this OS" stub on the other two platforms so the binary still builds and runs cross-platform.
+
 ## Contracts
 
 ### `internal/image.Image`
@@ -95,11 +115,15 @@ type FileSystem interface {
 
 type Entry interface {
     Path() string
+    IsDir() bool
+    Children() ([]Entry, error) // empty for non-directories
     NamedStreams() ([]string, error)
     // slack-space and timestomp access are exposed via optional
     // interfaces (below), not required on every Entry.
 }
 ```
+
+`Children()` is what backs `detect` with no target: the command calls `Root()` then walks `Children()` recursively (mirroring `io/fs.WalkDir`'s shape), running the technique's `Detect` against every `Entry` it reaches. `hide`/`clear` always take an explicit target, so they only ever call `Open(path)` directly and never need to walk.
 
 `registry.go` holds a signature-based lookup (`[]Detector` — byte pattern → constructor) and returns the right `FileSystem` for an image or file. Adding NTFS/APFS/ext4 support means registering a detector in `registry.go` plus a new `internal/filesystem/<fs>/` package; nothing in `internal/technique` or the Cobra commands changes.
 
@@ -135,7 +159,49 @@ type NamedStreamTechnique interface {
 // respective capability interfaces.
 ```
 
-`Finding` and `Result` are shared, technique-agnostic value types (used for `detect` output and `hide`/`clear` custody-log entries). Commands depend only on these interfaces, never on `ntfs.NamedStreamTechnique` etc. directly — the concrete technique is selected at runtime from the `FileSystem`'s type plus the `--technique` flag.
+`Finding` and `Result` are shared, technique-agnostic value types:
+
+```go
+type Finding struct {
+    Technique string // "named-stream" | "slack-space" | "timestomp"
+    Location  string // stream name, slack region offset range, or timestamp field
+    Size      int64  // bytes of hidden data recovered; 0 for timestomp findings
+}
+
+type Result struct {
+    Technique string
+    Target    string // path of the entry acted on
+    Detail    string // stream name written, slack offset range, or "field=value" for timestomp
+    Bytes     int64  // bytes written/removed; 0 for timestomp
+}
+```
+
+`Finding` is what `detect` prints, one per line (technique, location, size — matching `docs/user-interface.md`'s output spec). `Result` is what `hide`/`clear` return on success; it does not carry a hash or timestamp itself — `internal/custody` already hashes and timestamps every `WriteAt` automatically at the `Image` layer. The command assembles the actual custody-log line from `Result` (semantic context: which technique, which target, what happened) plus the hash/timestamp the custody decorator already captured, so neither layer duplicates the other's job.
+
+Commands depend only on these interfaces, never on a filesystem-specific technique type — because `Hide`/`Detect`/`Clear` only ever touch the capability interface (`NamedStreamCapable`, `SlackSpaceCapable`, `TimestompCapable`), the technique logic itself is filesystem-agnostic. There is one concrete implementation per technique kind — `namedStreamTechnique`, `slackSpaceTechnique`, `timestompTechnique` — not one per filesystem, and each lives in `internal/technique` and works against any `Entry` that satisfies the capability it needs.
+
+### Technique selection and the `features` matrix
+
+`cmd_hide.go`/`cmd_detect.go`/`cmd_clear.go` select *which* technique kind purely from the `--technique` flag string (`named-stream` → `namedStreamTechnique`, etc.) — a small switch or map in `internal/technique`, no filesystem involved:
+
+```go
+func Get(name string) (Technique, error) // "named-stream" | "slack-space" | "timestomp"
+```
+
+*Whether* the selected technique works against the given target is answered separately, at call time, by the type-assertion already described above (`Entry` implements the required capability or it doesn't). So filesystem support is never encoded as a lookup table keyed by `(FileSystem type, technique)` — it falls out of whether a given `ntfs.Entry`/`apfs.Entry`/`ext4.Entry` happens to implement `NamedStreamCapable`/`SlackSpaceCapable`/`TimestompCapable`.
+
+`nemo features` still needs that support matrix without an image loaded, so it can't just run the type assertion against a live `Entry`. Instead, each filesystem package self-declares its supported technique names once, alongside its constructor in `registry.go`:
+
+```go
+type Detector struct {
+    Type         Type
+    Sniff        func([]byte) bool
+    New          func(image.Image) (FileSystem, error)
+    Techniques   []string // e.g. []string{"named-stream", "slack-space"} for ext4 today
+}
+```
+
+`features` reads `Techniques` off every registered `Detector` and prints the matrix directly — no image, no reflection, and it can't drift from `registry.go` because it's reading the same struct `Open`/detection uses. When ext4 gains slack-space support, that's a one-line change to its `Detector.Techniques`, not a new lookup table to keep in sync.
 
 ### `internal/tskcheck`
 
