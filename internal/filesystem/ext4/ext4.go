@@ -245,7 +245,7 @@ var _ filesystem.NamedStreamCapable = (*Entry)(nil)
 func (e *Entry) Path() string { return e.path }
 func (e *Entry) IsDir() bool  { return e.isDir }
 
-// Children returns the entries in a linear, extent-backed directory.
+// Children returns entries from linear or HTree-indexed extent-backed directories.
 func (e *Entry) Children() ([]filesystem.Entry, error) {
 	if !e.isDir {
 		return nil, nil
@@ -254,12 +254,13 @@ func (e *Entry) Children() ([]filesystem.Entry, error) {
 	if err != nil {
 		return nil, fmt.Errorf("ext4: read directory inode %d: %w", e.inode, err)
 	}
-	if in.flags&inodeFlagIndex != 0 {
-		return nil, fmt.Errorf("ext4: indexed directory %q is unsupported", e.path)
-	}
 	blocks, err := e.fs.extentBlocks(in)
 	if err != nil {
 		return nil, fmt.Errorf("ext4: read extents for %q: %w", e.path, err)
+	}
+
+	if in.flags&inodeFlagIndex != 0 {
+		return e.indexedChildren(in, blocks)
 	}
 
 	var out []filesystem.Entry
@@ -331,7 +332,7 @@ func (f *FS) parseDirectory(block []byte, parent string) ([]filesystem.Entry, er
 			return nil, fmt.Errorf("ext4: truncated directory record in %q at offset %d", parent, off)
 		}
 		inodeNumber := binary.LittleEndian.Uint32(block[off:])
-		recordLength := int(binary.LittleEndian.Uint16(block[off+4:]))
+		recordLength := directoryRecordLength(binary.LittleEndian.Uint16(block[off+4:]), f.sb.blockSize)
 		nameLength := int(block[off+6])
 		if recordLength < 8 || recordLength%4 != 0 || recordLength > len(block)-off || nameLength > recordLength-8 {
 			return nil, fmt.Errorf("ext4: invalid directory record in %q at offset %d", parent, off)
@@ -393,4 +394,15 @@ func joinPath(parent, name string) string {
 		return parent + name
 	}
 	return parent + "/" + name
+}
+
+// At 64 KiB, ext4 encodes the high two length bits in the low bits of rec_len.
+func directoryRecordLength(raw uint16, blockSize uint32) int {
+	if blockSize < 65536 {
+		return int(raw)
+	}
+	if raw == 0 || raw == 65535 {
+		return int(blockSize)
+	}
+	return int(raw&65532) | int(raw&3)<<16
 }
