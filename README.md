@@ -38,6 +38,6 @@ Version is read from `cmd/VERSION` and embedded into the binary at compile time 
 
 ## Authors
 
-- Bandara S.A.N.K (testing)
+- Bandara S.A.N.K 
 - Sahithyan K.
 - Senanayake H.P.V.R
