@@ -93,3 +93,40 @@ func TestInt(t *testing.T) {
 		})
 	}
 }
+
+func TestBits(t *testing.T) {
+	tests := []struct {
+		name    string
+		v       uint64
+		lo      int
+		width   int
+		want    uint64
+		wantErr error
+	}{
+		{"lo0 width4", 0b1010, 0, 4, 0b1010, nil},
+		{"crossing byte", 0b1_10000000, 7, 2, 0b11, nil},
+		{"width64 lo0", ^uint64(0), 0, 64, ^uint64(0), nil},
+		{"single bit", 0b0100, 2, 1, 1, nil},
+		{"overflow", 1, 63, 2, 0, ErrRange},
+		{"width0", 1, 0, 0, 0, ErrRange},
+		{"negative lo", 1, -1, 1, 0, ErrRange},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := Bits(tc.v, tc.lo, tc.width)
+			if tc.wantErr != nil {
+				if err != tc.wantErr {
+					t.Fatalf("err = %v, want %v", err, tc.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected err: %v", err)
+			}
+			if got != tc.want {
+				t.Fatalf("got %b, want %b", got, tc.want)
+			}
+		})
+	}
+}

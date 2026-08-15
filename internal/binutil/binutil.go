@@ -62,3 +62,12 @@ func Int(b []byte, off, size int, order binary.ByteOrder) (int64, error) {
 	shift := 64 - 8*size
 	return int64(v<<shift) >> shift, nil
 }
+
+// Bits extracts width bits from v starting at bit lo (LSB = 0).
+func Bits(v uint64, lo, width int) (uint64, error) {
+	if lo < 0 || width <= 0 || lo+width > 64 {
+		return 0, ErrRange
+	}
+	mask := uint64(1)<<width - 1
+	return (v >> lo) & mask, nil
+}
