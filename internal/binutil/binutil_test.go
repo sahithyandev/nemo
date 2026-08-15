@@ -6,6 +6,13 @@ import (
 	"testing"
 )
 
+// customOrder is a binary.ByteOrder implementation that is neither
+// binary.LittleEndian nor binary.BigEndian, used to verify Uint and
+// UTF16String reject any order they don't recognize (not just nil).
+type customOrder struct{ binary.ByteOrder }
+
+var testCustomOrder = customOrder{binary.LittleEndian}
+
 func TestUint(t *testing.T) {
 	b := []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08}
 
@@ -37,6 +44,8 @@ func TestUint(t *testing.T) {
 		{"off overflow", math.MaxInt - 2, 8, binary.LittleEndian, 0, ErrRange},
 		{"nil order size3", 0, 3, nil, 0, ErrOrder},
 		{"nil order size2", 0, 2, nil, 0, ErrOrder},
+		{"custom order size3", 0, 3, testCustomOrder, 0, ErrOrder},
+		{"custom order size2", 0, 2, testCustomOrder, 0, ErrOrder},
 	}
 
 	for _, tc := range tests {
@@ -195,6 +204,7 @@ func TestUTF16String(t *testing.T) {
 		{"odd n", leHi, 0, 3, binary.LittleEndian, "", ErrSize},
 		{"out of range", leHi, 0, 8, binary.LittleEndian, "", ErrRange},
 		{"nil order", leHi, 0, 4, nil, "", ErrOrder},
+		{"custom order", leHi, 0, 4, testCustomOrder, "", ErrOrder},
 	}
 
 	for _, tc := range tests {
