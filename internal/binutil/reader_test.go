@@ -56,3 +56,39 @@ func TestReaderStickyError(t *testing.T) {
 		t.Fatalf("Seek should be a no-op once errored, err = %v", r.Err())
 	}
 }
+
+func TestReaderUintInt(t *testing.T) {
+	b := []byte{0x01, 0x02, 0xff, 0xff}
+	r := New(b, binary.LittleEndian)
+
+	if got := r.Uint(2); got != 0x0201 {
+		t.Fatalf("Uint(2) = 0x%x, want 0x0201", got)
+	}
+	if r.Off() != 2 {
+		t.Fatalf("Off() = %d, want 2", r.Off())
+	}
+	if got := r.Int(2); got != -1 {
+		t.Fatalf("Int(2) = %d, want -1", got)
+	}
+	if r.Off() != 4 {
+		t.Fatalf("Off() = %d, want 4", r.Off())
+	}
+	if r.Err() != nil {
+		t.Fatalf("unexpected err: %v", r.Err())
+	}
+}
+
+func TestReaderUintPastEnd(t *testing.T) {
+	b := []byte{0x01}
+	r := New(b, binary.LittleEndian)
+
+	if got := r.Uint(4); got != 0 {
+		t.Fatalf("Uint(4) = %d, want 0", got)
+	}
+	if r.Err() == nil {
+		t.Fatal("expected error reading past end")
+	}
+	if got := r.Int(1); got != 0 {
+		t.Fatalf("Int(1) after error = %d, want 0 (no-op)", got)
+	}
+}

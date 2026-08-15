@@ -56,3 +56,31 @@ func (r *Reader) Skip(n int) {
 	}
 	r.off += n
 }
+
+// Uint reads a size-byte unsigned integer and advances the offset by size.
+func (r *Reader) Uint(size int) uint64 {
+	if r.err != nil {
+		return 0
+	}
+	v, err := Uint(r.b, r.off, size, r.order)
+	if err != nil {
+		r.err = err
+		return 0
+	}
+	r.off += size
+	return v
+}
+
+// Int reads a size-byte signed integer and advances the offset by size.
+func (r *Reader) Int(size int) int64 {
+	if r.err != nil {
+		return 0
+	}
+	v, err := Int(r.b, r.off, size, r.order)
+	if err != nil {
+		r.err = err
+		return 0
+	}
+	r.off += size
+	return v
+}
