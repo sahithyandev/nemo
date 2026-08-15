@@ -53,3 +53,43 @@ func TestUint(t *testing.T) {
 		})
 	}
 }
+
+func TestInt(t *testing.T) {
+	tests := []struct {
+		name    string
+		b       []byte
+		size    int
+		order   binary.ByteOrder
+		want    int64
+		wantErr error
+	}{
+		{"positive size1", []byte{0x7f}, 1, binary.LittleEndian, 0x7f, nil},
+		{"negative size1", []byte{0xff}, 1, binary.LittleEndian, -1, nil},
+		{"negative size2 le", []byte{0xfe, 0xff}, 2, binary.LittleEndian, -2, nil},
+		{"negative size3 le", []byte{0xff, 0xff, 0xff}, 3, binary.LittleEndian, -1, nil},
+		{"negative size3 be", []byte{0xff, 0xff, 0xff}, 3, binary.BigEndian, -1, nil},
+		{"positive size3", []byte{0x01, 0x00, 0x00}, 3, binary.LittleEndian, 1, nil},
+		{"negative size6", []byte{0xff, 0xff, 0xff, 0xff, 0xff, 0xff}, 6, binary.LittleEndian, -1, nil},
+		{"negative size8", []byte{0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff}, 8, binary.LittleEndian, -1, nil},
+		{"size0", []byte{0x00}, 0, binary.LittleEndian, 0, ErrSize},
+		{"range", []byte{0x00}, 2, binary.LittleEndian, 0, ErrRange},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := Int(tc.b, 0, tc.size, tc.order)
+			if tc.wantErr != nil {
+				if err != tc.wantErr {
+					t.Fatalf("err = %v, want %v", err, tc.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected err: %v", err)
+			}
+			if got != tc.want {
+				t.Fatalf("got %d, want %d", got, tc.want)
+			}
+		})
+	}
+}

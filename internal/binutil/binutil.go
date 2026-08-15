@@ -51,3 +51,14 @@ func Uint(b []byte, off, size int, order binary.ByteOrder) (uint64, error) {
 	}
 	return v, nil
 }
+
+// Int is Uint plus sign extension from the top bit of the size-byte value.
+// NTFS data-run LCN deltas are signed and variable-width.
+func Int(b []byte, off, size int, order binary.ByteOrder) (int64, error) {
+	v, err := Uint(b, off, size, order)
+	if err != nil {
+		return 0, err
+	}
+	shift := 64 - 8*size
+	return int64(v<<shift) >> shift, nil
+}
