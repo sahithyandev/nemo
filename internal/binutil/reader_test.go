@@ -136,3 +136,105 @@ func TestReaderSequentialParse(t *testing.T) {
 		t.Fatalf("Remaining() = %d, want 0", r.Remaining())
 	}
 }
+
+func TestReaderSeekOutOfRange(t *testing.T) {
+	b := []byte{0x01, 0x02}
+
+	r := New(b, binary.LittleEndian)
+	r.Seek(-1)
+	if r.Err() == nil {
+		t.Fatal("expected error seeking to negative offset")
+	}
+
+	r = New(b, binary.LittleEndian)
+	r.Seek(3)
+	if r.Err() == nil {
+		t.Fatal("expected error seeking past end")
+	}
+}
+
+func TestReaderUintStickyNoOp(t *testing.T) {
+	b := []byte{0x01, 0x02}
+	r := New(b, binary.LittleEndian)
+	r.Seek(-1) // sets Err()
+
+	if got := r.Uint(1); got != 0 {
+		t.Fatalf("Uint(1) after error = %d, want 0 (no-op)", got)
+	}
+	if r.Off() != 0 {
+		t.Fatalf("Off() moved after error: %d", r.Off())
+	}
+}
+
+func TestReaderIntOwnError(t *testing.T) {
+	b := []byte{0x01}
+	r := New(b, binary.LittleEndian)
+
+	if got := r.Int(0); got != 0 {
+		t.Fatalf("Int(0) = %d, want 0", got)
+	}
+	if r.Err() != ErrSize {
+		t.Fatalf("Err() = %v, want ErrSize", r.Err())
+	}
+}
+
+func TestReaderBytes(t *testing.T) {
+	b := []byte{0x01, 0x02}
+
+	r := New(b, binary.LittleEndian)
+	if got := r.Bytes(3); got != nil {
+		t.Fatalf("Bytes(3) = %v, want nil", got)
+	}
+	if r.Err() == nil {
+		t.Fatal("expected error reading past end")
+	}
+	if got := r.Bytes(1); got != nil {
+		t.Fatalf("Bytes(1) after error = %v, want nil (no-op)", got)
+	}
+}
+
+func TestReaderString(t *testing.T) {
+	b := []byte("ab\x00\x00")
+
+	r := New(b, binary.LittleEndian)
+	if got := r.String(4); got != "ab" {
+		t.Fatalf("String(4) = %q, want ab", got)
+	}
+	if r.Err() != nil {
+		t.Fatalf("unexpected err: %v", r.Err())
+	}
+
+	r = New(b, binary.LittleEndian)
+	if got := r.String(10); got != "" {
+		t.Fatalf("String(10) = %q, want empty", got)
+	}
+	if r.Err() == nil {
+		t.Fatal("expected error reading past end")
+	}
+	if got := r.String(1); got != "" {
+		t.Fatalf("String(1) after error = %q, want empty (no-op)", got)
+	}
+}
+
+func TestReaderUTF16String(t *testing.T) {
+	b := []byte{'h', 0, 'i', 0}
+
+	r := New(b, binary.LittleEndian)
+	if got := r.UTF16String(4); got != "hi" {
+		t.Fatalf("UTF16String(4) = %q, want hi", got)
+	}
+	if r.Err() != nil {
+		t.Fatalf("unexpected err: %v", r.Err())
+	}
+
+	r = New(b, binary.LittleEndian)
+	if got := r.UTF16String(10); got != "" {
+		t.Fatalf("UTF16String(10) = %q, want empty", got)
+	}
+	if r.Err() == nil {
+		t.Fatal("expected error reading past end")
+	}
+	if got := r.UTF16String(1); got != "" {
+		t.Fatalf("UTF16String(1) after error = %q, want empty (no-op)", got)
+	}
+}
