@@ -3,6 +3,7 @@ package binutil
 import (
 	"encoding/binary"
 	"errors"
+	"unicode/utf16"
 )
 
 // ErrRange is returned when off (and the n bytes starting there) fall
@@ -83,4 +84,25 @@ func String(b []byte, off, n int) (string, error) {
 		i--
 	}
 	return string(s[:i]), nil
+}
+
+// UTF16String decodes n bytes at off as UTF-16 code units in the given order
+// and trims trailing NULs. n must be even. Used for NTFS $FILE_NAME and APFS
+// names.
+func UTF16String(b []byte, off, n int, order binary.ByteOrder) (string, error) {
+	if n%2 != 0 {
+		return "", ErrSize
+	}
+	if err := bounds(b, off, n); err != nil {
+		return "", err
+	}
+
+	units := make([]uint16, n/2)
+	for i := range units {
+		units[i] = order.Uint16(b[off+2*i:])
+	}
+	for len(units) > 0 && units[len(units)-1] == 0 {
+		units = units[:len(units)-1]
+	}
+	return string(utf16.Decode(units)), nil
 }

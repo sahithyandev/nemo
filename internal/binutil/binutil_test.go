@@ -167,3 +167,46 @@ func TestString(t *testing.T) {
 		})
 	}
 }
+
+func TestUTF16String(t *testing.T) {
+	// "hi" in UTF-16
+	leHi := []byte{'h', 0, 'i', 0, 0, 0}
+	beHi := []byte{0, 'h', 0, 'i', 0, 0}
+	// U+1F600 (non-BMP, surrogate pair D83D DE00) LE
+	leEmoji := []byte{0x3d, 0xd8, 0x00, 0xde}
+
+	tests := []struct {
+		name    string
+		b       []byte
+		off     int
+		n       int
+		order   binary.ByteOrder
+		want    string
+		wantErr error
+	}{
+		{"le nul padded", leHi, 0, 6, binary.LittleEndian, "hi", nil},
+		{"be nul padded", beHi, 0, 6, binary.BigEndian, "hi", nil},
+		{"le no padding", leHi, 0, 4, binary.LittleEndian, "hi", nil},
+		{"surrogate pair", leEmoji, 0, 4, binary.LittleEndian, "\U0001F600", nil},
+		{"odd n", leHi, 0, 3, binary.LittleEndian, "", ErrSize},
+		{"out of range", leHi, 0, 8, binary.LittleEndian, "", ErrRange},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := UTF16String(tc.b, tc.off, tc.n, tc.order)
+			if tc.wantErr != nil {
+				if err != tc.wantErr {
+					t.Fatalf("err = %v, want %v", err, tc.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected err: %v", err)
+			}
+			if got != tc.want {
+				t.Fatalf("got %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
