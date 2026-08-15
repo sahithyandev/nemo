@@ -130,3 +130,40 @@ func TestBits(t *testing.T) {
 		})
 	}
 }
+
+func TestString(t *testing.T) {
+	tests := []struct {
+		name    string
+		b       []byte
+		off     int
+		n       int
+		want    string
+		wantErr error
+	}{
+		{"nul padded", []byte("hi\x00\x00\x00"), 0, 5, "hi", nil},
+		{"space padded", []byte("hi   "), 0, 5, "hi", nil},
+		{"mixed padded", []byte("hi \x00\x00"), 0, 5, "hi", nil},
+		{"no padding", []byte("hello"), 0, 5, "hello", nil},
+		{"empty", []byte{}, 0, 0, "", nil},
+		{"all padding", []byte("\x00\x00\x00"), 0, 3, "", nil},
+		{"out of range", []byte("hi"), 0, 5, "", ErrRange},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := String(tc.b, tc.off, tc.n)
+			if tc.wantErr != nil {
+				if err != tc.wantErr {
+					t.Fatalf("err = %v, want %v", err, tc.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected err: %v", err)
+			}
+			if got != tc.want {
+				t.Fatalf("got %q, want %q", got, tc.want)
+			}
+		})
+	}
+}

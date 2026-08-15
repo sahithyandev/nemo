@@ -71,3 +71,16 @@ func Bits(v uint64, lo, width int) (uint64, error) {
 	mask := uint64(1)<<width - 1
 	return (v >> lo) & mask, nil
 }
+
+// String reads n bytes at off and trims trailing NULs and spaces.
+func String(b []byte, off, n int) (string, error) {
+	if err := bounds(b, off, n); err != nil {
+		return "", err
+	}
+	s := b[off : off+n]
+	i := len(s)
+	for i > 0 && (s[i-1] == 0 || s[i-1] == ' ') {
+		i--
+	}
+	return string(s[:i]), nil
+}
