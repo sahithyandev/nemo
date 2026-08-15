@@ -13,6 +13,19 @@ var ErrRange = errors.New("binutil: offset out of range")
 // ErrSize is returned when a requested width is not supported.
 var ErrSize = errors.New("binutil: invalid size")
 
+// ErrOrder is returned when order is nil or not one of
+// binary.LittleEndian / binary.BigEndian, the only byte orders the odd-width
+// paths in Uint and UTF16String know how to handle.
+var ErrOrder = errors.New("binutil: unsupported byte order")
+
+// checkOrder reports whether order is a supported, non-nil byte order.
+func checkOrder(order binary.ByteOrder) error {
+	if order != binary.LittleEndian && order != binary.BigEndian {
+		return ErrOrder
+	}
+	return nil
+}
+
 // bounds checks that b[off:off+n] is a valid, in-range slice.
 func bounds(b []byte, off, n int) error {
 	if off < 0 || n < 0 || n > len(b)-off {
@@ -26,6 +39,9 @@ func bounds(b []byte, off, n int) error {
 func Uint(b []byte, off, size int, order binary.ByteOrder) (uint64, error) {
 	if size < 1 || size > 8 {
 		return 0, ErrSize
+	}
+	if err := checkOrder(order); err != nil {
+		return 0, err
 	}
 	if err := bounds(b, off, size); err != nil {
 		return 0, err
@@ -92,6 +108,9 @@ func String(b []byte, off, n int) (string, error) {
 func UTF16String(b []byte, off, n int, order binary.ByteOrder) (string, error) {
 	if n%2 != 0 {
 		return "", ErrSize
+	}
+	if err := checkOrder(order); err != nil {
+		return "", err
 	}
 	if err := bounds(b, off, n); err != nil {
 		return "", err

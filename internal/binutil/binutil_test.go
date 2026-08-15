@@ -35,6 +35,8 @@ func TestUint(t *testing.T) {
 		{"off past end", 8, 1, binary.LittleEndian, 0, ErrRange},
 		{"size past end", 6, 4, binary.LittleEndian, 0, ErrRange},
 		{"off overflow", math.MaxInt - 2, 8, binary.LittleEndian, 0, ErrRange},
+		{"nil order size3", 0, 3, nil, 0, ErrOrder},
+		{"nil order size2", 0, 2, nil, 0, ErrOrder},
 	}
 
 	for _, tc := range tests {
@@ -192,6 +194,7 @@ func TestUTF16String(t *testing.T) {
 		{"surrogate pair", leEmoji, 0, 4, binary.LittleEndian, "\U0001F600", nil},
 		{"odd n", leHi, 0, 3, binary.LittleEndian, "", ErrSize},
 		{"out of range", leHi, 0, 8, binary.LittleEndian, "", ErrRange},
+		{"nil order", leHi, 0, 4, nil, "", ErrOrder},
 	}
 
 	for _, tc := range tests {
