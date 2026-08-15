@@ -2,6 +2,7 @@ package binutil
 
 import (
 	"encoding/binary"
+	"math"
 	"testing"
 )
 
@@ -33,6 +34,7 @@ func TestUint(t *testing.T) {
 		{"negative off", -1, 1, binary.LittleEndian, 0, ErrRange},
 		{"off past end", 8, 1, binary.LittleEndian, 0, ErrRange},
 		{"size past end", 6, 4, binary.LittleEndian, 0, ErrRange},
+		{"off overflow", math.MaxInt - 2, 8, binary.LittleEndian, 0, ErrRange},
 	}
 
 	for _, tc := range tests {
