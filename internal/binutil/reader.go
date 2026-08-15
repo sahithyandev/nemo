@@ -71,6 +71,51 @@ func (r *Reader) Uint(size int) uint64 {
 	return v
 }
 
+// Bytes returns the next n bytes as a subslice (not a copy) and advances
+// the offset by n.
+func (r *Reader) Bytes(n int) []byte {
+	if r.err != nil {
+		return nil
+	}
+	if err := bounds(r.b, r.off, n); err != nil {
+		r.err = err
+		return nil
+	}
+	v := r.b[r.off : r.off+n]
+	r.off += n
+	return v
+}
+
+// String reads n bytes, trims trailing NULs and spaces, and advances the
+// offset by n.
+func (r *Reader) String(n int) string {
+	if r.err != nil {
+		return ""
+	}
+	v, err := String(r.b, r.off, n)
+	if err != nil {
+		r.err = err
+		return ""
+	}
+	r.off += n
+	return v
+}
+
+// UTF16String reads n bytes as UTF-16 code units, trims trailing NULs, and
+// advances the offset by n.
+func (r *Reader) UTF16String(n int) string {
+	if r.err != nil {
+		return ""
+	}
+	v, err := UTF16String(r.b, r.off, n, r.order)
+	if err != nil {
+		r.err = err
+		return ""
+	}
+	r.off += n
+	return v
+}
+
 // Int reads a size-byte signed integer and advances the offset by size.
 func (r *Reader) Int(size int) int64 {
 	if r.err != nil {
