@@ -69,7 +69,7 @@ func (e *Entry) WriteStream(name string, data []byte) error {
 		e.Streams = make(map[string][]byte)
 	}
 
-	e.Streams[name] = data
+	e.Streams[name] = append([]byte(nil), data...)
 	return nil
 }
 
@@ -79,7 +79,7 @@ func (e *Entry) ReadStream(name string) ([]byte, error) {
 		return nil, fs.ErrNotExist
 	}
 
-	return data, nil
+	return append([]byte(nil), data...), nil
 }
 
 func (e *Entry) DeleteStream(name string) error {
