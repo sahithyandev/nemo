@@ -59,4 +59,3 @@ func (r *RawImage) Path() string {
 func (r *RawImage) Close() error {
 	return r.file.Close()
 }
-
