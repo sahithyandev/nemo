@@ -34,6 +34,10 @@ Options:
 
 Every successful `hide` writes an entry to the chain-of-custody log (operation, target, SHA-256 hash, timestamp), in both modes. This logging is automatic and has no corresponding flag to disable.
 
+On success, `hide` emits that custody record as one JSON object on standard output. The record also includes the selected technique, technique-specific detail, and affected byte count. If the output sink fails after the filesystem mutation, the command reports the failure but does not imply that the mutation was rolled back. Durable log location and fail-closed policy remain part of the shared custody contract.
+
+Until a native filesystem implementation or image detector is registered, the corresponding mode fails with a clear unsupported/unrecognized error; it never falls back from one mode to the other.
+
 ## `nemo detect`
 
 Scans a target, or an entire image, for hidden data and reports what it finds. `detect` is read-only: it never writes to the target.

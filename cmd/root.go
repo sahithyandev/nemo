@@ -34,5 +34,5 @@ func Execute() {
 }
 
 func init() {
-	rootCmd.AddCommand(versionCmd)
+	rootCmd.AddCommand(versionCmd, newHideCommand(defaultHideDependencies()))
 }
