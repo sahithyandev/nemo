@@ -137,10 +137,16 @@ func New(paths ...string) *FS {
 
 	for _, p := range paths {
 		isDir := strings.HasSuffix(p, "/")
-		f.ensure(path.Clean(p), isDir)
+		f.ensure(normalize(p), isDir)
 	}
 
 	return f
+}
+
+// normalize makes p absolute (relative to "/") and cleans it, so every path
+// in the tree hangs off the same "/" root regardless of how it was given.
+func normalize(p string) string {
+	return path.Clean(path.Join("/", p))
 }
 
 // ensure creates the entry at p (and its ancestors, as directories) if not
@@ -168,7 +174,7 @@ func (f *FS) ensure(p string, dir bool) *Entry {
 // Entry returns the concrete *Entry at path, for test setup and assertions.
 // It returns nil if the path is not part of the tree.
 func (f *FS) Entry(p string) *Entry {
-	return f.entries[path.Clean(p)]
+	return f.entries[normalize(p)]
 }
 
 func (f *FS) Type() filesystem.Type {
@@ -180,7 +186,7 @@ func (f *FS) Root() filesystem.Entry {
 }
 
 func (f *FS) Open(p string) (filesystem.Entry, error) {
-	e, exists := f.entries[path.Clean(p)]
+	e, exists := f.entries[normalize(p)]
 	if !exists {
 		return nil, fs.ErrNotExist
 	}

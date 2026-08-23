@@ -43,6 +43,33 @@ func TestOpenMissingEntry(t *testing.T) {
 	}
 }
 
+func TestRelativePathsAreRootedUnderSlash(t *testing.T) {
+	f := New("dir/test.txt")
+
+	entry, err := f.Open("/dir/test.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if entry.Path() != "/dir/test.txt" {
+		t.Fatalf("expected /dir/test.txt, got %s", entry.Path())
+	}
+
+	root, err := f.Open("/")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	children, err := root.Children()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(children) != 1 || children[0].Path() != "/dir" {
+		t.Fatalf("expected root to have child /dir, got %v", children)
+	}
+}
+
 func TestRootIsDir(t *testing.T) {
 	f := New()
 
