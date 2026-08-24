@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strings"
 	"sync"
 
 	"github.com/sahithyandev/nemo/internal/image"
@@ -23,9 +24,30 @@ var (
 )
 
 // Register adds a filesystem detector to the process-wide registry.
+//
+// It panics on an invalid Detector (empty Type, nil Sniff, or nil New) or on
+// a duplicate Type — registration happens at package init, so these are
+// startup-time programmer errors, not runtime conditions to recover from.
 func Register(detector Detector) {
+	if detector.Type == "" {
+		panic("filesystem: Register: empty Type")
+	}
+	if detector.Sniff == nil {
+		panic(fmt.Sprintf("filesystem: Register: detector %q has nil Sniff", detector.Type))
+	}
+	if detector.New == nil {
+		panic(fmt.Sprintf("filesystem: Register: detector %q has nil New", detector.Type))
+	}
+
 	registryMu.Lock()
 	defer registryMu.Unlock()
+
+	for _, existing := range detectors {
+		if existing.Type == detector.Type {
+			panic(fmt.Sprintf("filesystem: detector already registered for type %q", detector.Type))
+		}
+	}
+
 	detectors = append(detectors, detector)
 }
 
@@ -59,18 +81,37 @@ func Open(img image.Image) (FileSystem, error) {
 		signature = signature[:n]
 	}
 
-	for _, detector := range Detectors() {
-		if detector.Sniff != nil && detector.Sniff(signature) {
-			if detector.New == nil {
-				return nil, fmt.Errorf("filesystem: detector %q has no constructor", detector.Type)
-			}
-			fs, err := detector.New(img)
-			if err != nil {
-				return nil, fmt.Errorf("filesystem: open %s: %w", detector.Type, err)
-			}
-			return fs, nil
+	all := Detectors()
+	var matches []Detector
+	for _, detector := range all {
+		if detector.Sniff(signature) {
+			matches = append(matches, detector)
 		}
 	}
 
-	return nil, errors.New("filesystem: unrecognized image format")
+	switch len(matches) {
+	case 0:
+		if len(all) == 0 {
+			return nil, errors.New("filesystem: unrecognized image format (no filesystem detectors registered)")
+		}
+		return nil, fmt.Errorf("filesystem: unrecognized image format (no match among %d registered filesystems: %s)",
+			len(all), typeList(all))
+	case 1:
+		detector := matches[0]
+		fs, err := detector.New(img)
+		if err != nil {
+			return nil, fmt.Errorf("filesystem: open %s: %w", detector.Type, err)
+		}
+		return fs, nil
+	default:
+		return nil, fmt.Errorf("filesystem: ambiguous image format: matches %s", typeList(matches))
+	}
+}
+
+func typeList(detectors []Detector) string {
+	names := make([]string, len(detectors))
+	for i, d := range detectors {
+		names[i] = string(d.Type)
+	}
+	return strings.Join(names, ", ")
 }
