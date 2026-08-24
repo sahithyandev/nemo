@@ -129,6 +129,8 @@ type Entry interface {
 
 `registry.go` holds a signature-based lookup (`[]Detector` — byte pattern → constructor) and returns the right `FileSystem` for an image or file. Adding NTFS/APFS/ext4 support means registering a detector in `registry.go` plus a new `internal/filesystem/<fs>/` package; nothing in `internal/technique` or the Cobra commands changes.
 
+`Register` panics on an invalid `Detector` (empty `Type`, nil `Sniff`, or nil `New`) or on a `Type` already registered — registration happens at package init, so these are startup-time programmer errors, not conditions to recover from. `Open` sniffs against every registered detector rather than stopping at the first hit: no match is an actionable error naming the registered filesystems, and more than one match is an "ambiguous image format" error naming every candidate, rather than silently picking whichever detector happened to register first.
+
 Not every filesystem supports every capability the same way, so instead of forcing all three `Entry` implementations to satisfy a bloated interface, capabilities are split into optional interfaces an `Entry` may additionally implement:
 
 ```go
