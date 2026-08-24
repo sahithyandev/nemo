@@ -3,6 +3,7 @@ package cmd
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -223,5 +224,64 @@ func TestDetectDefaultContinuesPastUnsupportedDirectorySlack(t *testing.T) {
 	}
 	if !detectLineHas(out, "slack-space", "/child.bin", "32-50", "6") {
 		t.Fatalf("missing child finding: %s", out)
+	}
+}
+
+type warningDirectory struct {
+	*fakefs.Entry
+	warning   error
+	listError error
+}
+
+func (e warningDirectory) TraversalWarnings() []error { return []error{e.warning} }
+func (e warningDirectory) Children() ([]filesystem.Entry, error) {
+	if e.listError != nil {
+		return nil, e.listError
+	}
+	return e.Entry.Children()
+}
+
+type warningFS struct {
+	*fakefs.FS
+	root filesystem.Entry
+}
+
+func (f warningFS) Root() filesystem.Entry { return f.root }
+
+func TestDetectReportsSkippedChildrenOnStderr(t *testing.T) {
+	fs := fakefs.New("/good.txt")
+	if err := fs.Entry("/good.txt").WriteStream("secret", []byte("abcd")); err != nil {
+		t.Fatal(err)
+	}
+	root := warningDirectory{Entry: fs.Entry("/"), warning: fmt.Errorf("/link: %w", filesystem.ErrUnsupported)}
+	deps := fakeDetectDeps(fs)
+	deps.openImage = func(string) (openedTarget, error) {
+		return openedTarget{filesystem: warningFS{FS: fs, root: root}, image: imagepkg.ReadOnly(fs.Img)}, nil
+	}
+	command := newDetectCommand(deps)
+	var output, warnings bytes.Buffer
+	command.SetOut(&output)
+	command.SetErr(&warnings)
+	command.SetArgs([]string{"--image", "x", "-t", "named-stream"})
+	if err := command.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(output.String(), "/good.txt") {
+		t.Fatalf("missing valid finding: %s", output.String())
+	}
+	if !strings.Contains(warnings.String(), "warning: skipped child: /link") {
+		t.Fatalf("missing diagnostic: %s", warnings.String())
+	}
+	if strings.Contains(output.String(), "warning") {
+		t.Fatal("warnings contaminated stdout findings")
+	}
+}
+
+func TestWalkEntriesKeepsTraversalErrorsFatal(t *testing.T) {
+	fs := fakefs.New("/good.txt")
+	denied := errors.New("permission denied")
+	root := warningDirectory{Entry: fs.Entry("/"), listError: denied}
+	if err := walkEntries(root, func(filesystem.Entry) error { return nil }); !errors.Is(err, denied) {
+		t.Fatalf("walk error = %v", err)
 	}
 }

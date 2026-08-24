@@ -25,6 +25,7 @@ type LiveEntry struct {
 	path        string
 	isDir       bool
 	requireExt4 bool
+	warnings    []error
 }
 
 var _ filesystem.FileSystem = (*LiveFS)(nil)
@@ -63,10 +64,23 @@ func openLiveFD(path string, requireExt4 bool) (int, syscall.Stat_t, error) {
 	if path == "" {
 		return -1, stat, errors.New("ext4 live mode: target path is empty")
 	}
+	// Reject special files before opening: opening a socket fails with ENXIO,
+	// and opening a device can have side effects. O_NOFOLLOW plus Fstat below
+	// still validate the inode actually opened if the directory entry races.
+	info, err := os.Lstat(path)
+	if err != nil {
+		return -1, stat, fmt.Errorf("ext4 live mode: lstat %q: %w", path, err)
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		return -1, stat, fmt.Errorf("ext4 live mode: symlink targets are unsupported: %q: %w", path, filesystem.ErrUnsupported)
+	}
+	if !info.Mode().IsRegular() && !info.IsDir() {
+		return -1, stat, fmt.Errorf("ext4 live mode: only regular files and directories are supported: %q: %w", path, filesystem.ErrUnsupported)
+	}
 	fd, err := syscall.Open(path, syscall.O_RDONLY|syscall.O_CLOEXEC|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
 	if err != nil {
 		if errors.Is(err, syscall.ELOOP) {
-			return -1, stat, fmt.Errorf("ext4 live mode: symlink targets are unsupported: %q", path)
+			return -1, stat, fmt.Errorf("ext4 live mode: symlink targets are unsupported: %q: %w", path, filesystem.ErrUnsupported)
 		}
 		return -1, stat, fmt.Errorf("ext4 live mode: open %q: %w", path, err)
 	}
@@ -76,7 +90,7 @@ func openLiveFD(path string, requireExt4 bool) (int, syscall.Stat_t, error) {
 	}
 	if kind := stat.Mode & syscall.S_IFMT; kind != syscall.S_IFREG && kind != syscall.S_IFDIR {
 		syscall.Close(fd)
-		return -1, stat, fmt.Errorf("ext4 live mode: only regular files and directories are supported: %q", path)
+		return -1, stat, fmt.Errorf("ext4 live mode: only regular files and directories are supported: %q: %w", path, filesystem.ErrUnsupported)
 	}
 	if requireExt4 {
 		var info syscall.Statfs_t
@@ -86,15 +100,18 @@ func openLiveFD(path string, requireExt4 bool) (int, syscall.Stat_t, error) {
 		}
 		if uint64(info.Type) != linuxExt4Magic {
 			syscall.Close(fd)
-			return -1, stat, fmt.Errorf("ext4 live mode: %q is not on ext4", path)
+			return -1, stat, fmt.Errorf("ext4 live mode: %q is not on ext4: %w", path, filesystem.ErrUnsupported)
 		}
 	}
 	return fd, stat, nil
 }
 
-func (e *LiveEntry) Path() string { return e.path }
-func (e *LiveEntry) IsDir() bool  { return e.isDir }
+func (e *LiveEntry) Path() string               { return e.path }
+func (e *LiveEntry) IsDir() bool                { return e.isDir }
+func (e *LiveEntry) TraversalWarnings() []error { return append([]error(nil), e.warnings...) }
+
 func (e *LiveEntry) Children() ([]filesystem.Entry, error) {
+	e.warnings = nil
 	if !e.isDir {
 		return nil, nil
 	}
@@ -105,6 +122,10 @@ func (e *LiveEntry) Children() ([]filesystem.Entry, error) {
 	children := make([]filesystem.Entry, 0, len(items))
 	for _, item := range items {
 		child, err := openLiveEntry(filepath.Join(e.path, item.Name()), e.requireExt4)
+		if errors.Is(err, filesystem.ErrUnsupported) {
+			e.warnings = append(e.warnings, err)
+			continue
+		}
 		if err != nil {
 			return nil, err
 		}
