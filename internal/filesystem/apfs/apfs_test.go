@@ -1,10 +1,13 @@
 package apfs
 
 import (
+	"encoding/binary"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/sahithyandev/nemo/internal/filesystem"
+	"github.com/sahithyandev/nemo/internal/filesystem/fakefs"
 )
 
 var fixtures = []string{"apfs-bare", "apfs-gpt"}
@@ -144,5 +147,57 @@ func TestChecksumRejects(t *testing.T) {
 
 	if _, err := New(img); err == nil {
 		t.Fatalf("New: expected checksum error, got nil")
+	}
+}
+
+// TestReadVolumeSuperblockRejectsEncrypted builds a synthetic, checksum-valid
+// apfs_superblock_t with the APFS_FS_UNENCRYPTED bit clear and confirms it's
+// rejected with a clear error rather than parsed (and, downstream, rather
+// than silently returning wrong results — an encrypted volume's on-disk
+// filenames are also encrypted, so a naive parse would just come back with
+// empty-looking directories instead of failing loudly).
+func TestReadVolumeSuperblockRejectsEncrypted(t *testing.T) {
+	const blockSize = 4096
+	buf := make([]byte, blockSize)
+	binary.LittleEndian.PutUint32(buf[32:36], apsbMagic)
+	binary.LittleEndian.PutUint64(buf[264:272], 0) // apfs_fs_flags: UNENCRYPTED bit clear
+	copy(buf[704:], "ENCVOL")
+	binary.LittleEndian.PutUint64(buf[0:8], fletcher64(buf))
+
+	img := fakefs.NewImage(blockSize)
+	if _, err := img.WriteAt(buf, 0); err != nil {
+		t.Fatalf("write synthetic volume superblock: %v", err)
+	}
+
+	_, err := readVolumeSuperblock(img, 0, blockSize)
+	if err == nil {
+		t.Fatalf("readVolumeSuperblock: expected error for encrypted volume, got nil")
+	}
+	if !strings.Contains(err.Error(), "encrypted") {
+		t.Fatalf("readVolumeSuperblock error = %q, want it to mention encryption", err)
+	}
+}
+
+// TestReadVolumeSuperblockAcceptsUnencrypted is the control case: the same
+// synthetic superblock with the UNENCRYPTED bit set must parse successfully.
+func TestReadVolumeSuperblockAcceptsUnencrypted(t *testing.T) {
+	const blockSize = 4096
+	buf := make([]byte, blockSize)
+	binary.LittleEndian.PutUint32(buf[32:36], apsbMagic)
+	binary.LittleEndian.PutUint64(buf[264:272], apfsFSUnencrypted)
+	copy(buf[704:], "PLAINVOL")
+	binary.LittleEndian.PutUint64(buf[0:8], fletcher64(buf))
+
+	img := fakefs.NewImage(blockSize)
+	if _, err := img.WriteAt(buf, 0); err != nil {
+		t.Fatalf("write synthetic volume superblock: %v", err)
+	}
+
+	vol, err := readVolumeSuperblock(img, 0, blockSize)
+	if err != nil {
+		t.Fatalf("readVolumeSuperblock: %v", err)
+	}
+	if vol.name != "PLAINVOL" {
+		t.Fatalf("volume name = %q, want %q", vol.name, "PLAINVOL")
 	}
 }

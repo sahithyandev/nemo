@@ -4,6 +4,25 @@
 //
 // Named streams, timestomp, slack space, and live mode are not implemented
 // here; see docs/work-breakdown.md items 18b/19c/20d/21e.
+//
+// # Limitations
+//
+// New returns a clear error, rather than a partial or silently wrong
+// result, for every layout this parser doesn't handle:
+//
+//   - Encrypted volumes (apfs_fs_flags' APFS_FS_UNENCRYPTED bit clear):
+//     content and, on an encrypted volume, filenames themselves are
+//     unreadable without key material this parser doesn't have.
+//   - A tree-form checkpoint descriptor area (nx_xp_desc_blocks' high bit
+//     set).
+//   - No recognizable container: neither an NXSB superblock at byte 0 nor
+//     a GPT Apple_APFS partition.
+//   - Any object (container/checkpoint/omap/volume superblock or B-tree
+//     node) whose Fletcher-64 checksum doesn't match.
+//
+// Snapshots, hashed (BTNODE_HASHED) B-tree nodes, and the space
+// manager/reaper are not read at all — this parser only walks the current
+// volume's live filesystem tree.
 package apfs
 
 import (
@@ -32,6 +51,13 @@ const (
 	objPhysSize      = 32
 	nxSuperblockSize = 1400 // generous; only fixed-offset fields below are read
 )
+
+// apfsFSUnencrypted is a bit in apfs_superblock_t's apfs_fs_flags (offset
+// 264, u64): when set, the volume carries no encryption. When clear, the
+// volume is encrypted — this parser has no key material and can't decrypt
+// file content or (on an encrypted volume) filenames, so it refuses to
+// mount rather than silently returning wrong/empty results.
+const apfsFSUnencrypted = 0x1
 
 // sniff is handed at most the first 4096 bytes from offset 0 (per
 // filesystem.Open) and must tolerate a shorter or empty slice.
@@ -466,6 +492,10 @@ func readVolumeSuperblock(img image.Image, paddr int64, blockSize uint32) (*volu
 	}
 	if len(buf) < 960 || binary.LittleEndian.Uint32(buf[32:36]) != apsbMagic {
 		return nil, errors.New("apfs: not a valid volume superblock (APSB)")
+	}
+	fsFlags := binary.LittleEndian.Uint64(buf[264:272])
+	if fsFlags&apfsFSUnencrypted == 0 {
+		return nil, errors.New("apfs: encrypted volumes are not supported")
 	}
 	name, err := binutil.String(buf, 704, 256)
 	if err != nil {
