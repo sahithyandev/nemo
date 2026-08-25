@@ -105,19 +105,27 @@ func decodeNode(buf []byte, blockSize uint32, fixedKeySize, fixedValSize int) (*
 		kOff := binary.LittleEndian.Uint16(buf[entOff : entOff+2])
 		kLen := binary.LittleEndian.Uint16(buf[entOff+2 : entOff+4])
 		vOff := binary.LittleEndian.Uint16(buf[entOff+4 : entOff+6])
-		vLen := binary.LittleEndian.Uint16(buf[entOff+6 : entOff+8])
+		vLen := int(binary.LittleEndian.Uint16(buf[entOff+6 : entOff+8]))
+		if !isLeaf {
+			// Non-leaf value is always an 8-byte oid_t child pointer,
+			// regardless of what the TOC claims — vals[i] later gets read
+			// with binary.LittleEndian.Uint64, so trusting an attacker- or
+			// corruption-controlled vLen < 8 here would panic downstream
+			// instead of failing as a bounds error.
+			vLen = 8
+		}
 
 		keyAddr := keyBase + int(kOff)
 		if keyAddr < 0 || keyAddr+int(kLen) > len(buf) {
 			return nil, errors.New("apfs: btree variable key out of range")
 		}
 		valAddr := valEnd - int(vOff)
-		if valAddr < 0 || valAddr+int(vLen) > len(buf) {
+		if valAddr < 0 || valAddr+vLen > len(buf) {
 			return nil, errors.New("apfs: btree variable value out of range")
 		}
 
 		n.keys = append(n.keys, buf[keyAddr:keyAddr+int(kLen)])
-		n.vals = append(n.vals, buf[valAddr:valAddr+int(vLen)])
+		n.vals = append(n.vals, buf[valAddr:valAddr+vLen])
 	}
 	return n, nil
 }

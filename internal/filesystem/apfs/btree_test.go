@@ -102,6 +102,31 @@ func TestBtreeNodeDecodeVariableKVRoot(t *testing.T) {
 	}
 }
 
+// TestBtreeNodeDecodeNonLeafRejectsShortValue is a regression test: a
+// malformed non-leaf node whose TOC claims a value shorter than 8 bytes
+// must be rejected with a bounds error at decode time, not accepted and
+// then panic later when a caller reads the child oid with
+// binary.LittleEndian.Uint64 on a too-short slice.
+func TestBtreeNodeDecodeNonLeafRejectsShortValue(t *testing.T) {
+	const blockSize = 128
+	buf := buildNode(blockSize, 0, 1, 1, 8) // non-leaf, non-root, variable-kv
+
+	// TOC: kvloc_t claiming k.len=8, v.len=2 (malformed for a non-leaf
+	// value). v.off=2 places the value at valAddr=126, which fits a 2-byte
+	// read (126+2=128) but not the real, forced 8-byte oid_t read
+	// (126+8=134 > 128) — the case that used to panic.
+	binary.LittleEndian.PutUint16(buf[56:58], 0) // k.off
+	binary.LittleEndian.PutUint16(buf[58:60], 8) // k.len
+	binary.LittleEndian.PutUint16(buf[60:62], 2) // v.off
+	binary.LittleEndian.PutUint16(buf[62:64], 2) // v.len (malformed)
+
+	copy(buf[64:72], []byte{1, 2, 3, 4, 5, 6, 7, 8}) // key
+
+	if _, err := decodeNode(buf, blockSize, 0, 0); err == nil {
+		t.Fatalf("decodeNode: expected out-of-range error for short non-leaf value, got nil")
+	}
+}
+
 func TestJKeyRoundTrip(t *testing.T) {
 	tests := []struct {
 		oid uint64
