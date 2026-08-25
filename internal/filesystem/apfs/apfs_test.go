@@ -209,7 +209,7 @@ func TestParseGPTHeaderRejectsOversizedEntriesTable(t *testing.T) {
 		entrySize  uint32
 		wantOK     bool
 	}{
-		{"standard layout", 128, 128, true},                 // 16 KiB total, real-world GPT
+		{"standard layout", 128, 128, true},                  // 16 KiB total, real-world GPT
 		{"huge entrySize, one entry", 1, 0xFFFFFFFF, false},  // entrySize alone can blow the cap
 		{"many entries, standard size", 1 << 20, 128, false}, // 128 MiB total
 		{"at the cap", 1024, 1024, true},                     // exactly 1 MiB
