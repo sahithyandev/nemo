@@ -28,9 +28,9 @@ func buildSyntheticTwoLeafTree(t *testing.T) (img *fakefs.Image, blockSize uint3
 	writeLeaf := func(paddr int64, k0, v0, k1, v1 byte) {
 		buf := make([]byte, bs)
 		binary.LittleEndian.PutUint16(buf[32:34], btnodeLeaf) // leaf, variable-kv, non-root
-		binary.LittleEndian.PutUint32(buf[36:40], 2)           // nkeys
-		binary.LittleEndian.PutUint16(buf[40:42], 0)           // table_space.off
-		binary.LittleEndian.PutUint16(buf[42:44], 16)          // table_space.len: 2 kvloc_t
+		binary.LittleEndian.PutUint32(buf[36:40], 2)          // nkeys
+		binary.LittleEndian.PutUint16(buf[40:42], 0)          // table_space.off
+		binary.LittleEndian.PutUint16(buf[42:44], 16)         // table_space.len: 2 kvloc_t
 
 		// TOC (kvloc_t x2). keyBase = 56+0+16 = 72. valEnd = bs (non-root).
 		binary.LittleEndian.PutUint16(buf[56:58], 0) // entry0 k.off
@@ -57,23 +57,23 @@ func buildSyntheticTwoLeafTree(t *testing.T) (img *fakefs.Image, blockSize uint3
 
 	root := make([]byte, bs)
 	binary.LittleEndian.PutUint16(root[32:34], btnodeRoot) // non-leaf, root, variable-kv
-	binary.LittleEndian.PutUint16(root[34:36], 1)           // level
-	binary.LittleEndian.PutUint32(root[36:40], 2)           // nkeys
-	binary.LittleEndian.PutUint16(root[40:42], 0)           // table_space.off
-	binary.LittleEndian.PutUint16(root[42:44], 16)          // table_space.len
+	binary.LittleEndian.PutUint16(root[34:36], 1)          // level
+	binary.LittleEndian.PutUint32(root[36:40], 2)          // nkeys
+	binary.LittleEndian.PutUint16(root[40:42], 0)          // table_space.off
+	binary.LittleEndian.PutUint16(root[42:44], 16)         // table_space.len
 
 	// keyBase = 72. valEnd = bs-40 (root adjustment) = 216.
-	binary.LittleEndian.PutUint16(root[56:58], 0) // entry0 k.off (key [1])
-	binary.LittleEndian.PutUint16(root[58:60], 1) // entry0 k.len
-	binary.LittleEndian.PutUint16(root[60:62], 8) // entry0 v.off (addr 216-8=208)
-	binary.LittleEndian.PutUint16(root[62:64], 8) // entry0 v.len (forced to 8 regardless)
-	binary.LittleEndian.PutUint16(root[64:66], 1) // entry1 k.off (key [3])
-	binary.LittleEndian.PutUint16(root[66:68], 1) // entry1 k.len
+	binary.LittleEndian.PutUint16(root[56:58], 0)  // entry0 k.off (key [1])
+	binary.LittleEndian.PutUint16(root[58:60], 1)  // entry0 k.len
+	binary.LittleEndian.PutUint16(root[60:62], 8)  // entry0 v.off (addr 216-8=208)
+	binary.LittleEndian.PutUint16(root[62:64], 8)  // entry0 v.len (forced to 8 regardless)
+	binary.LittleEndian.PutUint16(root[64:66], 1)  // entry1 k.off (key [3])
+	binary.LittleEndian.PutUint16(root[66:68], 1)  // entry1 k.len
 	binary.LittleEndian.PutUint16(root[68:70], 16) // entry1 v.off (addr 216-16=200)
 	binary.LittleEndian.PutUint16(root[70:72], 8)  // entry1 v.len
 
-	root[72] = 1 // key0
-	root[73] = 3 // key1
+	root[72] = 1                                    // key0
+	root[73] = 3                                    // key1
 	binary.LittleEndian.PutUint64(root[208:216], 1) // child for key [1]: leaf0, paddr 1
 	binary.LittleEndian.PutUint64(root[200:208], 2) // child for key [3]: leaf1, paddr 2
 
