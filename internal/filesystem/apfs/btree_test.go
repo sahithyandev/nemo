@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"encoding/binary"
 	"testing"
+
+	"github.com/sahithyandev/nemo/internal/filesystem/fakefs"
 )
 
 // buildNode lays out a minimal btree_node_phys_t. header sets flags/level/
@@ -148,6 +150,23 @@ func TestJKeyRoundTrip(t *testing.T) {
 	}
 }
 
+func TestOpenTreeRejectsNegativeRootPaddr(t *testing.T) {
+	img := fakefs.NewImage(64)
+	if _, err := openTree(img, 64, -1, omapResolveIdentity, byteCmp, 0, 0); err == nil {
+		t.Fatalf("openTree(rootPaddr=-1): expected error, got nil")
+	}
+}
+
+func TestCursorKeyValOnEmptyStack(t *testing.T) {
+	var c cursor
+	if k := c.key(); k != nil {
+		t.Fatalf("key() on empty cursor = %v, want nil", k)
+	}
+	if v := c.val(); v != nil {
+		t.Fatalf("val() on empty cursor = %v, want nil", v)
+	}
+}
+
 func TestFsKeyCompareOrdersByOidThenType(t *testing.T) {
 	// Type occupies the high nibble, so a raw u64 comparison would sort by
 	// type first; fsKeyCompare must not do that.
@@ -174,5 +193,53 @@ func TestDecodeDrecKeyHashed(t *testing.T) {
 	}
 	if got != name {
 		t.Errorf("name = %q, want %q", got, name)
+	}
+}
+
+// TestDecodeDrecKeyNonHashedFallback uses a key shorter than 12 bytes, so
+// decodeDrecKey can't even attempt the hashed j_drec_hashed_key_t layout
+// and must fall back to the plain j_drec_key_t (bare u16 length) layout.
+func TestDecodeDrecKeyNonHashedFallback(t *testing.T) {
+	k := make([]byte, 11) // 8 (j_key_t) + 2 (u16 len) + 1 (name, no NUL)
+	copy(k[0:8], encodeJKey(2, objTypeDirRec))
+	binary.LittleEndian.PutUint16(k[8:10], 1)
+	k[10] = 'A'
+
+	got, ok := decodeDrecKey(k)
+	if !ok {
+		t.Fatalf("decodeDrecKey: not ok")
+	}
+	if got != "A" {
+		t.Errorf("name = %q, want %q", got, "A")
+	}
+}
+
+func TestIsPrintableNameRejectsEmpty(t *testing.T) {
+	if isPrintableName(nil) {
+		t.Fatalf("isPrintableName(nil) = true, want false")
+	}
+}
+
+// TestCursorDescendLeftmostRejectsEmptyNonLeaf covers the defensive check
+// in descendLeftmost for a malformed non-leaf node with zero keys (so it
+// has no child to follow index 0 into).
+func TestCursorDescendLeftmostRejectsEmptyNonLeaf(t *testing.T) {
+	const bs = 128
+	buf := make([]byte, bs)
+	binary.LittleEndian.PutUint16(buf[32:34], btnodeRoot) // non-leaf, root, 0 keys
+	binary.LittleEndian.PutUint64(buf[0:8], fletcher64(buf))
+
+	img := fakefs.NewImage(bs)
+	if _, err := img.WriteAt(buf, 0); err != nil {
+		t.Fatalf("write empty non-leaf node: %v", err)
+	}
+
+	tr, err := openTree(img, bs, 0, omapResolveIdentity, byteCmp, 0, 0)
+	if err != nil {
+		t.Fatalf("openTree: %v", err)
+	}
+	c := &cursor{t: tr}
+	if err := c.descendLeftmost(0); err == nil {
+		t.Fatalf("descendLeftmost: expected error for empty non-leaf node, got nil")
 	}
 }
