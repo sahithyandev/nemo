@@ -21,7 +21,7 @@ type Recorder interface {
 
 type wrappedImage struct {
 	underlying image.Image
-	Events     []WriteEvent
+	events     []WriteEvent
 }
 
 // Wrap adds custody handling around an Image.
@@ -43,7 +43,7 @@ func (w *wrappedImage) WriteAt(p []byte, off int64) (int, error) {
 
 	sum := sha256.Sum256(p[:n])
 
-	w.Events = append(w.Events, WriteEvent{
+	w.events = append(w.events, WriteEvent{
 		Offset:    off,
 		SHA256:    hex.EncodeToString(sum[:]),
 		Timestamp: time.Now().UTC(),
@@ -57,8 +57,8 @@ func (w *wrappedImage) Size() int64 {
 }
 
 func (w *wrappedImage) EventsSnapshot() []WriteEvent {
-	events := make([]WriteEvent, len(w.Events))
-	copy(events, w.Events)
+	events := make([]WriteEvent, len(w.events))
+	copy(events, w.events)
 	return events
 }
 
