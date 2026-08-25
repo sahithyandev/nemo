@@ -14,13 +14,18 @@ type WriteEvent struct {
 	Timestamp time.Time
 }
 
+type Recorder interface {
+	image.Image
+	EventsSnapshot() []WriteEvent
+}
+
 type wrappedImage struct {
 	underlying image.Image
 	Events     []WriteEvent
 }
 
 // Wrap adds custody handling around an Image.
-func Wrap(img image.Image) image.Image {
+func Wrap(img image.Image) Recorder {
 	return &wrappedImage{
 		underlying: img,
 	}
@@ -49,6 +54,12 @@ func (w *wrappedImage) WriteAt(p []byte, off int64) (int, error) {
 
 func (w *wrappedImage) Size() int64 {
 	return w.underlying.Size()
+}
+
+func (w *wrappedImage) EventsSnapshot() []WriteEvent {
+	events := make([]WriteEvent, len(w.Events))
+	copy(events, w.Events)
+	return events
 }
 
 func (w *wrappedImage) Path() string {

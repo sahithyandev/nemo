@@ -12,8 +12,7 @@ import (
 func TestWrappedImageCapturesWrite(t *testing.T) {
 	img := fakefs.NewImage(32)
 
-	wrappedInterface := Wrap(img)
-	wrapped := wrappedInterface.(*wrappedImage)
+	wrapped := Wrap(img)
 
 	data := []byte("ABC")
 	before := time.Now().UTC()
@@ -35,11 +34,12 @@ func TestWrappedImageCapturesWrite(t *testing.T) {
 	}
 
 	// Exactly one custody event must be captured.
-	if len(wrapped.Events) != 1 {
-		t.Fatalf("expected 1 write event, got %d", len(wrapped.Events))
+	events := wrapped.EventsSnapshot()
+	if len(events) != 1 {
+		t.Fatalf("expected 1 write event, got %d", len(events))
 	}
 
-	event := wrapped.Events[0]
+	event := events[0]
 
 	if event.Offset != 5 {
 		t.Fatalf("expected offset 5, got %d", event.Offset)
