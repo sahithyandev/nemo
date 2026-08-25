@@ -1,12 +1,12 @@
-.PHONY: build run test vet fmt clean
+.PHONY: build run test vet fmt clean hooks
 
-build:      ## compile ./bin/nemo
+build: hooks ## compile ./bin/nemo
 	go build -o bin/nemo .
 
-run:        ## go run main.go
+run: hooks  ## go run main.go
 	go run .
 
-test:       ## run tests
+test: hooks ## run tests
 	go test -cover ./...
 
 vet:        ## static checks
@@ -17,3 +17,6 @@ fmt:        ## gofmt all files
 
 clean:      ## remove build artifacts
 	rm -rf bin
+
+hooks:      ## install versioned git hooks (gofmt on pre-commit)
+	git config core.hooksPath .githooks

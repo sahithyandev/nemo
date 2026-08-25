@@ -36,6 +36,8 @@ make fmt     # gofmt all files
 
 Version is read from `cmd/VERSION` and embedded into the binary at compile time (`nemo version`).
 
+The pre-commit hook (gofmt on staged `.go` files) is installed automatically the first time you run `make build`/`make run`/`make test`; run `make hooks` directly if you want it sooner.
+
 ## Authors
 
 - Bandara S.A.N.K 
