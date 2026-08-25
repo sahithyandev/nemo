@@ -202,6 +202,63 @@ func TestReadVolumeSuperblockAcceptsUnencrypted(t *testing.T) {
 	}
 }
 
+func TestParseGPTHeaderRejectsOversizedEntriesTable(t *testing.T) {
+	tests := []struct {
+		name       string
+		numEntries uint32
+		entrySize  uint32
+		wantOK     bool
+	}{
+		{"standard layout", 128, 128, true},                 // 16 KiB total, real-world GPT
+		{"huge entrySize, one entry", 1, 0xFFFFFFFF, false},  // entrySize alone can blow the cap
+		{"many entries, standard size", 1 << 20, 128, false}, // 128 MiB total
+		{"at the cap", 1024, 1024, true},                     // exactly 1 MiB
+		{"just over the cap", 1024, 1025, false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			buf := make([]byte, 604)
+			copy(buf[512:520], "EFI PART")
+			binary.LittleEndian.PutUint64(buf[512+72:512+80], 2) // part_entry_lba
+			binary.LittleEndian.PutUint32(buf[512+80:512+84], tc.numEntries)
+			binary.LittleEndian.PutUint32(buf[512+84:512+88], tc.entrySize)
+
+			_, ok := parseGPTHeader(buf)
+			if ok != tc.wantOK {
+				t.Fatalf("parseGPTHeader(numEntries=%d, entrySize=%d) ok = %v, want %v", tc.numEntries, tc.entrySize, ok, tc.wantOK)
+			}
+		})
+	}
+}
+
+// TestFindAPFSPartitionInImageRejectsHugeEntriesTable is an end-to-end
+// regression test: a crafted GPT header claiming an 8 MiB-per-entry
+// partition table, on an image large enough (16 MiB) that the old
+// "base+entriesLen <= img.Size()" bounds check alone would NOT have caught
+// it. Only gptMaxEntriesTableSize does, and it must reject before
+// findAPFSPartitionInImage's readFull ever allocates that much.
+func TestFindAPFSPartitionInImageRejectsHugeEntriesTable(t *testing.T) {
+	const bogusEntrySize = 8 << 20 // 8 MiB; real GPT entries are 128 bytes
+	img := fakefs.NewImage(2 * bogusEntrySize)
+
+	buf := make([]byte, 604)
+	copy(buf[512:520], "EFI PART")
+	binary.LittleEndian.PutUint64(buf[512+72:512+80], 2) // part_entry_lba
+	binary.LittleEndian.PutUint32(buf[512+80:512+84], 1) // numEntries
+	binary.LittleEndian.PutUint32(buf[512+84:512+88], bogusEntrySize)
+	if _, err := img.WriteAt(buf, 0); err != nil {
+		t.Fatalf("write synthetic GPT header: %v", err)
+	}
+
+	_, _, ok, err := findAPFSPartitionInImage(img)
+	if err != nil {
+		t.Fatalf("findAPFSPartitionInImage: unexpected error: %v", err)
+	}
+	if ok {
+		t.Fatalf("findAPFSPartitionInImage: expected ok=false for an oversized entries table")
+	}
+}
+
 func TestValidateBlockSize(t *testing.T) {
 	tests := []struct {
 		name      string

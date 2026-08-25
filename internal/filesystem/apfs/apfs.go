@@ -111,6 +111,15 @@ type gptHeader struct {
 	entrySize  uint32
 }
 
+// gptMaxEntriesTableSize caps the partition-entry array's total byte size
+// (numEntries * entrySize) that this parser will read into memory. Real GPT
+// tables are a few KiB (128 entries * 128 bytes is standard); 1 MiB is
+// generous headroom. Without this, entrySize alone is unbounded — a crafted
+// header could set it to e.g. 0xFFFFFFFF with numEntries=1 and drive a
+// multi-gigabyte allocation in findAPFSPartitionInImage, even though
+// numEntries on its own looks small.
+const gptMaxEntriesTableSize = 1 << 20
+
 // parseGPTHeader reads a GPT header out of b, which must contain at least
 // offset 512..604 (b may be a short sniff prefix or a full image read).
 func parseGPTHeader(b []byte) (gptHeader, bool) {
@@ -123,7 +132,13 @@ func parseGPTHeader(b []byte) (gptHeader, bool) {
 		numEntries: binary.LittleEndian.Uint32(b[hdrOff+80 : hdrOff+84]),
 		entrySize:  binary.LittleEndian.Uint32(b[hdrOff+84 : hdrOff+88]),
 	}
-	if h.entrySize < 128 || h.numEntries == 0 || h.numEntries > 1<<20 {
+	if h.entrySize < 128 || h.numEntries == 0 {
+		return gptHeader{}, false
+	}
+	// Compute in uint64 so numEntries*entrySize can't wrap a uint32 and
+	// slip past the cap.
+	tableSize := uint64(h.numEntries) * uint64(h.entrySize)
+	if tableSize > gptMaxEntriesTableSize {
 		return gptHeader{}, false
 	}
 	return h, true
