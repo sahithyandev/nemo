@@ -52,6 +52,26 @@ const (
 	nxSuperblockSize = 1400 // generous; only fixed-offset fields below are read
 )
 
+// nx_block_size's valid range per the APFS spec (NX_MINIMUM_BLOCK_SIZE /
+// NX_MAXIMUM_BLOCK_SIZE); it must also be a power of two. Enforced up
+// front so a crafted image can't advertise an implausible block size and
+// drive every subsequent readObject call to allocate/read an
+// attacker-chosen number of bytes.
+const (
+	nxMinBlockSize = 4096
+	nxMaxBlockSize = 65536
+)
+
+func validateBlockSize(blockSize uint32) error {
+	if blockSize < nxMinBlockSize || blockSize > nxMaxBlockSize {
+		return fmt.Errorf("apfs: nx_block_size %d out of range [%d, %d]", blockSize, nxMinBlockSize, nxMaxBlockSize)
+	}
+	if blockSize&(blockSize-1) != 0 {
+		return fmt.Errorf("apfs: nx_block_size %d is not a power of two", blockSize)
+	}
+	return nil
+}
+
 // apfsFSUnencrypted is a bit in apfs_superblock_t's apfs_fs_flags (offset
 // 264, u64): when set, the volume carries no encryption. When clear, the
 // volume is encrypted — this parser has no key material and can't decrypt
@@ -312,8 +332,8 @@ func readContainerSuperblock(img image.Image) (*containerSB, error) {
 		return nil, errors.New("apfs: block 0 is not an APFS container superblock")
 	}
 	blockSize := binary.LittleEndian.Uint32(block0[36:40])
-	if blockSize == 0 {
-		return nil, errors.New("apfs: nx_block_size is zero")
+	if err := validateBlockSize(blockSize); err != nil {
+		return nil, err
 	}
 
 	// Re-read block 0 at the real block size and verify its checksum (the

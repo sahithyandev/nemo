@@ -201,3 +201,56 @@ func TestReadVolumeSuperblockAcceptsUnencrypted(t *testing.T) {
 		t.Fatalf("volume name = %q, want %q", vol.name, "PLAINVOL")
 	}
 }
+
+func TestValidateBlockSize(t *testing.T) {
+	tests := []struct {
+		name      string
+		blockSize uint32
+		wantErr   bool
+	}{
+		{"zero", 0, true},
+		{"too small", 2048, true},
+		{"minimum", 4096, false},
+		{"default-ish", 8192, false},
+		{"maximum", 65536, false},
+		{"too large", 65536 * 2, true},
+		{"in range but not power of two", 5000, true},
+		{"implausibly large", 1 << 30, true},
+		{"max uint32, not power of two", 0xFFFFFFFF, true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			err := validateBlockSize(tc.blockSize)
+			if tc.wantErr && err == nil {
+				t.Fatalf("validateBlockSize(%d): expected error, got nil", tc.blockSize)
+			}
+			if !tc.wantErr && err != nil {
+				t.Fatalf("validateBlockSize(%d): unexpected error: %v", tc.blockSize, err)
+			}
+		})
+	}
+}
+
+// TestReadContainerSuperblockRejectsImplausibleBlockSize is a regression
+// test for a crafted nx_block_size that's within the image's own size but
+// far outside APFS's actual valid range. The image is deliberately made
+// large enough (2 MiB) that readObject's own "off+blockSize <= img.Size()"
+// bounds check would NOT have caught a 1 MiB declared block size — only
+// validateBlockSize does, which is the point of this test: without it, a
+// crafted image sized to match its own bogus block size would sail through
+// and drive a correspondingly huge allocation on every subsequent object
+// read.
+func TestReadContainerSuperblockRejectsImplausibleBlockSize(t *testing.T) {
+	const bogusBlockSize = 1 << 20 // 1 MiB; APFS's real max is 65536
+	img := fakefs.NewImage(2 * bogusBlockSize)
+	buf := make([]byte, 4096)
+	binary.LittleEndian.PutUint32(buf[32:36], nxMagic)
+	binary.LittleEndian.PutUint32(buf[36:40], bogusBlockSize)
+	if _, err := img.WriteAt(buf, 0); err != nil {
+		t.Fatalf("write synthetic block 0: %v", err)
+	}
+
+	if _, err := readContainerSuperblock(img); err == nil {
+		t.Fatalf("readContainerSuperblock: expected error for implausible block size, got nil")
+	}
+}
