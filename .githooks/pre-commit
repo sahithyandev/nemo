@@ -1,0 +1,5 @@
+#!/bin/sh
+files=$(git diff --cached --name-only --diff-filter=ACM -- '*.go')
+[ -z "$files" ] && exit 0
+gofmt -l -w $files
+git add $files

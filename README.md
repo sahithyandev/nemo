@@ -16,6 +16,12 @@ a CLI tool for hiding files.
 - Go 1.26+
 - GNU Make
 
+### Setup
+
+After cloning the repo, run `make hooks` which will setup the git-managed hooks for the project.
+
+Currently there is a pre-commit hook that formats staged `.go` files with `gofmt` and re-stages for the commit.
+
 ### Dependencies
 
 | Name                                          | Description                                             |
