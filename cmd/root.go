@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/sahithyandev/nemo/internal/filesystem"
 	"github.com/spf13/cobra"
 )
 
@@ -34,5 +35,9 @@ func Execute() {
 }
 
 func init() {
-	rootCmd.AddCommand(versionCmd, newHideCommand(defaultHideDependencies()))
+	rootCmd.AddCommand(
+		versionCmd,
+		newHideCommand(defaultHideDependencies()),
+		newFeaturesCommand(filesystem.Detectors),
+	)
 }
