@@ -30,11 +30,12 @@ type openedTarget struct {
 }
 
 type hideDependencies struct {
-	openImage    func(string) (openedTarget, error)
-	openLive     func(string) (openedTarget, error)
-	readFile     func(string) ([]byte, error)
-	now          func() time.Time
-	writeCustody func(io.Writer, custody.Record) error
+	openImage      func(string) (openedTarget, error)
+	openLive       func(string) (openedTarget, error)
+	readFile       func(string) ([]byte, error)
+	now            func() time.Time
+	persistCustody func(custody.Record) error
+	writeCustody   func(io.Writer, custody.Record) error
 }
 
 func defaultHideDependencies() hideDependencies {
@@ -54,9 +55,10 @@ func defaultHideDependencies() hideDependencies {
 		openLive: func(string) (openedTarget, error) {
 			return openedTarget{}, errors.New("live mode is unavailable: no native filesystem implementation is registered")
 		},
-		readFile:     os.ReadFile,
-		now:          time.Now,
-		writeCustody: custody.Write,
+		readFile:       os.ReadFile,
+		now:            time.Now,
+		persistCustody: custody.Persist,
+		writeCustody:   custody.Write,
 	}
 }
 
@@ -135,6 +137,9 @@ func runHide(command *cobra.Command, target string, options hideOptions, depende
 		written = []byte(result.Detail)
 	}
 	record := custody.NewRecord("hide", result.Technique, result.Target, result.Detail, result.Bytes, written, dependencies.now())
+	if err := dependencies.persistCustody(record); err != nil {
+		return fmt.Errorf("persist custody record: %w", err)
+	}
 	if err := dependencies.writeCustody(command.OutOrStdout(), record); err != nil {
 		return fmt.Errorf("write custody record: %w", err)
 	}
