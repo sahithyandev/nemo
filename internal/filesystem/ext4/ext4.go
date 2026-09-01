@@ -1,4 +1,4 @@
-// Package ext4 implements read-only traversal of extent-backed ext4 images.
+// Package ext4 implements traversal and native xattr mutation of extent-backed ext4 images.
 package ext4
 
 import (
@@ -19,12 +19,13 @@ const (
 	superblockSize   = 1024
 	ext4Magic        = 0xef53
 
-	featureIncompatFiletype = 0x0002
-	featureIncompatExtents  = 0x0040
-	featureIncompat64Bit    = 0x0080
-	featureIncompatFlexBG   = 0x0200
-	featureIncompatCsumSeed = 0x2000
-	featureROCompatBigalloc = 0x0200
+	featureIncompatFiletype     = 0x0002
+	featureIncompatExtents      = 0x0040
+	featureIncompat64Bit        = 0x0080
+	featureIncompatFlexBG       = 0x0200
+	featureIncompatCsumSeed     = 0x2000
+	featureROCompatBigalloc     = 0x0200
+	featureROCompatMetadataCsum = 0x0400
 
 	inodeFlagExtents    = 0x00080000
 	inodeFlagIndex      = 0x00001000
@@ -61,9 +62,12 @@ type superblock struct {
 	inodeSize       uint16
 	descSize        uint16
 	featureIncompat uint32
+	featureROCompat uint32
+	uuid            [16]byte
+	checksumSeed    uint32
 }
 
-// FS is a read-only view of an ext4 filesystem image.
+// FS is a view of an ext4 filesystem image.
 type FS struct {
 	img        image.Image
 	sb         superblock
@@ -98,7 +102,8 @@ func New(img image.Image) (filesystem.FileSystem, error) {
 	if incompat&featureIncompatExtents == 0 {
 		return nil, errors.New("ext4: filesystems without extents are unsupported")
 	}
-	if binary.LittleEndian.Uint32(b[0x64:])&featureROCompatBigalloc != 0 {
+	roCompat := binary.LittleEndian.Uint32(b[0x64:])
+	if roCompat&featureROCompatBigalloc != 0 {
 		return nil, errors.New("ext4: bigalloc filesystems are unsupported")
 	}
 
@@ -128,6 +133,13 @@ func New(img image.Image) (filesystem.FileSystem, error) {
 		inodeSize:       inodeSize,
 		descSize:        descSize,
 		featureIncompat: incompat,
+		featureROCompat: roCompat,
+	}
+	copy(sb.uuid[:], b[0x68:0x78])
+	if incompat&featureIncompatCsumSeed != 0 {
+		sb.checksumSeed = binary.LittleEndian.Uint32(b[0x270:])
+	} else {
+		sb.checksumSeed = ext4CRC32C(^uint32(0), sb.uuid[:])
 	}
 	if err := validateGeometry(sb, img.Size()); err != nil {
 		return nil, err
@@ -227,6 +239,7 @@ type Entry struct {
 }
 
 var _ filesystem.Entry = (*Entry)(nil)
+var _ filesystem.NamedStreamCapable = (*Entry)(nil)
 
 func (e *Entry) Path() string { return e.path }
 func (e *Entry) IsDir() bool  { return e.isDir }
@@ -279,7 +292,36 @@ func (e *Entry) Children() ([]filesystem.Entry, error) {
 	return out, nil
 }
 
-func (e *Entry) NamedStreams() ([]string, error) { return nil, nil }
+func (e *Entry) NamedStreams() ([]string, error) {
+	attrs, err := e.fs.readXattrs(e.inode)
+	if err != nil {
+		return nil, fmt.Errorf("ext4: list xattrs for %q: %w", e.path, err)
+	}
+	names := make([]string, 0, len(attrs))
+	for name := range attrs {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names, nil
+}
+
+func (e *Entry) ReadStream(name string) ([]byte, error) {
+	return e.fs.readXattr(e.inode, name)
+}
+
+func (e *Entry) WriteStream(name string, data []byte) error {
+	if err := e.fs.writeXattr(e.inode, name, data); err != nil {
+		return fmt.Errorf("ext4: write xattr %q on %q: %w", name, e.path, err)
+	}
+	return nil
+}
+
+func (e *Entry) DeleteStream(name string) error {
+	if err := e.fs.deleteXattr(e.inode, name); err != nil {
+		return fmt.Errorf("ext4: delete xattr %q on %q: %w", name, e.path, err)
+	}
+	return nil
+}
 
 func (f *FS) parseDirectory(block []byte, parent string) ([]filesystem.Entry, error) {
 	var entries []filesystem.Entry

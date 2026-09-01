@@ -22,35 +22,8 @@ type extentBlock struct {
 }
 
 func (f *FS) readInode(number uint32) (inode, error) {
-	if number == 0 || number > f.sb.inodesCount {
-		return inode{}, fmt.Errorf("inode %d is outside filesystem bounds", number)
-	}
-	group := uint64(number-1) / uint64(f.sb.inodesPerGroup)
-	index := uint64(number-1) % uint64(f.sb.inodesPerGroup)
-	if group >= f.groupCount {
-		return inode{}, fmt.Errorf("inode %d references missing group %d", number, group)
-	}
-
-	descOff := f.gdtOffset + int64(group)*int64(f.sb.descSize)
-	desc := make([]byte, f.sb.descSize)
-	if err := readExact(f.img, desc, descOff); err != nil {
-		return inode{}, fmt.Errorf("read group %d descriptor: %w", group, err)
-	}
-	inodeTable := uint64(binary.LittleEndian.Uint32(desc[8:]))
-	if f.sb.featureIncompat&featureIncompat64Bit != 0 {
-		inodeTable |= uint64(binary.LittleEndian.Uint32(desc[40:])) << 32
-	}
-	tableOff, ok := byteOffset(inodeTable, uint64(f.sb.blockSize), f.img.Size())
-	if !ok || inodeTable >= f.sb.blocksCount {
-		return inode{}, fmt.Errorf("group %d inode table block %d is outside filesystem bounds", group, inodeTable)
-	}
-	inodeOffset := uint64(tableOff) + index*uint64(f.sb.inodeSize)
-	if inodeOffset > uint64(f.img.Size()) || uint64(f.sb.inodeSize) > uint64(f.img.Size())-inodeOffset {
-		return inode{}, fmt.Errorf("inode %d exceeds image bounds", number)
-	}
-
-	b := make([]byte, f.sb.inodeSize)
-	if err := readExact(f.img, b, int64(inodeOffset)); err != nil {
+	b, _, err := f.readRawInode(number)
+	if err != nil {
 		return inode{}, err
 	}
 	var blockData [60]byte
@@ -61,6 +34,41 @@ func (f *FS) readInode(number uint32) (inode, error) {
 		flags:  binary.LittleEndian.Uint32(b[32:]),
 		blocks: blockData,
 	}, nil
+}
+
+func (f *FS) readRawInode(number uint32) ([]byte, int64, error) {
+	if number == 0 || number > f.sb.inodesCount {
+		return nil, 0, fmt.Errorf("inode %d is outside filesystem bounds", number)
+	}
+	group := uint64(number-1) / uint64(f.sb.inodesPerGroup)
+	index := uint64(number-1) % uint64(f.sb.inodesPerGroup)
+	if group >= f.groupCount {
+		return nil, 0, fmt.Errorf("inode %d references missing group %d", number, group)
+	}
+
+	descOff := f.gdtOffset + int64(group)*int64(f.sb.descSize)
+	desc := make([]byte, f.sb.descSize)
+	if err := readExact(f.img, desc, descOff); err != nil {
+		return nil, 0, fmt.Errorf("read group %d descriptor: %w", group, err)
+	}
+	inodeTable := uint64(binary.LittleEndian.Uint32(desc[8:]))
+	if f.sb.featureIncompat&featureIncompat64Bit != 0 {
+		inodeTable |= uint64(binary.LittleEndian.Uint32(desc[40:])) << 32
+	}
+	tableOff, ok := byteOffset(inodeTable, uint64(f.sb.blockSize), f.img.Size())
+	if !ok || inodeTable >= f.sb.blocksCount {
+		return nil, 0, fmt.Errorf("group %d inode table block %d is outside filesystem bounds", group, inodeTable)
+	}
+	inodeOffset := uint64(tableOff) + index*uint64(f.sb.inodeSize)
+	if inodeOffset > uint64(f.img.Size()) || uint64(f.sb.inodeSize) > uint64(f.img.Size())-inodeOffset {
+		return nil, 0, fmt.Errorf("inode %d exceeds image bounds", number)
+	}
+
+	b := make([]byte, f.sb.inodeSize)
+	if err := readExact(f.img, b, int64(inodeOffset)); err != nil {
+		return nil, 0, err
+	}
+	return b, int64(inodeOffset), nil
 }
 
 func (f *FS) extentBlocks(in inode) ([]extentBlock, error) {
