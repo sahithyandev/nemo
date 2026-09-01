@@ -29,7 +29,12 @@ func Sniff(signature []byte) bool {
 
 // FS represents an NTFS filesystem image.
 type FS struct {
-	img image.Image
+	img               image.Image
+	bytesPerSector    uint16
+	sectorsPerCluster uint8
+	mftCluster        uint64
+	mftMirrorCluster  uint64
+	fileRecordSize    uint32
 }
 
 var _ filesystem.FileSystem = (*FS)(nil)
@@ -52,7 +57,17 @@ func New(img image.Image) (filesystem.FileSystem, error) {
 		return nil, errors.New("ntfs: nil image")
 	}
 
+	boot, err := readBootSector(img)
+	if err != nil {
+		return nil, err
+	}
+
 	return &FS{
-		img: img,
+		img:               img,
+		bytesPerSector:    boot.bytesPerSector,
+		sectorsPerCluster: boot.sectorsPerCluster,
+		mftCluster:        boot.mftCluster,
+		mftMirrorCluster:  boot.mftMirrorCluster,
+		fileRecordSize:    boot.fileRecordSize,
 	}, nil
 }
