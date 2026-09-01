@@ -1,8 +1,11 @@
 package ext4
 
 import (
+	"bytes"
 	"encoding/binary"
+	"errors"
 	"io"
+	"io/fs"
 	"strings"
 	"testing"
 
@@ -199,6 +202,196 @@ func TestRejectsMalformedExtentAndDirectory(t *testing.T) {
 			t.Fatalf("error = %v", err)
 		}
 	})
+}
+
+func TestInodeBodyXattrRoundTripAndPreservesUnrelated(t *testing.T) {
+	img := syntheticImage()
+	inodeOff := 5*testBlockSize + 2*256 // inode 3
+	put16(img.data, inodeOff+128, 4)
+	existing, err := encodeXattrs(256-132, 4, map[string][]byte{"security.selinux": []byte("label")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	copy(img.data[inodeOff+132:inodeOff+256], existing)
+
+	fsi, err := New(img)
+	if err != nil {
+		t.Fatal(err)
+	}
+	entry, err := fsi.Open("/hello.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	stream, ok := entry.(filesystem.NamedStreamCapable)
+	if !ok {
+		t.Fatal("ext4 entry does not implement NamedStreamCapable")
+	}
+	if err := stream.WriteStream("user.author", []byte("nemo")); err != nil {
+		t.Fatalf("WriteStream: %v", err)
+	}
+	got, err := stream.ReadStream("user.author")
+	if err != nil || !bytes.Equal(got, []byte("nemo")) {
+		t.Fatalf("ReadStream = %q, %v", got, err)
+	}
+	other, err := stream.ReadStream("security.selinux")
+	if err != nil || string(other) != "label" {
+		t.Fatalf("unrelated xattr = %q, %v", other, err)
+	}
+	names, err := entry.NamedStreams()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(names) != 2 || names[0] != "security.selinux" || names[1] != "user.author" {
+		t.Fatalf("NamedStreams = %v", names)
+	}
+	if err := stream.DeleteStream("user.author"); err != nil {
+		t.Fatalf("DeleteStream: %v", err)
+	}
+	if _, err := stream.ReadStream("user.author"); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("deleted ReadStream error = %v", err)
+	}
+	if other, err = stream.ReadStream("security.selinux"); err != nil || string(other) != "label" {
+		t.Fatalf("unrelated after delete = %q, %v", other, err)
+	}
+}
+
+func TestExternalBlockXattrRoundTrip(t *testing.T) {
+	img := syntheticImage()
+	inodeOff := 5*testBlockSize + 2*256
+	put32(img.data, inodeOff+104, 20)
+	b, err := encodeXattrs(testBlockSize, 32, map[string][]byte{"trusted.original": []byte("keep")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	copy(img.data[20*testBlockSize:], b)
+	fsi, err := New(img)
+	if err != nil {
+		t.Fatal(err)
+	}
+	entry, err := fsi.Open("/hello.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	stream := entry.(filesystem.NamedStreamCapable)
+	large := bytes.Repeat([]byte{0xa5}, 300)
+	if err := stream.WriteStream("user.large", large); err != nil {
+		t.Fatalf("WriteStream external: %v", err)
+	}
+	got, err := stream.ReadStream("user.large")
+	if err != nil || !bytes.Equal(got, large) {
+		t.Fatalf("large round trip len=%d err=%v", len(got), err)
+	}
+	other, err := stream.ReadStream("trusted.original")
+	if err != nil || string(other) != "keep" {
+		t.Fatalf("preserved external xattr = %q, %v", other, err)
+	}
+	if err := stream.DeleteStream("user.large"); err != nil {
+		t.Fatalf("DeleteStream external: %v", err)
+	}
+	if _, err := stream.ReadStream("user.large"); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("deleted external ReadStream error = %v", err)
+	}
+	other, err = stream.ReadStream("trusted.original")
+	if err != nil || string(other) != "keep" {
+		t.Fatalf("preserved external xattr after delete = %q, %v", other, err)
+	}
+}
+
+func TestXattrActionableErrors(t *testing.T) {
+	fsi, err := New(syntheticImage())
+	if err != nil {
+		t.Fatal(err)
+	}
+	entry, err := fsi.Open("/hello.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	stream := entry.(filesystem.NamedStreamCapable)
+	if err := stream.WriteStream("unknown.name", []byte("x")); err == nil || !strings.Contains(err.Error(), "unsupported xattr namespace") {
+		t.Fatalf("namespace error = %v", err)
+	}
+	if err := stream.WriteStream("user.too-large", bytes.Repeat([]byte("x"), 200)); err == nil || !strings.Contains(err.Error(), "external block") {
+		t.Fatalf("capacity error = %v", err)
+	}
+}
+
+func TestReadsRealInodeBodyValueOffsetOrigin(t *testing.T) {
+	img := syntheticImage()
+	inodeOff := 5*testBlockSize + 2*256
+	put16(img.data, inodeOff+128, 4)
+	body := img.data[inodeOff+132 : inodeOff+256]
+	put32(body, 0, xattrMagic)
+	entry := body[4:]
+	entry[0] = byte(len("fixture"))
+	entry[1] = 1         // user namespace
+	put16(entry, 2, 100) // Real ext4 ibody offset: relative to first entry, not magic header.
+	put32(entry, 8, 4)
+	copy(entry[16:], "fixture")
+	copy(entry[100:], "real")
+
+	fsi, err := New(img)
+	if err != nil {
+		t.Fatal(err)
+	}
+	e, err := fsi.Open("/hello.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := e.(filesystem.NamedStreamCapable).ReadStream("user.fixture")
+	if err != nil || string(got) != "real" {
+		t.Fatalf("ReadStream real fixture = %q, %v", got, err)
+	}
+}
+
+func TestInodeChecksumHighRequiresExtraIsize(t *testing.T) {
+	b := make([]byte, 256)
+	b[130], b[131] = 0xaa, 0xbb
+	updateInodeChecksum(superblock{checksumSeed: 123}, 3, b)
+	if b[130] != 0xaa || b[131] != 0xbb {
+		t.Fatalf("checksum_hi changed without extra-isize: %x", b[130:132])
+	}
+	put16(b, 128, 4)
+	updateInodeChecksum(superblock{checksumSeed: 123}, 3, b)
+	if b[130] == 0xaa && b[131] == 0xbb {
+		t.Fatal("checksum_hi was not updated with extra-isize >= 4")
+	}
+}
+
+func TestExternalXattrEncodingUpdatesEntryAndBlockHashes(t *testing.T) {
+	b, err := encodeXattrs(testBlockSize, 32, map[string][]byte{"user.fixture": []byte("real")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	const wantHash = uint32(0xb65d30c9)
+	if got := binary.LittleEndian.Uint32(b[32+12:]); got != wantHash {
+		t.Fatalf("entry hash = %#x, want %#x", got, wantHash)
+	}
+	if got := binary.LittleEndian.Uint32(b[12:]); got != wantHash {
+		t.Fatalf("single-entry block hash = %#x, want %#x", got, wantHash)
+	}
+}
+
+func TestRejectsDeletingFinalExternalXattrWithoutDeallocation(t *testing.T) {
+	img := syntheticImage()
+	inodeOff := 5*testBlockSize + 2*256
+	put32(img.data, inodeOff+104, 20)
+	b, err := encodeXattrs(testBlockSize, 32, map[string][]byte{"user.only": []byte("value")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	copy(img.data[20*testBlockSize:], b)
+	fsi, err := New(img)
+	if err != nil {
+		t.Fatal(err)
+	}
+	entry, err := fsi.Open("/hello.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = entry.(filesystem.NamedStreamCapable).DeleteStream("user.only")
+	if err == nil || !strings.Contains(err.Error(), "block deallocation") {
+		t.Fatalf("DeleteStream final external xattr error = %v", err)
+	}
 }
 
 func entryPaths(entries []filesystem.Entry) []string {
