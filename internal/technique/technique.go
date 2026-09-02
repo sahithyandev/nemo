@@ -376,7 +376,7 @@ func readRegion(img image.Image, n int64, off int64) ([]byte, error) {
 	if n < 0 || n > math.MaxInt {
 		return nil, fmt.Errorf("read slack space: region length %d out of range", n)
 	}
-	buf := make([]byte, n)
+	buf := make([]byte, int(n))
 	read, err := img.ReadAt(buf, off)
 	if err != nil && !errors.Is(err, io.EOF) {
 		return nil, fmt.Errorf("read slack space: %w", err)
