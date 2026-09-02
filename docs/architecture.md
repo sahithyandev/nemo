@@ -165,10 +165,11 @@ type Technique interface {
 There is one `Technique` interface, not one per capability: each of the three
 concrete techniques takes a bare `filesystem.Entry` and type-asserts the single
 capability it needs (`NamedStreamCapable` / `SlackSpaceCapable` /
-`TimestompCapable`), returning the sentinel `ErrUnsupported` (wrapped, so
-`errors.Is` matches and the message — `"unsupported on this filesystem"` — stays
-stable) when the assertion fails. `Request` is the shared, mostly-optional input
-bag (`Data`, `StreamName`, `Field`, `Timestamp`, `Image`, `Backup`); an operation
+`TimestompCapable`), returning the sentinel `ErrUnsupported` (wrapped as
+`technique %q: unsupported on this filesystem`, so `errors.Is(err,
+technique.ErrUnsupported)` matches — match the sentinel, not the string) when the
+assertion fails. `Request` is the shared, mostly-optional input bag (`Data`,
+`StreamName`, `Field`, `Timestamp`, `Image`, `Restore`, `Backup`); an operation
 reads only the fields it needs.
 
 **Slack framing.** Slack regions normally hold whatever residual bytes the
@@ -183,9 +184,12 @@ crafted length never panics.
 is called with the pre-write state (`Backup{Technique, Target, Location, Original
 []byte, Timestamp}`) *before* any destructive write; returning an error aborts
 the operation. slack-space `Hide`/`Clear` emit the overwritten bytes this way.
-`clear` for slack-space restores the caller-supplied original bytes (passed back
-in `Request.Data`) when available, otherwise zero-fills the frame. A nil `Backup`
-means the caller opted out of reversibility.
+`clear` for slack-space writes back the caller-supplied original bytes (passed in
+`Request.Restore`, distinct from the hide payload in `Request.Data`) when
+available, otherwise zero-fills the frame; `Result.Restored` reports which
+happened. A `Request.Restore` whose length does not match the frame is rejected
+rather than zero-filled. A nil `Backup` means the caller opted out of
+reversibility.
 
 The persistence side lives in `manifest.go`: `AppendManifest(path, Backup)` /
 `LoadManifest(path)` / `LatestBackup(records, technique, target, location)`. The
