@@ -40,9 +40,10 @@ var supportedIncompat = uint32(featureIncompatFiletype | featureIncompatExtents 
 
 func init() {
 	filesystem.Register(filesystem.Detector{
-		Type:  filesystem.TypeEXT4,
-		Sniff: Sniff,
-		New:   New,
+		Type:       filesystem.TypeEXT4,
+		Sniff:      Sniff,
+		New:        New,
+		Techniques: []string{"named-stream", "timestomp"},
 	})
 }
 
