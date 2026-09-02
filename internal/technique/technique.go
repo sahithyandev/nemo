@@ -179,6 +179,9 @@ func (slackSpaceTechnique) Hide(entry filesystem.Entry, request Request) (Result
 	if request.Image == nil {
 		return Result{}, errors.New("slack-space requires image-backed storage")
 	}
+	if int64(len(request.Data)) > math.MaxUint32 {
+		return Result{}, fmt.Errorf("payload of %d bytes exceeds the slack frame's 4 GiB limit", len(request.Data))
+	}
 	regions, err := capable.SlackRegions()
 	if err != nil {
 		return Result{}, fmt.Errorf("inspect slack regions: %w", err)
