@@ -29,6 +29,15 @@ go.work.sum
 # env file
 .env
 
+# macOS
+.DS_Store
+
+# local-only files
+CLAUDE.md
+create-issues.sh
+/nemo
+/.claude/
+
 # Editor/IDE
 # .idea/
 # .vscode/
