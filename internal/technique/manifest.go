@@ -47,17 +47,25 @@ func LoadManifest(path string) ([]Backup, error) {
 	scanner.Buffer(make([]byte, 0, 64*1024), 16*1024*1024)
 
 	var out []Backup
+	var pending error // a parse error held until we know it is not the last line
 	for line := 1; scanner.Scan(); line++ {
 		raw := bytes.TrimSpace(scanner.Bytes())
 		if len(raw) == 0 {
 			continue
 		}
+		if pending != nil {
+			// A later record means the bad line was not a torn tail.
+			return nil, pending
+		}
 		var b Backup
 		if err := json.Unmarshal(raw, &b); err != nil {
-			return nil, fmt.Errorf("manifest line %d: %w", line, err)
+			pending = fmt.Errorf("manifest line %d: %w", line, err)
+			continue
 		}
 		out = append(out, b)
 	}
+	// A single unparseable final line is a hide that was killed mid-append;
+	// the records before it are still good.
 	if err := scanner.Err(); err != nil {
 		return nil, fmt.Errorf("read manifest: %w", err)
 	}

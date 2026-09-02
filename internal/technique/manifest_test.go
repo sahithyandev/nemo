@@ -42,6 +42,43 @@ func TestManifestAppendLoadRoundTrip(t *testing.T) {
 	}
 }
 
+func TestLoadManifestTornTailTolerated(t *testing.T) {
+	path := filepath.Join(t.TempDir(), ManifestName)
+	if err := AppendManifest(path, Backup{Technique: Timestomp, Target: "/a"}); err != nil {
+		t.Fatal(err)
+	}
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_APPEND, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.WriteString(`{"Technique":"slack-space","Targ`) // killed mid-append
+	f.Close()
+
+	got, err := LoadManifest(path)
+	if err != nil {
+		t.Fatalf("torn tail should be tolerated: %v", err)
+	}
+	if len(got) != 1 || got[0].Target != "/a" {
+		t.Fatalf("unexpected records: %+v", got)
+	}
+}
+
+func TestLoadManifestGarbageBeforeGoodRecordErrors(t *testing.T) {
+	path := filepath.Join(t.TempDir(), ManifestName)
+	f, err := os.Create(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.WriteString("not json\n")
+	f.Close()
+	if err := AppendManifest(path, Backup{Technique: Timestomp, Target: "/b"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadManifest(path); err == nil {
+		t.Fatal("a bad line before a good record should be a hard error")
+	}
+}
+
 func TestLoadManifestMissingFile(t *testing.T) {
 	_, err := LoadManifest(filepath.Join(t.TempDir(), "nope.jsonl"))
 	if !os.IsNotExist(err) {
