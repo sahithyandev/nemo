@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -14,6 +15,7 @@ import (
 	"github.com/sahithyandev/nemo/internal/custody"
 	"github.com/sahithyandev/nemo/internal/filesystem"
 	"github.com/sahithyandev/nemo/internal/filesystem/fakefs"
+	"github.com/sahithyandev/nemo/internal/technique"
 )
 
 func TestHideHelpListsDocumentedArgumentsAndOptions(t *testing.T) {
@@ -180,15 +182,25 @@ func TestHideExecutesSlackSpaceAndTimestomp(t *testing.T) {
 			return openedTarget{filesystem: fake, image: fake.Img}, nil
 		}
 		dependencies.writeCustody = func(io.Writer, custody.Record) error { return nil }
+		manifestPath := filepath.Join(t.TempDir(), technique.ManifestName)
 
 		command := newHideCommand(dependencies)
-		command.SetArgs([]string{"/target", "-t", "slack-space", "-d", "payload.bin", "--image", "disk.img"})
+		command.SetArgs([]string{"/target", "-t", "slack-space", "-d", "payload.bin", "--image", "disk.img", "--manifest", manifestPath})
 		if err := command.Execute(); err != nil {
 			t.Fatal(err)
 		}
 		// payload is written framed: 12-byte header, then the bytes.
 		if got := string(fake.Img.Data[44:51]); got != "payload" {
 			t.Fatalf("unexpected slack payload %q", got)
+		}
+		// The overwritten bytes were recorded to the manifest before the write.
+		backups, err := technique.LoadManifest(manifestPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, ok := technique.LatestBackup(backups, technique.SlackSpace, "/target", "")
+		if !ok || len(got.Original) != 19 {
+			t.Fatalf("unexpected manifest backup: %+v (ok=%v)", got, ok)
 		}
 	})
 

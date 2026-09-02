@@ -184,9 +184,17 @@ is called with the pre-write state (`Backup{Technique, Target, Location, Origina
 []byte, Timestamp}`) *before* any destructive write; returning an error aborts
 the operation. slack-space `Hide`/`Clear` emit the overwritten bytes this way.
 `clear` for slack-space restores the caller-supplied original bytes (passed back
-in `Request.Data`) when available, otherwise zero-fills the frame. The on-disk
-manifest format that persists these records is `cmd_clear.go`'s concern, not this
-package's. A nil `Backup` means the caller opted out of reversibility.
+in `Request.Data`) when available, otherwise zero-fills the frame. A nil `Backup`
+means the caller opted out of reversibility.
+
+The persistence side lives in `manifest.go`: `AppendManifest(path, Backup)` /
+`LoadManifest(path)` / `LatestBackup(records, technique, target, location)`. The
+file (`nemo-manifest.jsonl` by default, `--manifest` to relocate) is JSON Lines —
+one `Backup` per line, `Original` as base64, `Timestamp` as RFC 3339. `hide`
+passes a closure calling `AppendManifest`; a write failure there aborts the hide
+before any bytes are overwritten. `clear` (CORE-09) replays it via `LoadManifest`
++ `LatestBackup` — later records win, so re-hiding a target then clearing
+restores the last hide's bytes.
 
 **Timestomp limitation.** `filesystem.TimestompCapable` exposes only
 `SetTimestamp`, with no reader, so `timestomp.Detect` always returns no findings

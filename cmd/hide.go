@@ -21,6 +21,7 @@ type hideOptions struct {
 	streamName string
 	field      string
 	timestamp  string
+	manifest   string
 }
 
 type openedTarget struct {
@@ -35,6 +36,7 @@ type hideDependencies struct {
 	readFile     func(string) ([]byte, error)
 	now          func() time.Time
 	writeCustody func(io.Writer, custody.Record) error
+	appendBackup func(string, technique.Backup) error
 }
 
 func defaultHideDependencies() hideDependencies {
@@ -57,6 +59,7 @@ func defaultHideDependencies() hideDependencies {
 		readFile:     os.ReadFile,
 		now:          time.Now,
 		writeCustody: custody.Write,
+		appendBackup: technique.AppendManifest,
 	}
 }
 
@@ -81,6 +84,7 @@ func newHideCommand(dependencies hideDependencies) *cobra.Command {
 	flags.StringVar(&options.streamName, "stream-name", "", "stream name (required for named-stream)")
 	flags.StringVar(&options.field, "field", "", "timestamp field: created, modified, or accessed (required for timestomp)")
 	flags.StringVar(&options.timestamp, "timestamp", "", "RFC 3339 timestamp value (required for timestomp)")
+	flags.StringVar(&options.manifest, "manifest", technique.ManifestName, "path to the backup manifest (records overwritten slack bytes so clear can restore them)")
 
 	return command
 }
@@ -125,6 +129,9 @@ func runHide(command *cobra.Command, target string, options hideOptions, depende
 		Field:      filesystem.TimeField(options.field),
 		Timestamp:  timestamp,
 		Image:      opened.image,
+		Backup: func(b technique.Backup) error {
+			return dependencies.appendBackup(options.manifest, b)
+		},
 	})
 	if err != nil {
 		return fmt.Errorf("hide %q with %s: %w", target, options.technique, err)
