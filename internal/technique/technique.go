@@ -322,6 +322,12 @@ func (timestompTechnique) Hide(entry filesystem.Entry, request Request) (Result,
 	if !ok {
 		return Result{}, unsupported(Timestomp)
 	}
+	if !request.Field.Valid() {
+		return Result{}, fmt.Errorf("timestomp hide: invalid time field %q (want created, modified, or accessed)", request.Field)
+	}
+	if request.Timestamp.IsZero() {
+		return Result{}, errors.New("timestomp hide requires a non-zero timestamp")
+	}
 	if err := capable.SetTimestamp(request.Field, request.Timestamp); err != nil {
 		return Result{}, fmt.Errorf("set timestamp: %w", err)
 	}
@@ -347,6 +353,9 @@ func (timestompTechnique) Clear(entry filesystem.Entry, request Request) (Result
 	capable, ok := entry.(filesystem.TimestompCapable)
 	if !ok {
 		return Result{}, unsupported(Timestomp)
+	}
+	if !request.Field.Valid() {
+		return Result{}, fmt.Errorf("timestomp clear: invalid time field %q (want created, modified, or accessed)", request.Field)
 	}
 	if request.Timestamp.IsZero() {
 		return Result{}, errors.New("timestomp clear requires the original timestamp")

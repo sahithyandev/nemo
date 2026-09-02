@@ -255,6 +255,26 @@ func TestTimestompHideAndClear(t *testing.T) {
 	}
 }
 
+func TestTimestompRejectsInvalidFieldAndZeroTime(t *testing.T) {
+	fake := fakefs.New("/target")
+	entry, _ := fake.Open("/target")
+	tech, _ := Get(Timestomp)
+	ts := time.Date(2026, time.August, 23, 12, 0, 0, 0, time.UTC)
+
+	if _, err := tech.Hide(entry, Request{Field: "bogus", Timestamp: ts}); err == nil {
+		t.Fatal("Hide accepted an invalid time field")
+	}
+	if _, err := tech.Hide(entry, Request{Field: filesystem.TimeModified}); err == nil {
+		t.Fatal("Hide accepted a zero timestamp")
+	}
+	if _, err := tech.Clear(entry, Request{Field: "bogus", Timestamp: ts}); err == nil {
+		t.Fatal("Clear accepted an invalid time field")
+	}
+	if _, ok := fake.Entry("/target").Times[""]; ok {
+		t.Fatal("invalid field was written through to the filesystem")
+	}
+}
+
 func TestOperationsReturnErrUnsupported(t *testing.T) {
 	for _, name := range []string{NamedStream, SlackSpace, Timestomp} {
 		tech, _ := Get(name)
