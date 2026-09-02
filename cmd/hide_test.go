@@ -173,7 +173,7 @@ func TestHideSelectsImageModeWhenImageFlagIsPresent(t *testing.T) {
 func TestHideExecutesSlackSpaceAndTimestomp(t *testing.T) {
 	t.Run("slack-space", func(t *testing.T) {
 		fake := fakefs.New("/target")
-		fake.Entry("/target").Slack = []filesystem.SlackRegion{{Offset: 32, Length: 16}}
+		fake.Entry("/target").Slack = []filesystem.SlackRegion{{Offset: 32, Length: 64}}
 		dependencies := defaultHideDependencies()
 		dependencies.readFile = func(string) ([]byte, error) { return []byte("payload"), nil }
 		dependencies.openImage = func(string) (openedTarget, error) {
@@ -186,7 +186,8 @@ func TestHideExecutesSlackSpaceAndTimestomp(t *testing.T) {
 		if err := command.Execute(); err != nil {
 			t.Fatal(err)
 		}
-		if got := string(fake.Img.Data[32:39]); got != "payload" {
+		// payload is written framed: 12-byte header, then the bytes.
+		if got := string(fake.Img.Data[44:51]); got != "payload" {
 			t.Fatalf("unexpected slack payload %q", got)
 		}
 	})

@@ -119,7 +119,7 @@ func runHide(command *cobra.Command, target string, options hideOptions, depende
 	if err != nil {
 		return fmt.Errorf("open target %q: %w", target, err)
 	}
-	result, err := selected.Hide(entry, technique.HideRequest{
+	result, err := selected.Hide(entry, technique.Request{
 		Data:       payload,
 		StreamName: options.streamName,
 		Field:      filesystem.TimeField(options.field),

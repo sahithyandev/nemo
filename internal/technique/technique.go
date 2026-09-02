@@ -4,6 +4,7 @@ package technique
 import (
 	"errors"
 	"fmt"
+	"io"
 	"time"
 
 	"github.com/sahithyandev/nemo/internal/filesystem"
@@ -15,6 +16,11 @@ const (
 	SlackSpace  = "slack-space"
 	Timestomp   = "timestomp"
 )
+
+// ErrUnsupported is returned when a technique is run against an Entry whose
+// filesystem does not implement the required capability. It is a stable
+// sentinel: match it with errors.Is, not by string.
+var ErrUnsupported = errors.New("unsupported on this filesystem")
 
 // Finding describes hidden data detected in an entry.
 type Finding struct {
@@ -31,22 +37,46 @@ type Result struct {
 	Bytes     int64
 }
 
-// HideRequest contains the technique-specific inputs for a hide operation.
-type HideRequest struct {
+// Backup is the record a caller must persist to make a mutating operation
+// reversible. slack-space Hide/Clear emit one before overwriting bytes;
+// timestomp would emit one too once filesystem.TimestompCapable can read a
+// timestamp back (it cannot today). The on-disk manifest format is the
+// command layer's decision (see cmd_clear.go); this package only hands the
+// record to Request.Backup.
+type Backup struct {
+	Technique string
+	Target    string
+	Location  string    // stream name or slack offset range
+	Original  []byte    // bytes overwritten in place; nil for timestomp
+	Timestamp time.Time // timestamp overwritten; zero unless known
+}
+
+// Request carries the technique-specific inputs for a Hide, Detect or Clear
+// operation. Only the fields a given operation needs are read.
+type Request struct {
 	Data       []byte
 	StreamName string
 	Field      filesystem.TimeField
 	Timestamp  time.Time
 	Image      image.Image
+	// Backup, if set, is called with the pre-write state before any
+	// destructive write. Returning an error aborts the operation. A nil
+	// Backup means the caller has opted out of reversibility.
+	Backup func(Backup) error
 }
 
-// Technique executes one kind of hiding operation.
+// Technique executes one kind of hiding operation. Each method asserts only
+// the capability interface it needs off the Entry and returns ErrUnsupported
+// otherwise.
 type Technique interface {
 	Name() string
-	Hide(filesystem.Entry, HideRequest) (Result, error)
+	Hide(filesystem.Entry, Request) (Result, error)
+	Detect(filesystem.Entry, Request) ([]Finding, error)
+	Clear(filesystem.Entry, Request) (Result, error)
 }
 
-// Get selects a supported technique by its command-line name.
+// Get selects a supported technique by its command-line name. It accepts
+// exactly named-stream, slack-space and timestomp.
 func Get(name string) (Technique, error) {
 	switch name {
 	case NamedStream:
@@ -60,11 +90,19 @@ func Get(name string) (Technique, error) {
 	}
 }
 
+func unsupported(name string) error {
+	return fmt.Errorf("technique %q: %w", name, ErrUnsupported)
+}
+
+// -------------------------------------------------------------------------
+// named-stream
+// -------------------------------------------------------------------------
+
 type namedStreamTechnique struct{}
 
 func (namedStreamTechnique) Name() string { return NamedStream }
 
-func (namedStreamTechnique) Hide(entry filesystem.Entry, request HideRequest) (Result, error) {
+func (namedStreamTechnique) Hide(entry filesystem.Entry, request Request) (Result, error) {
 	capable, ok := entry.(filesystem.NamedStreamCapable)
 	if !ok {
 		return Result{}, unsupported(NamedStream)
@@ -75,11 +113,129 @@ func (namedStreamTechnique) Hide(entry filesystem.Entry, request HideRequest) (R
 	return Result{Technique: NamedStream, Target: entry.Path(), Detail: request.StreamName, Bytes: int64(len(request.Data))}, nil
 }
 
+func (namedStreamTechnique) Detect(entry filesystem.Entry, _ Request) ([]Finding, error) {
+	capable, ok := entry.(filesystem.NamedStreamCapable)
+	if !ok {
+		return nil, unsupported(NamedStream)
+	}
+	names, err := entry.NamedStreams()
+	if err != nil {
+		return nil, fmt.Errorf("list named streams: %w", err)
+	}
+	var findings []Finding
+	for _, name := range names {
+		data, err := capable.ReadStream(name)
+		if err != nil {
+			return nil, fmt.Errorf("read named stream %q: %w", name, err)
+		}
+		findings = append(findings, Finding{Technique: NamedStream, Location: name, Size: int64(len(data))})
+	}
+	return findings, nil
+}
+
+func (namedStreamTechnique) Clear(entry filesystem.Entry, request Request) (Result, error) {
+	capable, ok := entry.(filesystem.NamedStreamCapable)
+	if !ok {
+		return Result{}, unsupported(NamedStream)
+	}
+	if request.StreamName == "" {
+		return Result{}, errors.New("named-stream clear requires a stream name")
+	}
+	if err := capable.DeleteStream(request.StreamName); err != nil {
+		return Result{}, fmt.Errorf("delete named stream: %w", err)
+	}
+	return Result{Technique: NamedStream, Target: entry.Path(), Detail: request.StreamName}, nil
+}
+
+// -------------------------------------------------------------------------
+// slack-space
+// -------------------------------------------------------------------------
+
 type slackSpaceTechnique struct{}
 
 func (slackSpaceTechnique) Name() string { return SlackSpace }
 
-func (slackSpaceTechnique) Hide(entry filesystem.Entry, request HideRequest) (Result, error) {
+func (slackSpaceTechnique) Hide(entry filesystem.Entry, request Request) (Result, error) {
+	capable, ok := entry.(filesystem.SlackSpaceCapable)
+	if !ok {
+		return Result{}, unsupported(SlackSpace)
+	}
+	if request.Image == nil {
+		return Result{}, errors.New("slack-space requires image-backed storage")
+	}
+	regions, err := capable.SlackRegions()
+	if err != nil {
+		return Result{}, fmt.Errorf("inspect slack regions: %w", err)
+	}
+	frame := encodeFrame(request.Data)
+	for _, region := range regions {
+		if region.Length < int64(len(frame)) {
+			continue
+		}
+		original, err := readRegion(request.Image, int64(len(frame)), region.Offset)
+		if err != nil {
+			return Result{}, err
+		}
+		detail := fmt.Sprintf("%d-%d", region.Offset, region.Offset+int64(len(frame)))
+		if request.Backup != nil {
+			if err := request.Backup(Backup{
+				Technique: SlackSpace,
+				Target:    entry.Path(),
+				Location:  detail,
+				Original:  original,
+			}); err != nil {
+				return Result{}, fmt.Errorf("record backup: %w", err)
+			}
+		}
+		if err := writeAll(request.Image, frame, region.Offset); err != nil {
+			return Result{}, err
+		}
+		return Result{
+			Technique: SlackSpace,
+			Target:    entry.Path(),
+			Detail:    detail,
+			Bytes:     int64(len(request.Data)),
+		}, nil
+	}
+	return Result{}, fmt.Errorf("insufficient slack space for %d-byte payload", len(request.Data))
+}
+
+func (slackSpaceTechnique) Detect(entry filesystem.Entry, request Request) ([]Finding, error) {
+	capable, ok := entry.(filesystem.SlackSpaceCapable)
+	if !ok {
+		return nil, unsupported(SlackSpace)
+	}
+	if request.Image == nil {
+		return nil, errors.New("slack-space requires image-backed storage")
+	}
+	regions, err := capable.SlackRegions()
+	if err != nil {
+		return nil, fmt.Errorf("inspect slack regions: %w", err)
+	}
+	var findings []Finding
+	for _, region := range regions {
+		if region.Length < frameHeaderSize {
+			continue
+		}
+		buf, err := readRegion(request.Image, region.Length, region.Offset)
+		if err != nil {
+			return nil, err
+		}
+		payload, ok := decodeFrame(buf)
+		if !ok {
+			continue
+		}
+		end := region.Offset + int64(frameHeaderSize) + int64(len(payload))
+		findings = append(findings, Finding{
+			Technique: SlackSpace,
+			Location:  fmt.Sprintf("%d-%d", region.Offset, end),
+			Size:      int64(len(payload)),
+		})
+	}
+	return findings, nil
+}
+
+func (slackSpaceTechnique) Clear(entry filesystem.Entry, request Request) (Result, error) {
 	capable, ok := entry.(filesystem.SlackSpaceCapable)
 	if !ok {
 		return Result{}, unsupported(SlackSpace)
@@ -92,31 +248,53 @@ func (slackSpaceTechnique) Hide(entry filesystem.Entry, request HideRequest) (Re
 		return Result{}, fmt.Errorf("inspect slack regions: %w", err)
 	}
 	for _, region := range regions {
-		if region.Length < int64(len(request.Data)) {
+		if region.Length < frameHeaderSize {
 			continue
 		}
-		n, err := request.Image.WriteAt(request.Data, region.Offset)
+		buf, err := readRegion(request.Image, region.Length, region.Offset)
 		if err != nil {
-			return Result{}, fmt.Errorf("write slack space: %w", err)
+			return Result{}, err
 		}
-		if n != len(request.Data) {
-			return Result{}, fmt.Errorf("write slack space: short write (%d of %d bytes)", n, len(request.Data))
+		payload, ok := decodeFrame(buf)
+		if !ok {
+			continue
 		}
-		return Result{
-			Technique: SlackSpace,
-			Target:    entry.Path(),
-			Detail:    fmt.Sprintf("%d-%d", region.Offset, region.Offset+int64(n)),
-			Bytes:     int64(n),
-		}, nil
+		frameLen := frameHeaderSize + len(payload)
+		detail := fmt.Sprintf("%d-%d", region.Offset, region.Offset+int64(frameLen))
+
+		// Restore the original residual bytes if the caller kept them
+		// (via a manifest); otherwise zero the frame out.
+		restore := request.Data
+		if len(restore) != frameLen {
+			restore = make([]byte, frameLen)
+		}
+		if request.Backup != nil {
+			if err := request.Backup(Backup{
+				Technique: SlackSpace,
+				Target:    entry.Path(),
+				Location:  detail,
+				Original:  append([]byte(nil), buf[:frameLen]...),
+			}); err != nil {
+				return Result{}, fmt.Errorf("record backup: %w", err)
+			}
+		}
+		if err := writeAll(request.Image, restore, region.Offset); err != nil {
+			return Result{}, err
+		}
+		return Result{Technique: SlackSpace, Target: entry.Path(), Detail: detail, Bytes: int64(len(payload))}, nil
 	}
-	return Result{}, fmt.Errorf("insufficient slack space for %d-byte payload", len(request.Data))
+	return Result{}, errors.New("no framed slack payload found to clear")
 }
+
+// -------------------------------------------------------------------------
+// timestomp
+// -------------------------------------------------------------------------
 
 type timestompTechnique struct{}
 
 func (timestompTechnique) Name() string { return Timestomp }
 
-func (timestompTechnique) Hide(entry filesystem.Entry, request HideRequest) (Result, error) {
+func (timestompTechnique) Hide(entry filesystem.Entry, request Request) (Result, error) {
 	capable, ok := entry.(filesystem.TimestompCapable)
 	if !ok {
 		return Result{}, unsupported(Timestomp)
@@ -131,6 +309,53 @@ func (timestompTechnique) Hide(entry filesystem.Entry, request HideRequest) (Res
 	}, nil
 }
 
-func unsupported(name string) error {
-	return fmt.Errorf("technique %q unsupported on this filesystem", name)
+// Detect always reports nothing for timestomp: filesystem.TimestompCapable
+// exposes only SetTimestamp, so there is no way to read a field back and
+// judge whether it was altered. Restoring a stomped timestamp likewise needs
+// the caller to supply the original value.
+func (timestompTechnique) Detect(entry filesystem.Entry, _ Request) ([]Finding, error) {
+	if _, ok := entry.(filesystem.TimestompCapable); !ok {
+		return nil, unsupported(Timestomp)
+	}
+	return nil, nil
+}
+
+func (timestompTechnique) Clear(entry filesystem.Entry, request Request) (Result, error) {
+	capable, ok := entry.(filesystem.TimestompCapable)
+	if !ok {
+		return Result{}, unsupported(Timestomp)
+	}
+	if request.Timestamp.IsZero() {
+		return Result{}, errors.New("timestomp clear requires the original timestamp")
+	}
+	if err := capable.SetTimestamp(request.Field, request.Timestamp); err != nil {
+		return Result{}, fmt.Errorf("restore timestamp: %w", err)
+	}
+	return Result{
+		Technique: Timestomp,
+		Target:    entry.Path(),
+		Detail:    fmt.Sprintf("%s=%s", request.Field, request.Timestamp.Format(time.RFC3339)),
+	}, nil
+}
+
+// readRegion reads up to n bytes at off, tolerating a short read at the end
+// of the image (io.EOF). It returns the bytes actually read.
+func readRegion(img image.Image, n int64, off int64) ([]byte, error) {
+	buf := make([]byte, n)
+	read, err := img.ReadAt(buf, off)
+	if err != nil && !errors.Is(err, io.EOF) {
+		return nil, fmt.Errorf("read slack space: %w", err)
+	}
+	return buf[:read], nil
+}
+
+func writeAll(img image.Image, p []byte, off int64) error {
+	n, err := img.WriteAt(p, off)
+	if err != nil {
+		return fmt.Errorf("write slack space: %w", err)
+	}
+	if n != len(p) {
+		return fmt.Errorf("write slack space: short write (%d of %d bytes)", n, len(p))
+	}
+	return nil
 }
