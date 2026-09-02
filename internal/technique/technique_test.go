@@ -109,9 +109,18 @@ func TestSlackSpaceHideDetectClearRoundTrip(t *testing.T) {
 		t.Fatalf("unexpected findings: %+v", findings)
 	}
 
+	// A wrong-length restore slice is rejected, not silently zero-filled.
+	if _, err := tech.Clear(entry, Request{Image: fake.Img, Restore: []byte("too short")}); err == nil {
+		t.Fatal("expected wrong-length restore to be rejected")
+	}
+
 	// Clear restoring the original residual bytes.
-	if _, err := tech.Clear(entry, Request{Image: fake.Img, Data: backups[0].Original}); err != nil {
+	res, err := tech.Clear(entry, Request{Image: fake.Img, Restore: backups[0].Original})
+	if err != nil {
 		t.Fatal(err)
+	}
+	if !res.Restored {
+		t.Fatalf("Result.Restored is false after a restore-from-backup clear: %+v", res)
 	}
 	findings, err = tech.Detect(entry, Request{Image: fake.Img})
 	if err != nil {

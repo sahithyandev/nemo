@@ -34,7 +34,14 @@ type Result struct {
 	Technique string
 	Target    string
 	Detail    string
-	Bytes     int64
+	// Bytes is the payload size the operation dealt with, not the number
+	// of bytes touched on disk (a slack write also lays down a 12-byte
+	// frame header).
+	Bytes int64
+	// Restored is set by slack-space Clear: true when the caller supplied
+	// the original residual bytes and they were written back, false when
+	// the frame was zero-filled instead.
+	Restored bool
 }
 
 // Backup is the record a caller must persist to make a mutating operation
@@ -54,11 +61,16 @@ type Backup struct {
 // Request carries the technique-specific inputs for a Hide, Detect or Clear
 // operation. Only the fields a given operation needs are read.
 type Request struct {
-	Data       []byte
+	Data       []byte // hide payload
 	StreamName string
 	Field      filesystem.TimeField
 	Timestamp  time.Time
 	Image      image.Image
+	// Restore is the original residual bytes a slack-space Clear writes
+	// back over the frame (from a manifest Backup.Original). Nil means
+	// "zero-fill the frame instead". A non-nil slice whose length does not
+	// match the frame is rejected rather than silently zero-filled.
+	Restore []byte
 	// Backup, if set, is called with the pre-write state before any
 	// destructive write. Returning an error aborts the operation. A nil
 	// Backup means the caller has opted out of reversibility.
@@ -263,9 +275,14 @@ func (slackSpaceTechnique) Clear(entry filesystem.Entry, request Request) (Resul
 		detail := fmt.Sprintf("%d-%d", region.Offset, region.Offset+int64(frameLen))
 
 		// Restore the original residual bytes if the caller kept them
-		// (via a manifest); otherwise zero the frame out.
-		restore := request.Data
-		if len(restore) != frameLen {
+		// (via a manifest); otherwise zero the frame out. A supplied slice
+		// of the wrong length is a mistake, not a reason to zero-fill.
+		restore := request.Restore
+		restored := restore != nil
+		if restored && len(restore) != frameLen {
+			return Result{}, fmt.Errorf("restore data is %d bytes, need %d for the frame at %s", len(restore), frameLen, detail)
+		}
+		if !restored {
 			restore = make([]byte, frameLen)
 		}
 		if request.Backup != nil {
@@ -281,7 +298,7 @@ func (slackSpaceTechnique) Clear(entry filesystem.Entry, request Request) (Resul
 		if err := writeAll(request.Image, restore, region.Offset); err != nil {
 			return Result{}, err
 		}
-		return Result{Technique: SlackSpace, Target: entry.Path(), Detail: detail, Bytes: int64(len(payload))}, nil
+		return Result{Technique: SlackSpace, Target: entry.Path(), Detail: detail, Bytes: int64(len(payload)), Restored: restored}, nil
 	}
 	return Result{}, errors.New("no framed slack payload found to clear")
 }
