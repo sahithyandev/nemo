@@ -115,7 +115,7 @@ func TestHideNamedStreamLiveModeEndToEndWithCustodyRecord(t *testing.T) {
 	dependencies.now = func() time.Time { return fixedTime }
 	persistCalls := 0
 	var persisted custody.Record
-	dependencies.persistCustody = func(record custody.Record) error {
+	dependencies.logCustody = func(record custody.Record) error {
 		persistCalls++
 		persisted = record
 		return nil
@@ -176,8 +176,8 @@ func TestHideSelectsImageModeWhenImageFlagIsPresent(t *testing.T) {
 		}
 		return openedTarget{filesystem: fake, image: fake.Img}, nil
 	}
-	dependencies.persistCustody = func(custody.Record) error { return nil }
-	dependencies.writeCustody = func(io.Writer, custody.Record) error { return nil }
+	dependencies.logCustody = func(custody.Record) error { return nil }
+	dependencies.echoCustody = func(io.Writer, custody.Record) error { return nil }
 
 	command := newHideCommand(dependencies)
 	command.SetArgs([]string{"/target", "-t", "named-stream", "-d", "payload", "--stream-name", "secret", "--image", "disk.img"})
@@ -195,8 +195,8 @@ func TestHideExecutesSlackSpaceAndTimestomp(t *testing.T) {
 		dependencies.openImage = func(string) (openedTarget, error) {
 			return openedTarget{filesystem: fake, image: fake.Img}, nil
 		}
-		dependencies.persistCustody = func(custody.Record) error { return nil }
-		dependencies.writeCustody = func(io.Writer, custody.Record) error { return nil }
+		dependencies.logCustody = func(custody.Record) error { return nil }
+		dependencies.echoCustody = func(io.Writer, custody.Record) error { return nil }
 		manifestPath := filepath.Join(t.TempDir(), technique.ManifestName)
 
 		command := newHideCommand(dependencies)
@@ -225,8 +225,8 @@ func TestHideExecutesSlackSpaceAndTimestomp(t *testing.T) {
 		dependencies.openLive = func(string) (openedTarget, error) {
 			return openedTarget{filesystem: fake}, nil
 		}
-		dependencies.persistCustody = func(custody.Record) error { return nil }
-		dependencies.writeCustody = func(io.Writer, custody.Record) error { return nil }
+		dependencies.logCustody = func(custody.Record) error { return nil }
+		dependencies.echoCustody = func(io.Writer, custody.Record) error { return nil }
 
 		command := newHideCommand(dependencies)
 		command.SetArgs([]string{"/target", "-t", "timestomp", "--field", "modified", "--timestamp", "2026-08-23T12:00:00Z"})
@@ -248,11 +248,11 @@ func TestHideDoesNotEmitCustodyRecordWhenOperationFails(t *testing.T) {
 	}
 	recorded := false
 	persisted := false
-	dependencies.persistCustody = func(custody.Record) error {
+	dependencies.logCustody = func(custody.Record) error {
 		persisted = true
 		return nil
 	}
-	dependencies.writeCustody = func(io.Writer, custody.Record) error {
+	dependencies.echoCustody = func(io.Writer, custody.Record) error {
 		recorded = true
 		return nil
 	}
@@ -278,11 +278,11 @@ func TestHideReturnsPersistenceFailureWithoutEmittingRecord(t *testing.T) {
 		return openedTarget{filesystem: fake}, nil
 	}
 	persistCalls := 0
-	dependencies.persistCustody = func(custody.Record) error {
+	dependencies.logCustody = func(custody.Record) error {
 		persistCalls++
 		return errors.New("disk unavailable")
 	}
-	dependencies.writeCustody = func(io.Writer, custody.Record) error {
+	dependencies.echoCustody = func(io.Writer, custody.Record) error {
 		t.Fatal("custody record emitted after persistence failure")
 		return nil
 	}
@@ -290,7 +290,7 @@ func TestHideReturnsPersistenceFailureWithoutEmittingRecord(t *testing.T) {
 	command := newHideCommand(dependencies)
 	command.SetArgs([]string{"/target", "-t", "named-stream", "-d", "payload", "--stream-name", "secret"})
 	err := command.Execute()
-	if err == nil || !strings.Contains(err.Error(), "persist custody record: disk unavailable") {
+	if err == nil || !strings.Contains(err.Error(), "append custody log: disk unavailable") {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if persistCalls != 1 {
@@ -305,11 +305,11 @@ func TestHidePayloadReadFailureDoesNotOpenOrWrite(t *testing.T) {
 		t.Fatal("target opened after payload read failure")
 		return openedTarget{}, nil
 	}
-	dependencies.persistCustody = func(custody.Record) error {
+	dependencies.logCustody = func(custody.Record) error {
 		t.Fatal("custody record persisted after payload read failure")
 		return nil
 	}
-	dependencies.writeCustody = func(io.Writer, custody.Record) error {
+	dependencies.echoCustody = func(io.Writer, custody.Record) error {
 		t.Fatal("custody record written after payload read failure")
 		return nil
 	}
