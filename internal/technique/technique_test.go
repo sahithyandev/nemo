@@ -67,6 +67,25 @@ func TestNamedStreamClearRequiresStreamName(t *testing.T) {
 	}
 }
 
+func TestNamedStreamHideRequiresStreamName(t *testing.T) {
+	fake := fakefs.New("/target")
+	entry, _ := fake.Open("/target")
+	tech, _ := Get(NamedStream)
+	if _, err := tech.Hide(entry, Request{Data: []byte("payload")}); err == nil {
+		t.Fatal("expected error for missing stream name")
+	}
+	if findings, _ := tech.Detect(entry, Request{}); len(findings) != 0 {
+		t.Fatalf("stream written despite empty name: %+v", findings)
+	}
+}
+
+func TestReadRegionRejectsOutOfRangeLength(t *testing.T) {
+	fake := fakefs.New("/target")
+	if _, err := readRegion(fake.Img, -1, 0); err == nil {
+		t.Fatal("expected error for negative region length")
+	}
+}
+
 func TestSlackSpaceHideDetectClearRoundTrip(t *testing.T) {
 	fake := fakefs.New("/target")
 	// Pre-fill both regions with ordinary residual bytes.
