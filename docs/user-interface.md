@@ -31,6 +31,7 @@ Options:
 - `--stream-name`: name of the stream to write (NTFS ADS name, xattr name, or APFS resource-fork stream name). Required for `named-stream`.
 - `--field`: which timestamp to alter (`created`, `modified`, or `accessed`). Required for `timestomp`.
 - `--timestamp`: the value to set the chosen timestamp field to, in RFC 3339 format. Required for `timestomp`.
+- `--manifest`: path to the backup manifest (default `nemo-manifest.jsonl`). For `slack-space`, `hide` appends the residual bytes it is about to overwrite to this JSON Lines file so a later `clear` can restore them; the hide aborts if the manifest cannot be written.
 
 Every successful `hide` writes an entry to the chain-of-custody log (operation, target, SHA-256 hash, timestamp), in both modes. This logging is automatic and has no corresponding flag to disable.
 
@@ -80,6 +81,8 @@ Options:
 - `--stream-name`: name of the stream to remove. Required for `named-stream`.
 
 As with `hide`, every `clear` operation writes an entry to the chain-of-custody log, in both modes.
+
+Restoration limits: clearing a `slack-space` payload restores the original residual bytes only if a manifest from the earlier `hide` is available; without it the frame is zero-filled. Clearing a `timestomp` requires the original timestamp to be supplied explicitly — nemo cannot read a prior timestamp back off the filesystem, so `detect` never reports `timestomp` findings.
 
 ## `nemo version`
 

@@ -154,14 +154,57 @@ type TimestompCapable interface {
 ### `internal/technique`
 
 ```go
-type NamedStreamTechnique interface {
-    Hide(e filesystem.NamedStreamCapable, streamName string, data []byte) (Result, error)
-    Detect(e filesystem.NamedStreamCapable) ([]Finding, error)
-    Clear(e filesystem.NamedStreamCapable, streamName string) (Result, error)
+type Technique interface {
+    Name() string
+    Hide(filesystem.Entry, Request) (Result, error)
+    Detect(filesystem.Entry, Request) ([]Finding, error)
+    Clear(filesystem.Entry, Request) (Result, error)
 }
-// SlashSpaceTechnique, TimestompTechnique mirror this shape over their
-// respective capability interfaces.
 ```
+
+There is one `Technique` interface, not one per capability: each of the three
+concrete techniques takes a bare `filesystem.Entry` and type-asserts the single
+capability it needs (`NamedStreamCapable` / `SlackSpaceCapable` /
+`TimestompCapable`), returning the sentinel `ErrUnsupported` (wrapped as
+`technique %q: unsupported on this filesystem`, so `errors.Is(err,
+technique.ErrUnsupported)` matches — match the sentinel, not the string) when the
+assertion fails. `Request` is the shared, mostly-optional input bag (`Data`,
+`StreamName`, `Field`, `Timestamp`, `Image`, `Restore`, `Backup`); an operation
+reads only the fields it needs.
+
+**Slack framing.** Slack regions normally hold whatever residual bytes the
+filesystem left behind, so a raw payload is indistinguishable from noise. Every
+slack payload is wrapped in a 12-byte frame — `magic "NEMO"` (4) + `length`
+uint32 LE (4) + `crc32` IEEE of the payload (4) — before it is written. `detect`
+reports a slack finding only when the magic and CRC both validate; `clear` knows
+exactly which bytes it wrote. Frame parsing goes through `internal/binutil` so a
+crafted length never panics.
+
+**Restoration / backup contract.** `Request.Backup func(Backup) error`, when set,
+is called with the pre-write state (`Backup{Technique, Target, Location, Original
+[]byte, Timestamp}`) *before* any destructive write; returning an error aborts
+the operation. slack-space `Hide`/`Clear` emit the overwritten bytes this way.
+`clear` for slack-space writes back the caller-supplied original bytes (passed in
+`Request.Restore`, distinct from the hide payload in `Request.Data`) when
+available, otherwise zero-fills the frame; `Result.Restored` reports which
+happened. A `Request.Restore` whose length does not match the frame is rejected
+rather than zero-filled. A nil `Backup` means the caller opted out of
+reversibility.
+
+The persistence side lives in `manifest.go`: `AppendManifest(path, Backup)` /
+`LoadManifest(path)` / `LatestBackup(records, technique, target, location)`. The
+file (`nemo-manifest.jsonl` by default, `--manifest` to relocate) is JSON Lines —
+one `Backup` per line, `Original` as base64, `Timestamp` as RFC 3339. `hide`
+passes a closure calling `AppendManifest`; a write failure there aborts the hide
+before any bytes are overwritten. `clear` (CORE-09) replays it via `LoadManifest`
++ `LatestBackup` — later records win, so re-hiding a target then clearing
+restores the last hide's bytes.
+
+**Timestomp limitation.** `filesystem.TimestompCapable` exposes only
+`SetTimestamp`, with no reader, so `timestomp.Detect` always returns no findings
+and `timestomp.Clear` can only restore to a timestamp the caller supplies
+explicitly (it errors on a zero value). Giving the capability a timestamp reader
+is a follow-up against CORE-04.
 
 `Finding` and `Result` are shared, technique-agnostic value types:
 

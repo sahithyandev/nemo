@@ -54,6 +54,16 @@ const (
 	TimeAccessed TimeField = "accessed"
 )
 
+// Valid reports whether f is one of the known timestamp fields.
+func (f TimeField) Valid() bool {
+	switch f {
+	case TimeCreated, TimeModified, TimeAccessed:
+		return true
+	default:
+		return false
+	}
+}
+
 // Entries that allow timestamp changes.
 type TimestompCapable interface {
 	SetTimestamp(field TimeField, t time.Time) error
