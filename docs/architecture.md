@@ -154,14 +154,45 @@ type TimestompCapable interface {
 ### `internal/technique`
 
 ```go
-type NamedStreamTechnique interface {
-    Hide(e filesystem.NamedStreamCapable, streamName string, data []byte) (Result, error)
-    Detect(e filesystem.NamedStreamCapable) ([]Finding, error)
-    Clear(e filesystem.NamedStreamCapable, streamName string) (Result, error)
+type Technique interface {
+    Name() string
+    Hide(filesystem.Entry, Request) (Result, error)
+    Detect(filesystem.Entry, Request) ([]Finding, error)
+    Clear(filesystem.Entry, Request) (Result, error)
 }
-// SlashSpaceTechnique, TimestompTechnique mirror this shape over their
-// respective capability interfaces.
 ```
+
+There is one `Technique` interface, not one per capability: each of the three
+concrete techniques takes a bare `filesystem.Entry` and type-asserts the single
+capability it needs (`NamedStreamCapable` / `SlackSpaceCapable` /
+`TimestompCapable`), returning the sentinel `ErrUnsupported` (wrapped, so
+`errors.Is` matches and the message — `"unsupported on this filesystem"` — stays
+stable) when the assertion fails. `Request` is the shared, mostly-optional input
+bag (`Data`, `StreamName`, `Field`, `Timestamp`, `Image`, `Backup`); an operation
+reads only the fields it needs.
+
+**Slack framing.** Slack regions normally hold whatever residual bytes the
+filesystem left behind, so a raw payload is indistinguishable from noise. Every
+slack payload is wrapped in a 12-byte frame — `magic "NEMO"` (4) + `length`
+uint32 LE (4) + `crc32` IEEE of the payload (4) — before it is written. `detect`
+reports a slack finding only when the magic and CRC both validate; `clear` knows
+exactly which bytes it wrote. Frame parsing goes through `internal/binutil` so a
+crafted length never panics.
+
+**Restoration / backup contract.** `Request.Backup func(Backup) error`, when set,
+is called with the pre-write state (`Backup{Technique, Target, Location, Original
+[]byte, Timestamp}`) *before* any destructive write; returning an error aborts
+the operation. slack-space `Hide`/`Clear` emit the overwritten bytes this way.
+`clear` for slack-space restores the caller-supplied original bytes (passed back
+in `Request.Data`) when available, otherwise zero-fills the frame. The on-disk
+manifest format that persists these records is `cmd_clear.go`'s concern, not this
+package's. A nil `Backup` means the caller opted out of reversibility.
+
+**Timestomp limitation.** `filesystem.TimestompCapable` exposes only
+`SetTimestamp`, with no reader, so `timestomp.Detect` always returns no findings
+and `timestomp.Clear` can only restore to a timestamp the caller supplies
+explicitly (it errors on a zero value). Giving the capability a timestamp reader
+is a follow-up against CORE-04.
 
 `Finding` and `Result` are shared, technique-agnostic value types:
 

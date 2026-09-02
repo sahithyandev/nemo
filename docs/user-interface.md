@@ -81,6 +81,8 @@ Options:
 
 As with `hide`, every `clear` operation writes an entry to the chain-of-custody log, in both modes.
 
+Restoration limits: clearing a `slack-space` payload restores the original residual bytes only if a manifest from the earlier `hide` is available; without it the frame is zero-filled. Clearing a `timestomp` requires the original timestamp to be supplied explicitly — nemo cannot read a prior timestamp back off the filesystem, so `detect` never reports `timestomp` findings.
+
 ## `nemo version`
 
 Prints the tool's version and exits. Takes no arguments or options.
