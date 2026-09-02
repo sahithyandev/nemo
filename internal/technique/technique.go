@@ -2,6 +2,7 @@
 package technique
 
 import (
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
@@ -236,14 +237,10 @@ func (slackSpaceTechnique) Detect(entry filesystem.Entry, request Request) ([]Fi
 	}
 	var findings []Finding
 	for _, region := range regions {
-		if region.Length < frameHeaderSize {
-			continue
-		}
-		buf, err := readRegion(request.Image, region.Length, region.Offset)
+		_, payload, ok, err := readFrame(request.Image, region)
 		if err != nil {
 			return nil, err
 		}
-		payload, ok := decodeFrame(buf)
 		if !ok {
 			continue
 		}
@@ -273,14 +270,10 @@ func (slackSpaceTechnique) Clear(entry filesystem.Entry, request Request) (Resul
 	// and returning is enough. Detect reports every framed region it finds;
 	// if that ever exceeds one, this needs to loop.
 	for _, region := range regions {
-		if region.Length < frameHeaderSize {
-			continue
-		}
-		buf, err := readRegion(request.Image, region.Length, region.Offset)
+		frame, payload, ok, err := readFrame(request.Image, region)
 		if err != nil {
 			return Result{}, err
 		}
-		payload, ok := decodeFrame(buf)
 		if !ok {
 			continue
 		}
@@ -303,7 +296,7 @@ func (slackSpaceTechnique) Clear(entry filesystem.Entry, request Request) (Resul
 				Technique: SlackSpace,
 				Target:    entry.Path(),
 				Location:  detail,
-				Original:  append([]byte(nil), buf[:frameLen]...),
+				Original:  append([]byte(nil), frame...),
 			}); err != nil {
 				return Result{}, fmt.Errorf("record backup: %w", err)
 			}
@@ -380,6 +373,37 @@ func readRegion(img image.Image, n int64, off int64) ([]byte, error) {
 		return nil, fmt.Errorf("read slack space: %w", err)
 	}
 	return buf[:read], nil
+}
+
+// readFrame reads a slack frame at the start of region, fetching only the
+// 12-byte header first and then exactly frameHeaderSize+payloadLen bytes when
+// the magic matches. This avoids pulling a whole large region into memory just
+// to check for a frame. frame is the raw on-disk frame bytes; ok is false for
+// an unframed or malformed region.
+func readFrame(img image.Image, region filesystem.SlackRegion) (frame, payload []byte, ok bool, err error) {
+	if region.Length < frameHeaderSize {
+		return nil, nil, false, nil
+	}
+	head, err := readRegion(img, frameHeaderSize, region.Offset)
+	if err != nil {
+		return nil, nil, false, err
+	}
+	if len(head) < frameHeaderSize || string(head[:4]) != frameMagic {
+		return nil, nil, false, nil
+	}
+	length := int64(binary.LittleEndian.Uint32(head[4:8]))
+	if frameHeaderSize+length > region.Length {
+		return nil, nil, false, nil
+	}
+	frame, err = readRegion(img, frameHeaderSize+length, region.Offset)
+	if err != nil {
+		return nil, nil, false, err
+	}
+	payload, ok = decodeFrame(frame)
+	if !ok {
+		return nil, nil, false, nil
+	}
+	return frame, payload, true, nil
 }
 
 func writeAll(img image.Image, p []byte, off int64) error {
