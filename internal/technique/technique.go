@@ -262,6 +262,9 @@ func (slackSpaceTechnique) Clear(entry filesystem.Entry, request Request) (Resul
 	if err != nil {
 		return Result{}, fmt.Errorf("inspect slack regions: %w", err)
 	}
+	// Hide only ever writes one frame, so clearing the first framed region
+	// and returning is enough. Detect reports every framed region it finds;
+	// if that ever exceeds one, this needs to loop.
 	for _, region := range regions {
 		if region.Length < frameHeaderSize {
 			continue
