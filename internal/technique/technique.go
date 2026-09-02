@@ -50,8 +50,8 @@ type Result struct {
 // reversible. slack-space Hide/Clear emit one before overwriting bytes;
 // timestomp would emit one too once filesystem.TimestompCapable can read a
 // timestamp back (it cannot today). The on-disk manifest format is the
-// command layer's decision (see cmd_clear.go); this package only hands the
-// record to Request.Backup.
+// command layer's decision; this package only hands the record to
+// Request.Backup.
 type Backup struct {
 	Technique string
 	Target    string
