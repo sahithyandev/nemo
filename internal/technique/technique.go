@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"time"
 
 	"github.com/sahithyandev/nemo/internal/filesystem"
@@ -118,6 +119,9 @@ func (namedStreamTechnique) Hide(entry filesystem.Entry, request Request) (Resul
 	capable, ok := entry.(filesystem.NamedStreamCapable)
 	if !ok {
 		return Result{}, unsupported(NamedStream)
+	}
+	if request.StreamName == "" {
+		return Result{}, errors.New("named-stream hide requires a stream name")
 	}
 	if err := capable.WriteStream(request.StreamName, request.Data); err != nil {
 		return Result{}, fmt.Errorf("write named stream: %w", err)
@@ -364,6 +368,9 @@ func (timestompTechnique) Clear(entry filesystem.Entry, request Request) (Result
 // readRegion reads up to n bytes at off, tolerating a short read at the end
 // of the image (io.EOF). It returns the bytes actually read.
 func readRegion(img image.Image, n int64, off int64) ([]byte, error) {
+	if n < 0 || n > math.MaxInt {
+		return nil, fmt.Errorf("read slack space: region length %d out of range", n)
+	}
 	buf := make([]byte, n)
 	read, err := img.ReadAt(buf, off)
 	if err != nil && !errors.Is(err, io.EOF) {
