@@ -31,13 +31,13 @@ type openedTarget struct {
 }
 
 type hideDependencies struct {
-	openImage    func(string) (openedTarget, error)
-	openLive     func(string) (openedTarget, error)
-	readFile     func(string) ([]byte, error)
-	now          func() time.Time
-  persistCustody func(custody.Record) error
-	writeCustody func(io.Writer, custody.Record) error
-	appendBackup func(string, technique.Backup) error
+	openImage      func(string) (openedTarget, error)
+	openLive       func(string) (openedTarget, error)
+	readFile       func(string) ([]byte, error)
+	now            func() time.Time
+	persistCustody func(custody.Record) error
+	writeCustody   func(io.Writer, custody.Record) error
+	appendBackup   func(string, technique.Backup) error
 }
 
 func defaultHideDependencies() hideDependencies {
@@ -57,11 +57,11 @@ func defaultHideDependencies() hideDependencies {
 		openLive: func(string) (openedTarget, error) {
 			return openedTarget{}, errors.New("live mode is unavailable: no native filesystem implementation is registered")
 		},
-		readFile:     os.ReadFile,
-		now:          time.Now,
-    persistCustody: custody.Persist,
-		writeCustody: custody.Write,
-		appendBackup: technique.AppendManifest,
+		readFile:       os.ReadFile,
+		now:            time.Now,
+		persistCustody: custody.Persist,
+		writeCustody:   custody.Write,
+		appendBackup:   technique.AppendManifest,
 	}
 }
 
