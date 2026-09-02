@@ -188,6 +188,9 @@ func (slackSpaceTechnique) Hide(entry filesystem.Entry, request Request) (Result
 		if err != nil {
 			return Result{}, err
 		}
+		if len(original) < len(frame) {
+			return Result{}, fmt.Errorf("slack region at %d runs past the image end", region.Offset)
+		}
 		detail := fmt.Sprintf("%d-%d", region.Offset, region.Offset+int64(len(frame)))
 		if request.Backup != nil {
 			if err := request.Backup(Backup{

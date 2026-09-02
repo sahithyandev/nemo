@@ -194,6 +194,17 @@ func TestSlackSpaceHideInsufficientSpace(t *testing.T) {
 	}
 }
 
+func TestSlackSpaceHideRejectsRegionPastImageEnd(t *testing.T) {
+	fake := fakefs.New("/target") // 1KiB image
+	fake.Entry("/target").Slack = []filesystem.SlackRegion{{Offset: 1020, Length: 128}}
+	entry, _ := fake.Open("/target")
+	tech, _ := Get(SlackSpace)
+	_, err := tech.Hide(entry, Request{Data: []byte("payload"), Image: fake.Img})
+	if err == nil || !strings.Contains(err.Error(), "past the image end") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func TestTimestompHideAndClear(t *testing.T) {
 	fake := fakefs.New("/target")
 	entry, _ := fake.Open("/target")
