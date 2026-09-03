@@ -14,10 +14,19 @@ type RawImage struct {
 // Make sure RawImage implements Image.
 var _ Image = (*RawImage)(nil)
 
-// Open = Open an existing file as a RawImage.
+// Open = Open an existing file as a read+write RawImage.
 func Open(path string) (*RawImage, error) {
-	file, err := os.OpenFile(path, os.O_RDWR, 0)
-	// O_RDWR = read + write.
+	return open(path, os.O_RDWR)
+}
+
+// OpenReadOnly opens an existing file for reading only. detect uses this so it
+// never requests write access and can run against read-only forensic media.
+func OpenReadOnly(path string) (*RawImage, error) {
+	return open(path, os.O_RDONLY)
+}
+
+func open(path string, flag int) (*RawImage, error) {
+	file, err := os.OpenFile(path, flag, 0)
 	if err != nil {
 		return nil, err
 	}
