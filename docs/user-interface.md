@@ -60,7 +60,7 @@ Options:
 
 Output: a `TECHNIQUE  TARGET  LOCATION  SIZE` table, one row per finding — the technique, the entry it was found in, the location within that entry (stream name or slack offset range), and the size in bytes of the hidden data recovered. An empty result prints nothing and exits 0.
 
-When `--technique` is given explicitly and no entry in the scan supports it, `detect` exits with an error naming the technique. The default all-three scan silently skips techniques a filesystem does not support (which always includes `timestomp`, since a stomped timestamp cannot be read back). `detect` never writes to the target and never touches the custody log.
+When `--technique` is given explicitly and no entry in the scan supports it, `detect` exits with an error naming the technique. The default all-three scan silently skips techniques a filesystem does not support. `timestomp` never yields findings regardless of filesystem: nemo cannot read a timestamp back to judge whether it was altered. `detect` never writes to the target and never touches the custody log.
 
 ## `nemo clear`
 
