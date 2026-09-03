@@ -125,9 +125,11 @@ func runDetect(command *cobra.Command, target string, options detectOptions, dep
 	}
 
 	// unsupported[i] tracks whether technique i hit ErrUnsupported on every
-	// entry visited. With an explicit --technique, an all-unsupported scan is
-	// an error; the default scan just skips (timestomp Detect is unsupported
-	// by design and would otherwise abort every plain `nemo detect`).
+	// entry visited. Only an explicit --technique turns that into an error;
+	// the default scan reports what it can and stays quiet about the rest,
+	// since a whole-image walk routinely meets entries a technique cannot
+	// touch (e.g. slack-space or timestomp on a filesystem lacking that
+	// capability).
 	unsupported := make([]bool, len(selected))
 	for i := range unsupported {
 		unsupported[i] = true
