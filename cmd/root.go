@@ -38,6 +38,7 @@ func init() {
 	rootCmd.AddCommand(
 		versionCmd,
 		newHideCommand(defaultHideDependencies()),
+		newDetectCommand(defaultDetectDependencies()),
 		newFeaturesCommand(filesystem.Detectors),
 	)
 }
