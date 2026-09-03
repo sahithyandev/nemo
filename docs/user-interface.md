@@ -1,11 +1,13 @@
 # Nemo: User Interface
 
+This describes the intended interface. Built today: `hide`, `detect`, `features`, `version`, `help`, all image mode only. `clear` and live mode are planned; where a section describes them, it is design intent.
+
 ## Overview
 
 Nemo runs in one of two modes, chosen per command:
 
 - **Image mode** (default when `--image` is given): operates offline against a raw disk image. Filesystem type is detected from the image, not specified by the user.
-- **Live mode** (default when `--image` is omitted): operates directly on a file on the local, running machine, using the OS's native filesystem calls. This is the mode an everyday user reaches for to hide a file on their own machine.
+- **Live mode** (planned; default when `--image` is omitted): operates directly on a file on the local, running machine, using the OS's native filesystem calls. This is the mode an everyday user reaches for to hide a file on their own machine.
 
 Six commands make up the interface: `hide`, `detect`, `clear`, `features`, `version`, and `help`.
 
@@ -58,11 +60,13 @@ Options:
 - `--technique, -t`: restrict the scan to a single technique (`named-stream`, `slack-space`, or `timestomp`). Default: scan for all three.
 - `--image, -i`: path to a raw disk image. If given, `detect` runs in image mode against that image instead of the live filesystem. The image is opened read-only.
 
-Output: a `TECHNIQUE  TARGET  LOCATION  SIZE` table, one row per finding — the technique, the entry it was found in, the location within that entry (stream name or slack offset range), and the size in bytes of the hidden data recovered. An empty result prints nothing and exits 0.
+Output: a `TECHNIQUE  TARGET  LOCATION  SIZE` table, one row per finding. The columns are the technique, the entry it was found in, the location within that entry (stream name or slack offset range), and the size in bytes of the hidden data recovered. An empty result prints nothing and exits 0.
 
 When `--technique` is given explicitly and no entry in the scan supports it, `detect` exits with an error naming the technique. The default all-three scan silently skips techniques a filesystem does not support. `timestomp` never yields findings regardless of filesystem: nemo cannot read a timestamp back to judge whether it was altered. `detect` never writes to the target and never touches the custody log.
 
 ## `nemo clear`
+
+Not built yet. This is the intended shape.
 
 Removes previously hidden data and restores the target to its original state.
 
@@ -84,7 +88,7 @@ Options:
 
 As with `hide`, every `clear` operation writes an entry to the chain-of-custody log, in both modes.
 
-Restoration limits: clearing a `slack-space` payload restores the original residual bytes only if a manifest from the earlier `hide` is available; without it the frame is zero-filled. Clearing a `timestomp` requires the original timestamp to be supplied explicitly — nemo cannot read a prior timestamp back off the filesystem, so `detect` never reports `timestomp` findings.
+Restoration limits: clearing a `slack-space` payload restores the original residual bytes only if a manifest from the earlier `hide` is available; without it the frame is zero-filled. Clearing a `timestomp` requires the original timestamp to be supplied explicitly, because nemo cannot read a prior timestamp back off the filesystem. That is also why `detect` never reports `timestomp` findings.
 
 ## `nemo version`
 

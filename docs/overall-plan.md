@@ -2,7 +2,7 @@
 
 ## Overview
 
-Nemo is a cross-platform CLI tool, written in Go, for hiding, detecting, and clearing hidden data. It supports two modes: an image mode, working offline against a raw, unencrypted disk image, and a live mode, working directly on the filesystem of the machine it runs on. The tool is intended to serve as a forensic utility, an offensive/CTF tool for exercising anti-forensic techniques, and, through live mode, as something an everyday user can point at their own machine to hide files.
+Nemo is a cross-platform CLI tool, written in Go, for hiding, detecting, and clearing hidden data. It targets two modes: an image mode, working offline against a raw, unencrypted disk image, and a live mode, working directly on the filesystem of the machine it runs on. Image mode is built; live mode is planned. The tool is intended to serve as a forensic utility, an offensive/CTF tool for exercising anti-forensic techniques, and, through live mode, as something an everyday user can point at their own machine to hide files.
 
 Three filesystems are targeted: NTFS (Windows), APFS (macOS), and ext4 (Linux).
 
