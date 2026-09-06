@@ -37,6 +37,7 @@ func validBootSector() []byte {
 	binary.LittleEndian.PutUint64(b[0x30:0x38], 786432)
 	binary.LittleEndian.PutUint64(b[0x38:0x40], 2)
 	b[0x40] = 0xf6 // -10 as a signed byte: file records are 2^10 bytes.
+	b[0x44] = 0xf4 // 4096-byte index records.
 	return b
 }
 

@@ -4,16 +4,22 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"math"
 	"unicode/utf16"
 )
 
 const (
-	mftRecordHeaderSize         = 48
-	residentAttributeHeaderSize = 24
+	mftRecordHeaderSize            = 48
+	residentAttributeHeaderSize    = 24
+	nonResidentAttributeHeaderSize = 64
 
 	attributeTypeStandardInformation = uint32(0x10)
 	attributeTypeFileName            = uint32(0x30)
 	attributeTypeData                = uint32(0x80)
+	attributeTypeIndexRoot           = uint32(0x90)
+	attributeTypeIndexAllocation     = uint32(0xa0)
+	attributeTypeBitmap              = uint32(0xb0)
+	attributeTypeAttributeList       = uint32(0x20)
 	attributeTypeEnd                 = uint32(0xffffffff)
 )
 
@@ -27,13 +33,22 @@ type mftRecordHeader struct {
 }
 
 type attributeHeader struct {
-	typeCode    uint32
-	length      uint32
-	flags       uint16
-	attributeID uint16
-	name        string
-	valueLength uint32
-	valueOffset uint16
+	typeCode           uint32
+	length             uint32
+	flags              uint16
+	attributeID        uint16
+	name               string
+	valueLength        uint32
+	valueOffset        uint16
+	nonResident        bool
+	lowestVCN          uint64
+	highestVCN         uint64
+	mappingPairsOffset uint16
+	allocatedSize      uint64
+	dataSize           uint64
+	initializedSize    uint64
+	runs               []dataRun
+	value              []byte
 }
 
 type standardInformation struct {
@@ -62,6 +77,7 @@ type dataAttribute struct {
 	flags       uint16
 	resident    bool
 	dataSize    uint64
+	runs        []dataRun
 }
 
 type mftRecord struct {
@@ -70,6 +86,9 @@ type mftRecord struct {
 	standardInformation *standardInformation
 	fileNames           []fileNameAttribute
 	data                *dataAttribute
+	indexRoot           []byte
+	indexAllocation     *attributeHeader
+	bitmap              *attributeHeader
 }
 
 func parseMFTRecord(record []byte) (mftRecord, error) {
@@ -88,13 +107,15 @@ func parseMFTRecord(record []byte) (mftRecord, error) {
 			return parsed, nil
 		}
 
-		attribute, value, err := parseResidentAttribute(record[:header.usedSize], offset)
+		attribute, value, err := parseAttribute(record[:header.usedSize], offset)
 		if err != nil {
 			return mftRecord{}, err
 		}
 		parsed.attributes = append(parsed.attributes, attribute)
 
 		switch attribute.typeCode {
+		case attributeTypeAttributeList:
+			return mftRecord{}, errors.New("ntfs: ATTRIBUTE_LIST attributes are unsupported")
 		case attributeTypeStandardInformation:
 			if parsed.standardInformation != nil {
 				return mftRecord{}, errors.New("ntfs: duplicate STANDARD_INFORMATION attribute")
@@ -112,7 +133,7 @@ func parseMFTRecord(record []byte) (mftRecord, error) {
 			parsed.fileNames = append(parsed.fileNames, fileName)
 		case attributeTypeData:
 			if attribute.name != "" {
-				return mftRecord{}, errors.New("ntfs: named DATA attributes are unsupported")
+				break
 			}
 			if parsed.data != nil {
 				return mftRecord{}, errors.New("ntfs: duplicate unnamed DATA attribute")
@@ -120,12 +141,60 @@ func parseMFTRecord(record []byte) (mftRecord, error) {
 			parsed.data = &dataAttribute{
 				attributeID: attribute.attributeID,
 				flags:       attribute.flags,
-				resident:    true,
-				dataSize:    uint64(attribute.valueLength),
+				resident:    !attribute.nonResident,
+				dataSize:    attribute.dataSize,
+				runs:        attribute.runs,
 			}
+		case attributeTypeIndexRoot:
+			if attribute.nonResident {
+				return mftRecord{}, errors.New("ntfs: non-resident INDEX_ROOT is invalid")
+			}
+			parsed.indexRoot = append([]byte(nil), value...)
+		case attributeTypeIndexAllocation:
+			a := attribute
+			parsed.indexAllocation = &a
+		case attributeTypeBitmap:
+			a := attribute
+			parsed.bitmap = &a
 		}
 		offset += int(attribute.length)
 	}
+}
+
+func parseAttribute(record []byte, offset int) (attributeHeader, []byte, error) {
+	if offset < 0 || offset+16 > len(record) {
+		return attributeHeader{}, nil, errors.New("ntfs: truncated attribute header")
+	}
+	length := binary.LittleEndian.Uint32(record[offset+4 : offset+8])
+	if length < 16 || length%8 != 0 || uint64(offset)+uint64(length) > uint64(len(record)) {
+		return attributeHeader{}, nil, fmt.Errorf("ntfs: invalid attribute length %d at offset %d", length, offset)
+	}
+	if record[offset+8] == 0 {
+		return parseResidentAttribute(record, offset)
+	}
+	if record[offset+8] != 1 || length < nonResidentAttributeHeaderSize {
+		return attributeHeader{}, nil, errors.New("ntfs: invalid non-resident attribute header")
+	}
+	a := record[offset : offset+int(length)]
+	nameLength, nameOffset := int(a[9]), int(binary.LittleEndian.Uint16(a[10:12]))
+	name, err := decodeAttributeName(a, nameOffset, nameLength)
+	if err != nil {
+		return attributeHeader{}, nil, err
+	}
+	mappingOffset := binary.LittleEndian.Uint16(a[32:34])
+	if mappingOffset < nonResidentAttributeHeaderSize || int(mappingOffset) >= len(a) {
+		return attributeHeader{}, nil, errors.New("ntfs: mapping pairs exceed attribute bounds")
+	}
+	lowest, highest := binary.LittleEndian.Uint64(a[16:24]), binary.LittleEndian.Uint64(a[24:32])
+	runs, err := parseDataRuns(a[mappingOffset:], lowest, highest)
+	if err != nil {
+		return attributeHeader{}, nil, err
+	}
+	h := attributeHeader{typeCode: binary.LittleEndian.Uint32(a), length: length, flags: binary.LittleEndian.Uint16(a[12:14]), attributeID: binary.LittleEndian.Uint16(a[14:16]), name: name, nonResident: true, lowestVCN: lowest, highestVCN: highest, mappingPairsOffset: mappingOffset, allocatedSize: binary.LittleEndian.Uint64(a[40:48]), dataSize: binary.LittleEndian.Uint64(a[48:56]), initializedSize: binary.LittleEndian.Uint64(a[56:64]), runs: runs}
+	if h.initializedSize > h.dataSize || h.dataSize > h.allocatedSize {
+		return attributeHeader{}, nil, errors.New("ntfs: invalid non-resident attribute sizes")
+	}
+	return h, nil, nil
 }
 
 func parseMFTRecordHeader(record []byte) (mftRecordHeader, error) {
@@ -197,9 +266,87 @@ func parseResidentAttribute(record []byte, offset int) (attributeHeader, []byte,
 		name:        name,
 		valueLength: valueLength,
 		valueOffset: valueOffset,
+		dataSize:    uint64(valueLength),
 	}
 	start := offset + int(valueOffset)
+	header.value = append([]byte(nil), record[start:start+int(valueLength)]...)
 	return header, record[start : start+int(valueLength)], nil
+}
+
+type dataRun struct {
+	VCN      uint64
+	LCN      int64
+	Clusters uint64
+	Sparse   bool
+}
+
+func parseDataRuns(mapping []byte, lowestVCN, highestVCN uint64) ([]dataRun, error) {
+	if highestVCN < lowestVCN {
+		return nil, errors.New("ntfs: invalid data-run VCN range")
+	}
+	vcn, lcn := lowestVCN, int64(0)
+	var runs []dataRun
+	for pos := 0; ; {
+		if pos >= len(mapping) {
+			return nil, errors.New("ntfs: truncated data runs")
+		}
+		descriptor := mapping[pos]
+		pos++
+		if descriptor == 0 {
+			break
+		}
+		lenBytes, offBytes := int(descriptor&0x0f), int(descriptor>>4)
+		if lenBytes == 0 || lenBytes > 8 || offBytes > 8 || pos+lenBytes+offBytes > len(mapping) {
+			return nil, errors.New("ntfs: malformed data run")
+		}
+		clusters, err := decodeUnsignedLE(mapping[pos : pos+lenBytes])
+		if err != nil || clusters == 0 {
+			return nil, errors.New("ntfs: invalid data-run length")
+		}
+		pos += lenBytes
+		if clusters > ^uint64(0)-vcn {
+			return nil, errors.New("ntfs: data-run VCN overflow")
+		}
+		run := dataRun{VCN: vcn, Clusters: clusters, Sparse: offBytes == 0}
+		if offBytes != 0 {
+			delta := decodeSignedLE(mapping[pos : pos+offBytes])
+			pos += offBytes
+			if delta > 0 && lcn > math.MaxInt64-delta || delta < 0 && lcn < math.MinInt64-delta {
+				return nil, errors.New("ntfs: data-run LCN overflow")
+			}
+			lcn += delta
+			if lcn < 0 {
+				return nil, errors.New("ntfs: data run has negative absolute LCN")
+			}
+			run.LCN = lcn
+		}
+		runs = append(runs, run)
+		vcn += clusters
+	}
+	if len(runs) == 0 || vcn-1 != highestVCN {
+		return nil, errors.New("ntfs: data runs do not match VCN range")
+	}
+	return runs, nil
+}
+func decodeUnsignedLE(b []byte) (uint64, error) {
+	if len(b) > 8 {
+		return 0, errors.New("overflow")
+	}
+	var v uint64
+	for i := len(b) - 1; i >= 0; i-- {
+		v = v<<8 | uint64(b[i])
+	}
+	return v, nil
+}
+func decodeSignedLE(b []byte) int64 {
+	var v uint64
+	for i := len(b) - 1; i >= 0; i-- {
+		v = v<<8 | uint64(b[i])
+	}
+	if len(b) < 8 && b[len(b)-1]&0x80 != 0 {
+		v |= ^uint64(0) << (uint(len(b)) * 8)
+	}
+	return int64(v)
 }
 
 func decodeAttributeName(attribute []byte, offset, codeUnits int) (string, error) {

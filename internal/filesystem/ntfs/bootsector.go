@@ -17,6 +17,7 @@ type bootSector struct {
 	mftCluster        uint64
 	mftMirrorCluster  uint64
 	fileRecordSize    uint32
+	indexRecordSize   uint32
 }
 
 func readBootSector(img image.Image) (bootSector, error) {
@@ -52,12 +53,18 @@ func readBootSector(img image.Image) (bootSector, error) {
 		return bootSector{}, err
 	}
 
+	indexRecordSize, err := decodeFileRecordSize(int8(b[0x44]), clusterSize)
+	if err != nil {
+		return bootSector{}, fmt.Errorf("ntfs: invalid index record size: %w", err)
+	}
+
 	return bootSector{
 		bytesPerSector:    bytesPerSector,
 		sectorsPerCluster: sectorsPerCluster,
 		mftCluster:        binary.LittleEndian.Uint64(b[0x30:0x38]),
 		mftMirrorCluster:  binary.LittleEndian.Uint64(b[0x38:0x40]),
 		fileRecordSize:    fileRecordSize,
+		indexRecordSize:   indexRecordSize,
 	}, nil
 }
 

@@ -1,6 +1,7 @@
 package ntfs
 
 import (
+	"encoding/binary"
 	"io"
 	"strings"
 	"testing"
@@ -30,8 +31,9 @@ func TestMFTOffset(t *testing.T) {
 
 func TestReadMFTRecord(t *testing.T) {
 	f, img := testMFTFileSystem(16 * 1024)
-	copy(img.data[8192+1024:], fileRecordMagic)
-	img.data[8192+1024+20] = 0x7a
+	want := syntheticMFTRecord()
+	applyTestFixups(want, 512)
+	copy(img.data[8192+1024:], want)
 
 	record, err := f.readMFTRecord(1)
 	if err != nil {
@@ -40,8 +42,45 @@ func TestReadMFTRecord(t *testing.T) {
 	if len(record) != 1024 {
 		t.Fatalf("record length = %d, want 1024", len(record))
 	}
-	if record[20] != 0x7a {
-		t.Fatalf("record payload byte = %#x, want 0x7a", record[20])
+}
+
+func applyTestFixups(record []byte, sectorSize int) {
+	count := len(record)/sectorSize + 1
+	binary.LittleEndian.PutUint16(record[4:6], 48)
+	binary.LittleEndian.PutUint16(record[6:8], uint16(count))
+	record[48], record[49] = 0xaa, 0xbb
+	for i := 0; i < count-1; i++ {
+		trailer := (i+1)*sectorSize - 2
+		copy(record[50+i*2:52+i*2], record[trailer:trailer+2])
+		record[trailer], record[trailer+1] = 0xaa, 0xbb
+	}
+}
+
+func TestApplyFixups(t *testing.T) {
+	record := syntheticMFTRecord()
+	record[510], record[511], record[1022], record[1023] = 1, 2, 3, 4
+	applyTestFixups(record, 512)
+	if err := applyFixups(record, 512, fileRecordMagic); err != nil {
+		t.Fatal(err)
+	}
+	if record[510] != 1 || record[511] != 2 || record[1022] != 3 || record[1023] != 4 {
+		t.Fatal("trailers not restored")
+	}
+}
+
+func TestApplyFixupsRejectsMalformed(t *testing.T) {
+	edits := []func([]byte){
+		func(b []byte) { b[510] = 0 },
+		func(b []byte) { binary.LittleEndian.PutUint16(b[6:8], 9) },
+		func(b []byte) { binary.LittleEndian.PutUint16(b[4:6], 1023) },
+	}
+	for _, edit := range edits {
+		record := syntheticMFTRecord()
+		applyTestFixups(record, 512)
+		edit(record)
+		if err := applyFixups(record, 512, fileRecordMagic); err == nil {
+			t.Fatal("applyFixups error = nil")
+		}
 	}
 }
 

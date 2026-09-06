@@ -126,7 +126,6 @@ func TestParseMFTRecordRejectsMalformedAttributes(t *testing.T) {
 		{"short length", func() []byte { return residentTestAttribute(attributeTypeData, nil, "") }, func(b []byte) { binary.LittleEndian.PutUint32(b[4:8], 8) }, "attribute length"},
 		{"value bounds", func() []byte { return residentTestAttribute(attributeTypeData, nil, "") }, func(b []byte) { binary.LittleEndian.PutUint32(b[16:20], 100) }, "value exceeds"},
 		{"non-resident", func() []byte { return residentTestAttribute(attributeTypeData, nil, "") }, func(b []byte) { b[8] = 1 }, "non-resident"},
-		{"named data", func() []byte { return residentTestAttribute(attributeTypeData, nil, "stream") }, func([]byte) {}, "named DATA"},
 	}
 
 	for _, tt := range tests {
@@ -158,5 +157,58 @@ func TestParseMFTRecordRejectsTruncatedKnownValues(t *testing.T) {
 				t.Fatalf("parseMFTRecord() error = %v, want %q", err, tt.want)
 			}
 		})
+	}
+}
+
+func nonResidentTestAttribute(typeCode uint32, runs []byte, clusters, dataSize uint64) []byte {
+	length := (nonResidentAttributeHeaderSize + len(runs) + 7) &^ 7
+	b := make([]byte, length)
+	binary.LittleEndian.PutUint32(b[0:4], typeCode)
+	binary.LittleEndian.PutUint32(b[4:8], uint32(length))
+	b[8] = 1
+	binary.LittleEndian.PutUint64(b[24:32], clusters-1)
+	binary.LittleEndian.PutUint16(b[32:34], nonResidentAttributeHeaderSize)
+	binary.LittleEndian.PutUint64(b[40:48], clusters*512)
+	binary.LittleEndian.PutUint64(b[48:56], dataSize)
+	binary.LittleEndian.PutUint64(b[56:64], dataSize)
+	copy(b[nonResidentAttributeHeaderSize:], runs)
+	return b
+}
+
+func TestParseDataRunsSignedDeltas(t *testing.T) {
+	// LCN 10, followed by a delta of -3 to LCN 7.
+	runs, err := parseDataRuns([]byte{0x11, 2, 10, 0x11, 3, 0xfd, 0}, 0, 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(runs) != 2 || runs[0].LCN != 10 || runs[1].LCN != 7 || runs[1].VCN != 2 {
+		t.Fatalf("runs = %#v", runs)
+	}
+}
+
+func TestParseMFTRecordNonResidentData(t *testing.T) {
+	a := nonResidentTestAttribute(attributeTypeData, []byte{0x11, 4, 8, 0}, 4, 1800)
+	r, err := parseMFTRecord(syntheticMFTRecord(a))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.data == nil || r.data.resident || r.data.dataSize != 1800 || len(r.data.runs) != 1 || r.data.runs[0].LCN != 8 {
+		t.Fatalf("DATA = %#v", r.data)
+	}
+}
+
+func TestParseDataRunsRejectsMalformed(t *testing.T) {
+	tests := [][]byte{{0x11, 1}, {0x01, 0, 0}, {0x91}, {0}}
+	for _, b := range tests {
+		if _, err := parseDataRuns(b, 0, 0); err == nil {
+			t.Fatalf("parseDataRuns(%v) error=nil", b)
+		}
+	}
+}
+
+func TestParseMFTRecordRejectsAttributeList(t *testing.T) {
+	_, err := parseMFTRecord(syntheticMFTRecord(residentTestAttribute(attributeTypeAttributeList, nil, "")))
+	if err == nil || !strings.Contains(err.Error(), "ATTRIBUTE_LIST") {
+		t.Fatalf("error = %v", err)
 	}
 }
