@@ -178,8 +178,20 @@ Before overwriting slack bytes, `slackSpaceTechnique.Hide` calls `Request.Backup
 with the original residual bytes. The command layer persists that as one JSON
 Lines record per line in `nemo-manifest.jsonl` (`--manifest` to relocate), with
 `Original` base64-encoded. See `internal/technique/manifest.go` (`AppendManifest`,
-`LoadManifest`, `LatestBackup`). A `hide` aborts before touching disk if the
+`LoadManifest`, `LatestImageBackup`). A `hide` aborts before touching disk if the
 manifest write fails.
+
+New records include `ImageIdentity` (opened file device/inode on Unix, or volume serial
+and file index on Windows, plus size) and `FrameSHA256` (the exact frame written by hide). Symlink and hardlink aliases
+resolve to the same identity, as do moves on the same filesystem. Copied, resized
+or replaced images cannot automatically reuse these backups. Non-file images have process-local identities.
+
+`clear` checks the image identity, target and offset range, then verifies the
+current frame digest before restoring. A stale frame is an error before any
+write. Legacy records without identity/digest are never restored automatically:
+the default manifest emits a diagnostic and zero-fills; an explicit `--manifest`
+requires a matching image-bound record and otherwise fails without mutation.
+Retain the original image and manifest for manual recovery of legacy backups.
 
 `clear` replays it. With a matching manifest record it writes the original
 residual bytes back over the frame and reports `Result.Restored = true`. Without

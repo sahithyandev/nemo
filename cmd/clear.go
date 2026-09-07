@@ -111,15 +111,18 @@ func runClear(command *cobra.Command, target string, options clearOptions, depen
 		var backup technique.Backup
 		var found bool
 		if len(findings) > 0 {
-			backup, found = technique.LatestBackup(backups, selected.Name(), entry.Path(), findings[0].Location)
+			backup, found = technique.LatestImageBackup(backups, selected.Name(), entry.Path(), findings[0].Location, technique.BackupImageIdentity(opened.image))
 		}
 		if found {
 			if backup.Original == nil {
 				return errors.New("slack backup has no original bytes")
 			}
 			request.Restore = backup.Original
+			request.RestoreFrameSHA256 = backup.FrameSHA256
 		} else if command.Flags().Changed("manifest") {
-			return fmt.Errorf("no matching slack backup for %q in manifest %q", entry.Path(), options.manifest)
+			return fmt.Errorf("no matching image-bound slack backup for %q in manifest %q (legacy, copied, or replaced images require manual recovery)", entry.Path(), options.manifest)
+		} else {
+			fmt.Fprintln(command.ErrOrStderr(), "No matching image-bound slack backup; zero-filling the frame. Legacy and foreign-image records are not restored.")
 		}
 	}
 	var written []byte

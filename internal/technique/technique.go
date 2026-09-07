@@ -2,7 +2,9 @@
 package technique
 
 import (
+	"crypto/sha256"
 	"encoding/binary"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -55,11 +57,13 @@ type Result struct {
 // command layer's decision; this package only hands the record to
 // Request.Backup.
 type Backup struct {
-	Technique string
-	Target    string
-	Location  string    // stream name or slack offset range
-	Original  []byte    // bytes overwritten in place; nil for timestomp
-	Timestamp time.Time // timestamp overwritten; zero unless known
+	Technique     string
+	Target        string
+	ImageIdentity string    `json:",omitempty"` // identity of the backing object, stable across writes
+	FrameSHA256   string    `json:",omitempty"` // frame written by this hide
+	Location      string    // stream name or slack offset range
+	Original      []byte    // bytes overwritten in place; nil for timestomp
+	Timestamp     time.Time // timestamp overwritten; zero unless known
 }
 
 // Request carries the technique-specific inputs for a Hide, Detect or Clear
@@ -74,7 +78,8 @@ type Request struct {
 	// back over the frame (from a manifest Backup.Original). Nil means
 	// "zero-fill the frame instead". A non-nil slice whose length does not
 	// match the frame is rejected rather than silently zero-filled.
-	Restore []byte
+	Restore            []byte
+	RestoreFrameSHA256 string // optional expected frame digest; checked before restoring
 	// Backup, if set, is called with the pre-write state before any
 	// destructive write. Returning an error aborts the operation. A nil
 	// Backup means the caller has opted out of reversibility.
@@ -223,10 +228,12 @@ func (slackSpaceTechnique) Hide(entry filesystem.Entry, request Request) (Result
 		detail := fmt.Sprintf("%d-%d", region.Offset, region.Offset+int64(len(frame)))
 		if request.Backup != nil {
 			if err := request.Backup(Backup{
-				Technique: SlackSpace,
-				Target:    entry.Path(),
-				Location:  detail,
-				Original:  original,
+				Technique:     SlackSpace,
+				Target:        entry.Path(),
+				Location:      detail,
+				Original:      original,
+				ImageIdentity: BackupImageIdentity(request.Image),
+				FrameSHA256:   frameDigest(frame),
 			}); err != nil {
 				return Result{}, fmt.Errorf("record backup: %w", err)
 			}
@@ -306,6 +313,9 @@ func (slackSpaceTechnique) Clear(entry filesystem.Entry, request Request) (Resul
 		// of the wrong length is a mistake, not a reason to zero-fill.
 		restore := request.Restore
 		restored := restore != nil
+		if restored && request.RestoreFrameSHA256 != "" && request.RestoreFrameSHA256 != frameDigest(frame) {
+			return Result{}, errors.New("slack backup frame does not match current payload; refusing restoration")
+		}
 		if restored && len(restore) != frameLen {
 			return Result{}, fmt.Errorf("restore data is %d bytes, need %d for the frame at %s", len(restore), frameLen, detail)
 		}
@@ -480,4 +490,9 @@ func writeAll(img image.Image, p []byte, off int64) error {
 		return fmt.Errorf("write slack space: short write (%d of %d bytes)", n, len(p))
 	}
 	return nil
+}
+
+func frameDigest(frame []byte) string {
+	sum := sha256.Sum256(frame)
+	return hex.EncodeToString(sum[:])
 }

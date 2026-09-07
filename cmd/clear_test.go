@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -342,5 +344,63 @@ func TestClearManifestFailuresDoNotMutate(t *testing.T) {
 				t.Fatalf("unsafe failure: %v", err)
 			}
 		})
+	}
+}
+
+func TestClearRejectsForeignLegacyAndStaleSlackBackups(t *testing.T) {
+	for _, kind := range []string{"foreign", "legacy", "stale-frame"} {
+		for _, explicit := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/explicit=%v", kind, explicit), func(t *testing.T) {
+				f, backup := setupClearSlack(t)
+				originalFrame := append([]byte(nil), f.Img.Data...)
+				switch kind {
+				case "foreign":
+					other, otherBackup := setupClearSlack(t)
+					otherBackup.Original = bytes.Repeat([]byte{0xff}, len(otherBackup.Original))
+					backup = otherBackup
+					// Keep other alive so its object identity cannot be reused.
+					defer runtime.KeepAlive(other)
+				case "legacy":
+					backup.ImageIdentity = ""
+					backup.FrameSHA256 = ""
+				case "stale-frame":
+					selected, _ := technique.Get(technique.SlackSpace)
+					if _, err := selected.Hide(f.Entry("/target"), technique.Request{Image: f.Img, Data: []byte("changed")}); err != nil {
+						t.Fatal(err)
+					}
+					originalFrame = append([]byte(nil), f.Img.Data...)
+				}
+				deps := fakeClearDeps(f)
+				deps.loadManifest = func(string) ([]technique.Backup, error) { return []technique.Backup{backup}, nil }
+				command := newClearCommand(deps)
+				var diagnostic bytes.Buffer
+				command.SetErr(&diagnostic)
+				command.SetOut(io.Discard)
+				args := []string{"/target", "-t", "slack-space", "-i", "disk.img"}
+				if explicit {
+					args = append(args, "--manifest", "backup.jsonl")
+				}
+				command.SetArgs(args)
+				err := command.Execute()
+				if explicit || kind == "stale-frame" {
+					if err == nil {
+						t.Fatal("unsafe restoration accepted")
+					}
+					if !bytes.Equal(f.Img.Data, originalFrame) {
+						t.Fatal("failure mutated image")
+					}
+				} else {
+					if err != nil {
+						t.Fatal(err)
+					}
+					if !bytes.Equal(f.Img.Data[32:32+len(backup.Original)], make([]byte, len(backup.Original))) {
+						t.Fatal("foreign bytes restored instead of zero-fill")
+					}
+					if !strings.Contains(diagnostic.String(), "zero-filling") {
+						t.Fatal("missing fallback diagnostic")
+					}
+				}
+			})
+		}
 	}
 }
