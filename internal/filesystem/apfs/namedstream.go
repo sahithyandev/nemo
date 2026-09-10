@@ -293,7 +293,10 @@ func (f *FS) readExtents(objID, size uint64) ([]byte, error) {
 }
 
 // writeExtents overwrites objID's extents with data, zero-filling the rest of
-// the allocated space. data must not exceed alloced.
+// the allocated space. data must not exceed alloced. Every allocated block is
+// rewritten on every call, even when only the first bytes changed: the tail
+// must be zeroed so no residual old data survives, so the cost of a write
+// scales with the allocation, not the payload.
 func (f *FS) writeExtents(objID, alloced uint64, data []byte) error {
 	if uint64(len(data)) > alloced {
 		return fmt.Errorf("apfs: value of %d bytes exceeds the stream's %d-byte allocation", len(data), alloced)
