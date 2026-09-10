@@ -361,6 +361,7 @@ func (f *FS) writeXattr(oid uint64, name string, data []byte) error {
 			ds := *r.stream
 			ds.size = uint64(len(data))
 			ds.totalBytesWritten = uint64(len(data))
+			ds.totalBytesRead = uint64(len(data))
 			return f.replaceXattr(oid, name, encodeStreamXattrVal(ds))
 		}
 		if len(data) > xattrMaxEmbeddedSize {
