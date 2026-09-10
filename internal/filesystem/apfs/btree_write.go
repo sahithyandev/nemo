@@ -111,9 +111,12 @@ func encodeLeaf(raw []byte, blockSize uint32, recs []record) error {
 		keyPos, valPos = kEnd, vAt
 	}
 
-	// Clear the whole dynamic area, then lay records back down. The root's
-	// trailing btree_info_t (valEnd..blockSize) is preserved.
-	for i := tocStart; i < valEnd; i++ {
+	// Clear the whole dynamic area, then lay records back down. Start at
+	// offset 56 (end of the fixed header) so any gap before tocStart, when
+	// btn_table_space.off is non-zero, cannot leak stale key/value fragments
+	// to a forensic reader. The root's trailing btree_info_t
+	// (valEnd..blockSize) is preserved.
+	for i := 56; i < valEnd; i++ {
 		raw[i] = 0
 	}
 	for i, r := range recs {
