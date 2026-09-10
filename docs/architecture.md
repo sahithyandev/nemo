@@ -43,9 +43,10 @@ nemo/
         live_windows.go    // live-mode Entry: direct syscalls, no MFT parsing
         live_stub.go       // "unsupported on this OS" on non-Windows builds
       apfs/
-        apfs.go            // built: parser + Detector (no techniques wired yet)
+        apfs.go            // built: parser + Detector
+        namedstream.go     // built: xattr + resource fork (in-place B-tree leaf rewrite)
+        btree_write.go     // built: single-leaf in-place rewrite helpers
         btree.go           // built
-        namedstream.go     // planned: xattr + resource fork
         slack.go           // planned
         timestomp.go       // planned
         live_darwin.go     // planned

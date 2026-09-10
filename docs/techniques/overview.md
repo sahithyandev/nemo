@@ -34,8 +34,8 @@ needs and returns `technique.ErrUnsupported` when the assertion fails
 | Filesystem | named-stream | slack-space | timestomp |
 | ---------- | ------------ | ----------- | --------- |
 | ext4       | done, `internal/filesystem/ext4/ext4.go` and `xattr.go` | not built | done, `internal/filesystem/ext4/timestomp.go` |
-| APFS       | parser only, `NamedStreams` stubbed | not built | not built |
-| NTFS       | package not created | not built | not built |
+| APFS       | done, `internal/filesystem/apfs/namedstream.go` (in-place B-tree leaf rewrite, no allocation) | not built | not built |
+| NTFS       | parser only, `NamedStreams` stubbed | not built | not built |
 | fakefs     | done | done | done (test double, `internal/filesystem/fakefs`) |
 
 `fakefs` is an in-memory filesystem that implements all three capabilities
