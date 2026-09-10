@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"math"
 
 	"github.com/sahithyandev/nemo/internal/image"
 )
@@ -243,6 +244,12 @@ func (f *FS) extentsOf(objID uint64) ([]fileExtent, error) {
 		}
 		if ext.phys == 0 {
 			return nil, fmt.Errorf("apfs: object %d has an unsupported hole extent", objID)
+		}
+		// A crafted image can put an arbitrary phys in an extent record;
+		// int64(phys)*int64(blockSize) must not wrap negative and hand
+		// ReadAt/WriteAt a negative offset.
+		if ext.phys > uint64(math.MaxInt64)/uint64(f.blockSize) {
+			return nil, fmt.Errorf("apfs: object %d has an out-of-range physical extent address %d", objID, ext.phys)
 		}
 		out = append(out, ext)
 		next += ext.length
