@@ -333,6 +333,14 @@ func (f *FS) writeXattr(oid uint64, name string, data []byte) error {
 			if uint64(len(data)) > r.stream.allocedSize {
 				return fmt.Errorf("apfs: xattr %q is stream-backed with %d bytes allocated; storing %d bytes needs block allocation, which is unsupported", name, r.stream.allocedSize, len(data))
 			}
+			// Extent data first, then the record's size field. The record
+			// rewrite replaces a fixed 52-byte value in a leaf that does not
+			// change size, so it only fails on an I/O error or a crash. If it
+			// does, the extents hold the new bytes but the record still says
+			// the old size: a reader gets a prefix of the new value (possibly
+			// zero-padded), never a torn block or an unmountable volume.
+			// Making this atomic needs the copy-on-write path nemo does not
+			// implement.
 			if err := f.writeExtents(r.stream.objID, r.stream.allocedSize, data); err != nil {
 				return err
 			}
