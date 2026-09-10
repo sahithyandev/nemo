@@ -19,6 +19,11 @@ const (
 // btreeInfoSize is sizeof(btree_info_t), trailing every root node.
 const btreeInfoSize = 40
 
+// maxBtreeDepth caps a root-to-leaf descent. Real APFS trees are ~10 levels
+// deep; a corrupted omap or node pointer could otherwise form a cycle between
+// checksum-valid nodes and spin a descent loop forever.
+const maxBtreeDepth = 64
+
 // node is a decoded btree_node_phys_t: parallel slices of key/value byte
 // slices (subslices of the node's block buffer — copy before the buffer is
 // discarded).
@@ -186,7 +191,10 @@ func (t *tree) readNodeRaw(paddr int64) (*node, []byte, error) {
 // block buffer (which the caller may rewrite and hand to writeNodeBlock).
 func (t *tree) descendToLeaf(key []byte) (*node, int64, []byte, error) {
 	paddr := t.rootPaddr
-	for {
+	for depth := 0; ; depth++ {
+		if depth > maxBtreeDepth {
+			return nil, 0, nil, errors.New("apfs: btree descent exceeded max depth (cycle?)")
+		}
 		n, raw, err := t.readNodeRaw(paddr)
 		if err != nil {
 			return nil, 0, nil, err
@@ -241,7 +249,10 @@ type cursor struct {
 func (t *tree) seek(key []byte) (*cursor, error) {
 	c := &cursor{t: t}
 	paddr := t.rootPaddr
-	for {
+	for depth := 0; ; depth++ {
+		if depth > maxBtreeDepth {
+			return nil, errors.New("apfs: btree descent exceeded max depth (cycle?)")
+		}
 		n, err := t.readNode(paddr)
 		if err != nil {
 			return nil, err
