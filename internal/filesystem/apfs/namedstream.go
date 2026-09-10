@@ -264,16 +264,23 @@ func (f *FS) readExtents(objID, size uint64) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	out := make([]byte, 0, size)
+	// Cap the allocation at the bytes the extents actually cover, not the
+	// size claimed by the (possibly corrupted) j_xattr_dstream_t: a bogus
+	// multi-gigabyte size must not make this OOM before the check below.
+	var coverage uint64
+	for _, ext := range exts {
+		coverage += ext.length
+	}
+	if size > coverage {
+		return nil, fmt.Errorf("apfs: object %d extents cover %d bytes, expected %d", objID, coverage, size)
+	}
+	out := make([]byte, 0, coverage)
 	for _, ext := range exts {
 		buf, err := readFull(f.img, int64(ext.phys)*int64(f.blockSize), int64(ext.length))
 		if err != nil {
 			return nil, err
 		}
 		out = append(out, buf...)
-	}
-	if uint64(len(out)) < size {
-		return nil, fmt.Errorf("apfs: object %d extents cover %d bytes, expected %d", objID, len(out), size)
 	}
 	return out[:size], nil
 }
