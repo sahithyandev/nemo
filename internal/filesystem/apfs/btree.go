@@ -130,9 +130,18 @@ func decodeNode(buf []byte, blockSize uint32, fixedKeySize, fixedValSize int) (*
 	return n, nil
 }
 
-// tree is a read-only handle on one APFS B-tree.
+// nodeIO is imageReader plus WriteAt, the surface the in-place leaf writer
+// (btree_write.go) needs. Any image.Image satisfies it; the read-only paths
+// never call WriteAt.
+type nodeIO interface {
+	imageReader
+	WriteAt(p []byte, off int64) (int, error)
+}
+
+// tree is a handle on one APFS B-tree. Reads go through the cursor; writes
+// (btree_write.go) rewrite a single leaf in place.
 type tree struct {
-	img                    imageReader
+	img                    nodeIO
 	blockSize              uint32
 	rootPaddr              int64
 	resolve                func(oid uint64) (int64, error)
@@ -140,7 +149,7 @@ type tree struct {
 	fixedKeySize, fixedVal int
 }
 
-func openTree(img imageReader, blockSize uint32, rootPaddr int64, resolve func(uint64) (int64, error), cmp func(a, b []byte) int, fixedKeySize, fixedValSize int) (*tree, error) {
+func openTree(img nodeIO, blockSize uint32, rootPaddr int64, resolve func(uint64) (int64, error), cmp func(a, b []byte) int, fixedKeySize, fixedValSize int) (*tree, error) {
 	if rootPaddr < 0 {
 		return nil, fmt.Errorf("apfs: invalid btree root address %d", rootPaddr)
 	}
@@ -152,11 +161,49 @@ func openTree(img imageReader, blockSize uint32, rootPaddr int64, resolve func(u
 }
 
 func (t *tree) readNode(paddr int64) (*node, error) {
+	n, _, err := t.readNodeRaw(paddr)
+	return n, err
+}
+
+// readNodeRaw is readNode but also returns the underlying block buffer, which
+// node.keys/node.vals alias. The in-place leaf writer needs it.
+func (t *tree) readNodeRaw(paddr int64) (*node, []byte, error) {
 	buf, err := readObject(t.img, paddr, t.blockSize)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return decodeNode(buf, t.blockSize, t.fixedKeySize, t.fixedVal)
+	n, err := decodeNode(buf, t.blockSize, t.fixedKeySize, t.fixedVal)
+	if err != nil {
+		return nil, nil, err
+	}
+	return n, buf, nil
+}
+
+// descendToLeaf follows the tree from the root to the single leaf where key
+// belongs, choosing children with lastLE exactly as seek does. Unlike seek it
+// never advances past that leaf, so the returned leaf is the one an insert of
+// key must land in. Returns the decoded leaf, its physical address, and its
+// block buffer (which the caller may rewrite and hand to writeNodeBlock).
+func (t *tree) descendToLeaf(key []byte) (*node, int64, []byte, error) {
+	paddr := t.rootPaddr
+	for {
+		n, raw, err := t.readNodeRaw(paddr)
+		if err != nil {
+			return nil, 0, nil, err
+		}
+		if n.leaf {
+			return n, paddr, raw, nil
+		}
+		idx := lastLE(n.keys, key, t.cmp)
+		if idx >= len(n.vals) {
+			return nil, 0, nil, errors.New("apfs: empty non-leaf btree node")
+		}
+		childPaddr, err := t.resolve(binary.LittleEndian.Uint64(n.vals[idx]))
+		if err != nil {
+			return nil, 0, nil, err
+		}
+		paddr = childPaddr
+	}
 }
 
 // firstGE returns the index of the first key >= target (len(keys) if none).
