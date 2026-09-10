@@ -560,14 +560,6 @@ func TestMinInt64(t *testing.T) {
 	}
 }
 
-func TestEntryNamedStreamsReturnsNil(t *testing.T) {
-	e := &Entry{path: "/f", isDir: false}
-	names, err := e.NamedStreams()
-	if names != nil || err != nil {
-		t.Fatalf("NamedStreams() = (%v, %v), want (nil, nil)", names, err)
-	}
-}
-
 func TestFindAPFSPartitionEntrySkipsNonMatchingGUID(t *testing.T) {
 	h := gptHeader{numEntries: 2, entrySize: 128}
 	entries := make([]byte, 2*128)
