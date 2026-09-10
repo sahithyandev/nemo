@@ -195,12 +195,19 @@ DeleteStream(name string) error
   in-inode area, else use the external block. It refuses shared blocks
   (`refcount > 1`) and refuses to empty an external block, since both need block
   allocation or deallocation that is not built yet.
-- APFS is pending. The parser exists, but `apfs.Entry.NamedStreams` returns
-  `nil, nil` as a stub (`internal/filesystem/apfs/apfs.go`). Implementing it
-  means reading `j_xattr` records from the B-tree and adding the three methods.
-- NTFS is pending. There is no `internal/filesystem/ntfs/` package yet. See
-  `docs/architecture.md` for the intended file breakdown (`ntfs.go`, `mft.go`,
-  `namedstream.go`, and the rest).
+- APFS is implemented. `internal/filesystem/apfs/namedstream.go` reads `j_xattr`
+  records from the volume's filesystem B-tree and follows a data stream's file
+  extents for stream-backed values. Writes rewrite the affected B-tree leaf in
+  place at its existing address and recompute its Fletcher-64 checksum: no
+  block is allocated and no checkpoint is written, so the volume stays
+  mountable and `fsck_apfs -n` passes, but it is not a real copy-on-write
+  transaction. That bounds what a write can do: an embedded value can be
+  replaced with anything up to 3804 bytes, a stream-backed value can be
+  overwritten with anything that fits its existing extents, and a value that
+  would need to grow past either limit fails with a clear error. Deleting a
+  stream-backed xattr drops the record but leaves its extents allocated.
+- NTFS parses (`internal/filesystem/ntfs/`) but named streams are not wired up:
+  `ntfs.Entry.NamedStreams` returns `nil, nil`.
 
 When adding a filesystem, mirror `fakefs.Entry`
 (`internal/filesystem/fakefs/fakefs.go`), the test double that already
