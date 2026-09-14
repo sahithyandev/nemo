@@ -126,6 +126,43 @@ func TestRewriteLeafNonRoot(t *testing.T) {
 	}
 }
 
+// TestRewriteLeafReplaceGrowsRootLongestVal confirms an in-place replace
+// (delta stays 0) in a non-root leaf still refreshes the root's
+// bt_longest_val hint when the new value is longer than anything seen
+// before. bumpRootKeyCount must run on a replace, not just an insert or
+// delete, or a grown value's length never reaches the root.
+func TestRewriteLeafReplaceGrowsRootLongestVal(t *testing.T) {
+	img, bs := buildSyntheticTwoLeafTree(t)
+	tr, err := openTree(img, bs, 0, omapResolveIdentity, byteCmp, 0, 0)
+	if err != nil {
+		t.Fatalf("openTree: %v", err)
+	}
+
+	longVal := bytes.Repeat([]byte{0xEE}, 5)
+	err = tr.rewriteLeaf([]byte{3}, func(recs []record, _ bool) ([]record, int, error) {
+		for i := range recs {
+			if bytes.Equal(recs[i].key, []byte{3}) {
+				recs[i].val = longVal
+				return recs, 0, nil // in-place replace: delta stays 0
+			}
+		}
+		t.Fatalf("key [3] not found in leaf")
+		return nil, 0, nil
+	})
+	if err != nil {
+		t.Fatalf("rewriteLeaf: %v", err)
+	}
+
+	root, err := readObject(img, 0, bs)
+	if err != nil {
+		t.Fatalf("read root: %v", err)
+	}
+	info := root[len(root)-btreeInfoSize:]
+	if lv := binary.LittleEndian.Uint32(info[btInfoLongestVal:]); lv != uint32(len(longVal)) {
+		t.Fatalf("root bt_longest_val = %d, want %d (a replace must still update it)", lv, len(longVal))
+	}
+}
+
 // TestRewriteLeafFirstRecordDeleteThenInsert exercises the case the
 // btree_write.go doc comment argues is safe: deleting the first record of a
 // non-root leaf (leaving the parent's separator as a now-loose lower bound),

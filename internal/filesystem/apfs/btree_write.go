@@ -190,9 +190,12 @@ func (t *tree) writeNodeBlock(paddr int64, raw []byte) error {
 }
 
 // bumpRootKeyCount adjusts the tree-wide key count in the root's btree_info_t
-// after an insert or delete in a non-root leaf, and grows (never shrinks) the
-// longest-key/val hints. It is a no-op when the root is itself a leaf
-// (encodeLeaf already handled it, exactly, via setBtreeInfo).
+// after a mutation of a non-root leaf (delta is 0 for an in-place replace),
+// and grows (never shrinks) the longest-key/val hints. It runs on a replace
+// too, not just an insert or delete: a replaced value can be longer than
+// anything the leaf held before, and that must still reach the root's hint.
+// It is a no-op when the root is itself a leaf (encodeLeaf already handled
+// it, exactly, via setBtreeInfo).
 //
 // Unlike the single-leaf-tree case, longestKey/longestVal here are computed
 // only from the one leaf that changed, not the whole tree: the previous
@@ -254,7 +257,7 @@ func (t *tree) rewriteLeaf(key []byte, mutate func(recs []record, leafIsRoot boo
 	if err := t.writeNodeBlock(paddr, raw); err != nil {
 		return err
 	}
-	if delta != 0 && paddr != t.rootPaddr {
+	if paddr != t.rootPaddr {
 		return t.bumpRootKeyCount(delta, longestKey, longestVal)
 	}
 	return nil
