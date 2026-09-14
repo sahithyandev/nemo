@@ -192,12 +192,32 @@ func TestSetTimestampUpdatesChecksumAndUsesCustodyWrappedImage(t *testing.T) {
 func TestSetTimestampUnavailableFieldDoesNotMutateImage(t *testing.T) {
 	img := syntheticTimestampImage(0)
 	before := append([]byte(nil), img.data...)
-	entry := timestampTestEntry(t, img)
+	recorder := custody.Wrap(img)
+	entry := timestampTestEntry(t, recorder)
 	if err := entry.SetTimestamp(filesystem.TimeCreated, time.Unix(0, 0)); !errors.Is(err, errTimestampFieldUnavailable) {
 		t.Fatalf("SetTimestamp(created) error = %v", err)
 	}
 	if !bytes.Equal(img.data, before) {
 		t.Fatal("unsupported creation timestamp mutated the image")
+	}
+	if got := len(recorder.EventsSnapshot()); got != 0 {
+		t.Fatalf("unsupported timestamp produced %d custody events; want 0", got)
+	}
+}
+
+func TestSetTimestampRepresentationFailureDoesNotMutateImage(t *testing.T) {
+	img := syntheticTimestampImage(0)
+	before := append([]byte(nil), img.data...)
+	recorder := custody.Wrap(img)
+	entry := timestampTestEntry(t, recorder)
+	if err := entry.SetTimestamp(filesystem.TimeModified, time.Unix(1<<31, 0)); err == nil {
+		t.Fatal("SetTimestamp: expected representation error")
+	}
+	if !bytes.Equal(img.data, before) {
+		t.Fatal("unrepresentable timestamp mutated the image")
+	}
+	if got := len(recorder.EventsSnapshot()); got != 0 {
+		t.Fatalf("unrepresentable timestamp produced %d custody events; want 0", got)
 	}
 }
 
