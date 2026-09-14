@@ -40,18 +40,7 @@ type hideDependencies struct {
 
 func defaultHideDependencies() hideDependencies {
 	return hideDependencies{
-		openImage: func(path string) (openedTarget, error) {
-			img, err := imagepkg.Open(path)
-			if err != nil {
-				return openedTarget{}, fmt.Errorf("open image %q: %w", path, err)
-			}
-			fs, err := filesystem.Open(img)
-			if err != nil {
-				_ = img.Close()
-				return openedTarget{}, err
-			}
-			return openedTarget{filesystem: fs, image: img, close: img.Close}, nil
-		},
+		openImage: openImageTarget,
 		openLive: func(string) (openedTarget, error) {
 			return openedTarget{}, errors.New("live mode is unavailable: no native filesystem implementation is registered")
 		},
@@ -60,6 +49,24 @@ func defaultHideDependencies() hideDependencies {
 		persistCustody: custody.Persist,
 		writeCustody:   custody.Write,
 	}
+}
+
+func openImageTarget(path string) (openedTarget, error) {
+	img, err := imagepkg.Open(path)
+	if err != nil {
+		return openedTarget{}, fmt.Errorf("open image %q: %w", path, err)
+	}
+	return prepareImageTarget(img, img.Close, filesystem.Open)
+}
+
+func prepareImageTarget(img imagepkg.Image, closeImage func() error, openFilesystem func(imagepkg.Image) (filesystem.FileSystem, error)) (openedTarget, error) {
+	recorder := custody.Wrap(img)
+	fs, err := openFilesystem(recorder)
+	if err != nil {
+		_ = closeImage()
+		return openedTarget{}, err
+	}
+	return openedTarget{filesystem: fs, image: recorder, close: closeImage}, nil
 }
 
 func newHideCommand(dependencies hideDependencies) *cobra.Command {
