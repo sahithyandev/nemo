@@ -47,6 +47,36 @@ func TestEncodeLeafRoundTrip(t *testing.T) {
 	}
 }
 
+// TestEncodeLeafRootShrinksLongestHints confirms that for a root-as-leaf
+// (single-node) tree, replacing the record set with smaller keys/values
+// lowers bt_longest_key/bt_longest_val, not just raises them. This is exact
+// for a single-node tree because the leaf being rewritten is the whole tree.
+func TestEncodeLeafRootShrinksLongestHints(t *testing.T) {
+	const bs = 4096
+	raw := make([]byte, bs)
+	binary.LittleEndian.PutUint16(raw[32:34], btnodeLeaf|btnodeRoot)
+	binary.LittleEndian.PutUint16(raw[42:44], 64)
+
+	if err := encodeLeaf(raw, bs, []record{{key: []byte("a"), val: bytes.Repeat([]byte("x"), 100)}}); err != nil {
+		t.Fatalf("encodeLeaf (large): %v", err)
+	}
+	info := raw[bs-btreeInfoSize:]
+	if lv := binary.LittleEndian.Uint32(info[btInfoLongestVal:]); lv != 100 {
+		t.Fatalf("bt_longest_val after large write = %d, want 100", lv)
+	}
+
+	if err := encodeLeaf(raw, bs, []record{{key: []byte("a"), val: []byte("y")}}); err != nil {
+		t.Fatalf("encodeLeaf (small): %v", err)
+	}
+	info = raw[bs-btreeInfoSize:]
+	if lv := binary.LittleEndian.Uint32(info[btInfoLongestVal:]); lv != 1 {
+		t.Fatalf("bt_longest_val after shrink = %d, want 1 (should shrink, not stay at the old max)", lv)
+	}
+	if kc := binary.LittleEndian.Uint64(info[btInfoKeyCount:]); kc != 1 {
+		t.Fatalf("bt_key_count = %d, want 1", kc)
+	}
+}
+
 func TestEncodeLeafNodeFull(t *testing.T) {
 	const bs = 256
 	raw := make([]byte, bs)

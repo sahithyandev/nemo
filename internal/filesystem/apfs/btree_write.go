@@ -146,21 +146,25 @@ func encodeLeaf(raw []byte, blockSize uint32, recs []record) error {
 	binary.LittleEndian.PutUint16(raw[54:56], 0)
 
 	if isRoot {
-		updateBtreeInfo(raw, len(recs), longestKey, longestVal)
+		// This leaf is also the root: it is the whole tree, so recs is every
+		// record that exists and longestKey/longestVal computed from it are
+		// the exact tree-wide truth, not just a local lower bound. Set them
+		// outright rather than only growing them, so a value shrinking (or a
+		// record being deleted) is reflected instead of leaving a stale high
+		// water mark.
+		setBtreeInfo(raw, len(recs), longestKey, longestVal)
 	}
 	return nil
 }
 
-// updateBtreeInfo grows the longest-key/longest-val hints and sets the
-// tree-wide key count in a root node's trailing btree_info_t.
-func updateBtreeInfo(raw []byte, keyCount, longestKey, longestVal int) {
+// setBtreeInfo overwrites the longest-key/longest-val hints and the
+// tree-wide key count in a root node's trailing btree_info_t. Callers must
+// know keyCount/longestKey/longestVal are exact for the whole tree, not just
+// for the node at hand — see the call site in encodeLeaf.
+func setBtreeInfo(raw []byte, keyCount, longestKey, longestVal int) {
 	info := raw[len(raw)-btreeInfoSize:]
-	if uint32(longestKey) > binary.LittleEndian.Uint32(info[btInfoLongestKey:]) {
-		binary.LittleEndian.PutUint32(info[btInfoLongestKey:], uint32(longestKey))
-	}
-	if uint32(longestVal) > binary.LittleEndian.Uint32(info[btInfoLongestVal:]) {
-		binary.LittleEndian.PutUint32(info[btInfoLongestVal:], uint32(longestVal))
-	}
+	binary.LittleEndian.PutUint32(info[btInfoLongestKey:], uint32(longestKey))
+	binary.LittleEndian.PutUint32(info[btInfoLongestVal:], uint32(longestVal))
 	binary.LittleEndian.PutUint64(info[btInfoKeyCount:], uint64(keyCount))
 }
 
@@ -186,9 +190,19 @@ func (t *tree) writeNodeBlock(paddr int64, raw []byte) error {
 }
 
 // bumpRootKeyCount adjusts the tree-wide key count in the root's btree_info_t
-// after an insert or delete in a non-root leaf, and grows the longest-key/val
-// hints. It is a no-op when the root is itself a leaf (encodeLeaf already
-// handled it).
+// after an insert or delete in a non-root leaf, and grows (never shrinks) the
+// longest-key/val hints. It is a no-op when the root is itself a leaf
+// (encodeLeaf already handled it, exactly, via setBtreeInfo).
+//
+// Unlike the single-leaf-tree case, longestKey/longestVal here are computed
+// only from the one leaf that changed, not the whole tree: the previous
+// tree-wide maximum may have come from an untouched sibling leaf, and this
+// function has no way to know without walking every leaf. So it only grows
+// the hint, never shrinks it. That is safe by the APFS spec (these are
+// pre-allocation hints; overestimating never causes incorrect behavior, only
+// a slightly larger buffer than strictly needed) and cheap; shrinking exactly
+// would need a full-tree scan on every write, which is a step nemo does not
+// take for what's ultimately a cosmetic field.
 func (t *tree) bumpRootKeyCount(delta, longestKey, longestVal int) error {
 	n, raw, err := t.readNodeRaw(t.rootPaddr)
 	if err != nil {
