@@ -420,10 +420,15 @@ func encodeJKey(oid uint64, typ uint8) []byte {
 	return buf
 }
 
-// fsKeyCompare orders fs-tree records by (object id, record type) only.
-// The per-type sub-key (drec name hash, xattr name, extent offset) is
-// deliberately not modeled: search descends to the first record of a given
-// (oid, type) and callers scan forward linearly from there.
+// fsKeyCompare orders fs-tree records by (object id, record type), then by
+// the per-type sub-key where this parser knows how to decode one (currently
+// just the xattr name — see xattrKeyAfter/isXattrNamed for the same
+// ordering). Other sub-keys (drec name hash, extent offset) are still left
+// unmodeled: descendToLeaf only needs enough ordering to route to the right
+// leaf, and ties there are resolved by callers scanning forward linearly.
+// Getting this wrong for xattr specifically previously misrouted
+// descendToLeaf whenever one file's xattr records spanned a leaf boundary,
+// since every xattr of that file compared equal regardless of name.
 func fsKeyCompare(a, b []byte) int {
 	aOid, aTyp, aErr := decodeJKey(a)
 	bOid, bTyp, bErr := decodeJKey(b)
@@ -449,6 +454,16 @@ func fsKeyCompare(a, b []byte) int {
 			return -1
 		}
 		return 1
+	}
+	if aTyp == objTypeXattr {
+		aName, aOk := decodeXattrName(a)
+		bName, bOk := decodeXattrName(b)
+		if aOk && bOk && aName != bName {
+			if aName < bName {
+				return -1
+			}
+			return 1
+		}
 	}
 	return 0
 }

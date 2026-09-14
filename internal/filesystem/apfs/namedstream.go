@@ -383,8 +383,7 @@ func errValueNeedsStream(n int) error {
 }
 
 // xattrKeyAfter reports whether the record key rkey sorts strictly after the
-// xattr (oid, name). fsKeyCompare ignores the name sub-key, so ordering within
-// one file's xattr run is resolved here by name bytes.
+// xattr (oid, name), using the same name-byte ordering as fsKeyCompare.
 func xattrKeyAfter(rkey []byte, oid uint64, name string) bool {
 	ro, rt, err := decodeJKey(rkey)
 	if err != nil {
