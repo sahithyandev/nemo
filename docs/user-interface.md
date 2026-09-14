@@ -38,6 +38,13 @@ Extended inode timestamps preserve nanoseconds and the ext4 epoch bits; legacy
 128-byte timestamps accept only whole seconds in the signed 32-bit range.
 Timestomp writes refresh inode checksums when metadata checksums are enabled.
 
+Ext4 slack-space operations use only the unused tail of the final allocated
+regular-file block. Nemo stores a versioned frame containing the payload length
+and SHA-256 digest. Detection validates that frame and is read-only; clearing
+zeroes only the validated frame. Sparse, inline-data, encrypted, unwritten,
+non-extent, and overallocated files are rejected explicitly. Empty and
+block-aligned files have no usable block slack.
+
 Every successful `hide` writes an entry to the chain-of-custody log (operation, target, SHA-256 hash, timestamp), in both modes. This logging is automatic and has no corresponding flag to disable.
 
 On success, `hide` emits that custody record as one JSON object on standard output. The record also includes the selected technique, technique-specific detail, and affected byte count. If the output sink fails after the filesystem mutation, the command reports the failure but does not imply that the mutation was rolled back. Durable log location and fail-closed policy remain part of the shared custody contract.

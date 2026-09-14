@@ -43,7 +43,7 @@ func init() {
 		Type:       filesystem.TypeEXT4,
 		Sniff:      Sniff,
 		New:        New,
-		Techniques: []string{"named-stream", "timestomp"},
+		Techniques: []string{"named-stream", "slack-space", "timestomp"},
 	})
 }
 

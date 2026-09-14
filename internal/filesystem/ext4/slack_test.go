@@ -1,10 +1,13 @@
 package ext4
 
 import (
+	"bytes"
 	"strings"
 	"testing"
 
+	"github.com/sahithyandev/nemo/internal/custody"
 	"github.com/sahithyandev/nemo/internal/filesystem"
+	"github.com/sahithyandev/nemo/internal/technique"
 )
 
 func TestSlackRegionsUsesTailOfFinalMappedBlock(t *testing.T) {
@@ -19,6 +22,52 @@ func TestSlackRegionsUsesTailOfFinalMappedBlock(t *testing.T) {
 	want := filesystem.SlackRegion{Offset: 20*testBlockSize + 100, Length: testBlockSize - 100}
 	if len(regions) != 1 || regions[0] != want {
 		t.Fatalf("SlackRegions = %+v; want [%+v]", regions, want)
+	}
+}
+
+func TestExt4SlackRoundTripPreservesLogicalFileAndSize(t *testing.T) {
+	img := syntheticImage()
+	setFileExtents(img, 3, 100, []testExtent{{logical: 0, length: 1, physical: 20}})
+	for i := 0; i < testBlockSize; i++ {
+		img.data[20*testBlockSize+i] = byte(i)
+	}
+	wantLogical := append([]byte(nil), img.data[20*testBlockSize:20*testBlockSize+100]...)
+	recorder := custody.Wrap(img)
+	fsi, err := New(recorder)
+	if err != nil {
+		t.Fatal(err)
+	}
+	entry, err := fsi.Open("/hello.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	selected, err := technique.Get(technique.SlackSpace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := selected.Hide(entry, technique.HideRequest{Data: []byte("secret"), Image: recorder}); err != nil {
+		t.Fatal(err)
+	}
+	findings, err := technique.DetectSlackSpace(entry, recorder)
+	if err != nil || len(findings) != 1 || findings[0].Size != int64(len("secret")) {
+		t.Fatalf("DetectSlackSpace = %+v, %v", findings, err)
+	}
+	if _, err := technique.ClearSlackSpace(entry, recorder); err != nil {
+		t.Fatal(err)
+	}
+
+	in, err := fsi.(*FS).readInode(3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if in.size != 100 {
+		t.Fatalf("inode size = %d; want 100", in.size)
+	}
+	if got := img.data[20*testBlockSize : 20*testBlockSize+100]; !bytes.Equal(got, wantLogical) {
+		t.Fatal("slack round trip changed logical file bytes")
+	}
+	if got := len(recorder.EventsSnapshot()); got != 2 {
+		t.Fatalf("custody events = %d; want hide and clear", got)
 	}
 }
 
