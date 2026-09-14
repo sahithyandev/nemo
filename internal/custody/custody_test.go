@@ -3,6 +3,7 @@ package custody
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"testing"
 	"time"
 
@@ -58,5 +59,41 @@ func TestWrappedImageCapturesWrite(t *testing.T) {
 
 	if event.Timestamp.Location() != time.UTC {
 		t.Fatalf("expected UTC timestamp, got %v", event.Timestamp.Location())
+	}
+}
+
+// TestRecorderCloseNoopsOnNonCloseableImage confirms Close is safe to call on
+// a Recorder wrapping an image (like fakefs.Image) that has no Close method
+// of its own.
+func TestRecorderCloseNoopsOnNonCloseableImage(t *testing.T) {
+	wrapped := Wrap(fakefs.NewImage(32))
+	if err := wrapped.Close(); err != nil {
+		t.Fatalf("Close() on a non-closeable underlying image = %v, want nil", err)
+	}
+}
+
+type closeTrackingImage struct {
+	*fakefs.Image
+	closeErr error
+	closed   bool
+}
+
+func (c *closeTrackingImage) Close() error {
+	c.closed = true
+	return c.closeErr
+}
+
+// TestRecorderCloseDelegates confirms Close reaches the underlying image
+// when it is closeable, forwarding its error.
+func TestRecorderCloseDelegates(t *testing.T) {
+	want := errors.New("boom")
+	underlying := &closeTrackingImage{Image: fakefs.NewImage(32), closeErr: want}
+	wrapped := Wrap(underlying)
+
+	if err := wrapped.Close(); err != want {
+		t.Fatalf("Close() = %v, want %v", err, want)
+	}
+	if !underlying.closed {
+		t.Fatalf("underlying image was not closed")
 	}
 }

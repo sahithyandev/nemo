@@ -41,6 +41,14 @@ populate() {
 	xattr -w user.nemo.test "nemo" "$1/xattr.txt"
 	# 4096-byte block + 100 bytes so the last block has slack.
 	dd if=/dev/urandom of="$1/slack.bin" bs=1 count=4196 status=none
+	# xattr value over XATTR_MAX_EMBEDDED_SIZE (3804), so APFS stores it as a
+	# data stream with its own extents. Filler is compressible on purpose:
+	# random bytes would balloon the committed .img.gz.
+	printf 'this file carries a stream-backed xattr\n' >"$1/bigxattr.txt"
+	xattr -w user.nemo.big "$(printf 'A%.0s' $(seq 8000))" "$1/bigxattr.txt"
+	# a real resource fork, written through the named fork.
+	printf 'this file carries a resource fork\n' >"$1/rsrc.txt"
+	printf 'R%.0s' $(seq 6000) >"$1/rsrc.txt/..namedfork/rsrc"
 }
 
 finish() {

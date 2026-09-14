@@ -3,6 +3,7 @@ package custody
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"io"
 	"time"
 
 	"github.com/sahithyandev/nemo/internal/image"
@@ -17,6 +18,12 @@ type WriteEvent struct {
 type Recorder interface {
 	image.Image
 	EventsSnapshot() []WriteEvent
+	// Close releases the wrapped image, closing it if it is closeable.
+	// Callers should close through the recorder rather than reaching past it
+	// to the image they wrapped, so a future addition here (flushing custody
+	// state on close, say) is not silently bypassed by code written before
+	// it existed.
+	Close() error
 }
 
 type wrappedImage struct {
@@ -29,6 +36,15 @@ func Wrap(img image.Image) Recorder {
 	return &wrappedImage{
 		underlying: img,
 	}
+}
+
+// Close closes the underlying image if it implements io.Closer, and is a
+// no-op otherwise (image.Image itself carries no Close method).
+func (w *wrappedImage) Close() error {
+	if c, ok := w.underlying.(io.Closer); ok {
+		return c.Close()
+	}
+	return nil
 }
 
 func (w *wrappedImage) ReadAt(p []byte, off int64) (int, error) {
