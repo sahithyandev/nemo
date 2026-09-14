@@ -426,7 +426,11 @@ func (f *FS) replaceXattr(oid uint64, name string, val []byte) error {
 
 func (f *FS) insertXattr(oid uint64, name string, val []byte) error {
 	key := encodeXattrKey(oid, name)
-	return f.fsTree.rewriteLeaf(key, func(recs []record, leafIsRoot bool) ([]record, int, error) {
+	// Inserting at index 0 of a non-root leaf is safe (no leafIsRoot check
+	// needed here): descent already established key[i] <= key < key[i+1] at
+	// the parent, and that's all the separator invariant requires. See the
+	// btree_write.go doc comment.
+	return f.fsTree.rewriteLeaf(key, func(recs []record, _ bool) ([]record, int, error) {
 		idx := len(recs)
 		for i := range recs {
 			if isXattrNamed(recs[i].key, oid, name) {
@@ -436,9 +440,6 @@ func (f *FS) insertXattr(oid uint64, name string, val []byte) error {
 				idx = i
 				break
 			}
-		}
-		if idx == 0 && !leafIsRoot {
-			return nil, 0, errors.New("apfs: inserting before the first record of a non-root leaf is unsupported")
 		}
 		out := make([]record, 0, len(recs)+1)
 		out = append(out, recs[:idx]...)
@@ -469,12 +470,13 @@ func (f *FS) deleteXattr(oid uint64, name string) error {
 	if !found {
 		return fs.ErrNotExist
 	}
-	return f.fsTree.rewriteLeaf(encodeXattrKey(oid, name), func(recs []record, leafIsRoot bool) ([]record, int, error) {
+	// Deleting a non-root leaf's first record is safe: the parent separator
+	// is only a lower bound on the leaf's true minimum key, and removing that
+	// minimum can only raise it, never invalidate the bound. See the
+	// btree_write.go doc comment.
+	return f.fsTree.rewriteLeaf(encodeXattrKey(oid, name), func(recs []record, _ bool) ([]record, int, error) {
 		for i := range recs {
 			if isXattrNamed(recs[i].key, oid, name) {
-				if i == 0 && !leafIsRoot {
-					return nil, 0, errors.New("apfs: deleting the first record of a non-root leaf is unsupported")
-				}
 				return append(recs[:i:i], recs[i+1:]...), -1, nil
 			}
 		}

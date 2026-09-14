@@ -95,3 +95,76 @@ func TestRewriteLeafNonRoot(t *testing.T) {
 		t.Fatalf("sibling record disturbed")
 	}
 }
+
+// TestRewriteLeafFirstRecordDeleteThenInsert exercises the case the
+// btree_write.go doc comment argues is safe: deleting the first record of a
+// non-root leaf (leaving the parent's separator as a now-loose lower bound),
+// then inserting a new key that lands below the leaf's current minimum but
+// still above that stale separator. Both mutations touch only the leaf; if
+// either broke the separator invariant, the full-tree walk below would skip
+// or duplicate a record.
+func TestRewriteLeafFirstRecordDeleteThenInsert(t *testing.T) {
+	img, bs := buildSyntheticTwoLeafTree(t)
+	tr, err := openTree(img, bs, 0, omapResolveIdentity, byteCmp, 0, 0)
+	if err != nil {
+		t.Fatalf("openTree: %v", err)
+	}
+
+	// leaf1 (root separator key [3]) holds [3]=0xCC, [4]=0xDD. Delete [3],
+	// its first record: leaf1's true minimum rises to [4], while the root's
+	// separator for it stays [3] (now a loose, not exact, lower bound).
+	err = tr.rewriteLeaf([]byte{3}, func(recs []record, leafIsRoot bool) ([]record, int, error) {
+		if leafIsRoot {
+			t.Fatalf("leaf1 must not be the root in this fixture")
+		}
+		if len(recs) != 2 || !bytes.Equal(recs[0].key, []byte{3}) {
+			t.Fatalf("unexpected leaf1 records: %+v", recs)
+		}
+		return recs[1:], -1, nil
+	})
+	if err != nil {
+		t.Fatalf("delete [3]: %v", err)
+	}
+
+	// Re-insert [3] with a new value. It must land at index 0 of leaf1 (below
+	// the leaf's current minimum, [4]) while still routing there via the root
+	// separator [3], which is still <= the new key.
+	err = tr.rewriteLeaf([]byte{3}, func(recs []record, leafIsRoot bool) ([]record, int, error) {
+		if leafIsRoot {
+			t.Fatalf("leaf1 must not be the root in this fixture")
+		}
+		if len(recs) != 1 || !bytes.Equal(recs[0].key, []byte{4}) {
+			t.Fatalf("unexpected leaf1 records before insert: %+v", recs)
+		}
+		return append([]record{{key: []byte{3}, val: []byte{0x11}}}, recs...), 1, nil
+	})
+	if err != nil {
+		t.Fatalf("insert [3]: %v", err)
+	}
+
+	// The whole tree, across both leaves and the boundary between them, must
+	// still read back in order with every value correct.
+	c, err := tr.seek([]byte{0})
+	if err != nil {
+		t.Fatalf("seek: %v", err)
+	}
+	var gotKeys, gotVals []byte
+	for k := c.key(); k != nil; k = c.key() {
+		gotKeys = append(gotKeys, k[0])
+		gotVals = append(gotVals, c.val()[0])
+		if !c.next() {
+			break
+		}
+	}
+	if err := c.err(); err != nil {
+		t.Fatalf("err() = %v, want nil", err)
+	}
+	wantKeys := []byte{1, 2, 3, 4}
+	wantVals := []byte{0xAA, 0xBB, 0x11, 0xDD}
+	if !bytes.Equal(gotKeys, wantKeys) {
+		t.Fatalf("keys = %v, want %v", gotKeys, wantKeys)
+	}
+	if !bytes.Equal(gotVals, wantVals) {
+		t.Fatalf("vals = %v, want %v", gotVals, wantVals)
+	}
+}

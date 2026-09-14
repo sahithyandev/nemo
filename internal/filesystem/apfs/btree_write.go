@@ -15,11 +15,18 @@ import (
 // the object map, the space manager and the checkpoint untouched. The volume
 // stays checksum-valid and mountable; it is just not a real APFS transaction.
 //
-// Because a non-leaf node's key is only a lower bound on its child subtree
-// (descent uses lastLE), inserting or deleting anywhere except the first
-// record of a non-root leaf keeps every lookup correct without touching the
-// parent. Changing a non-root leaf's minimum key is refused rather than
-// silently corrupting the parent's separator.
+// A non-leaf node's key is only a lower bound on its child subtree, not an
+// exact copy of its minimum (descent uses lastLE, and a delete never tightens
+// the bound back down). That makes inserting or deleting at any position in a
+// leaf, including the first record, safe without touching the parent:
+//   - insert: descendToLeaf already chose this leaf via lastLE, so the parent
+//     separator key[i] <= the new key < key[i+1] before the insert even
+//     happens. Landing the new key at position 0 (below the leaf's old
+//     minimum) does not violate key[i] <= new key, since that's exactly what
+//     routed the insert here.
+//   - delete: removing a leaf's current minimum can only raise its true
+//     minimum, which can only widen the gap above the parent's separator,
+//     never invalidate it.
 
 // btree_info_t field offsets within the 40-byte trailer of a root node.
 const (
