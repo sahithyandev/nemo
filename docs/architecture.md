@@ -145,7 +145,9 @@ type SlackSpaceCapable interface {
 }
 
 type TimestompCapable interface {
-    SetTimestamp(field TimeField, t time.Time) error
+	Timestamp(field TimeField) (time.Time, error)
+	SupportsTimestamp(field TimeField) (bool, error)
+	SetTimestamp(field TimeField, t time.Time) error
 }
 ```
 
