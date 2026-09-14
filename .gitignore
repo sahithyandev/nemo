@@ -41,3 +41,5 @@ create-issues.sh
 # Editor/IDE
 # .idea/
 # .vscode/
+
+docs/_site
