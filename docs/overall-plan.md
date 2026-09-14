@@ -1,3 +1,8 @@
+---
+title: Overall Plan
+nav_order: 2
+---
+
 # Nemo: Overall Plan
 
 ## Overview

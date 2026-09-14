@@ -1,3 +1,8 @@
+---
+title: APFS
+nav_order: 7
+---
+
 # Nemo's APFS parser
 
 This is about `internal/filesystem/apfs`. It covers detection, mounting,

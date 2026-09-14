@@ -1,3 +1,9 @@
+---
+title: Timestomping
+parent: Techniques
+nav_order: 3
+---
+
 # Timestomping
 
 ## What it is

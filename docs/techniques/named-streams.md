@@ -1,3 +1,9 @@
+---
+title: Named-Stream Hiding
+parent: Techniques
+nav_order: 1
+---
+
 # Named-Stream Hiding
 
 ## What it is

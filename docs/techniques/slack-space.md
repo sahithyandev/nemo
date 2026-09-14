@@ -1,3 +1,9 @@
+---
+title: Slack-Space Hiding
+parent: Techniques
+nav_order: 2
+---
+
 # Slack-Space Hiding
 
 ## What it is

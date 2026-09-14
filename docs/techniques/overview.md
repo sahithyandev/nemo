@@ -1,3 +1,9 @@
+---
+title: Techniques
+nav_order: 6
+has_children: true
+---
+
 # Hiding Techniques
 
 This directory explains the anti-forensic techniques nemo implements: what they
