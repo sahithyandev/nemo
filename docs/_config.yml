@@ -1,6 +1,10 @@
 title: nemo
 description: a CLI tool for hiding files
-remote_theme: just-the-docs/just-the-docs
-plugins:
-  - jekyll-remote-theme
-color_scheme: dark
+theme: minima
+header_pages:
+  - overall-plan.md
+  - user-interface.md
+  - architecture.md
+  - work-breakdown.md
+  - techniques/overview.md
+  - file-systems/apfs.md
