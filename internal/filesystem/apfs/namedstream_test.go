@@ -3,6 +3,7 @@ package apfs
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"io/fs"
 	"strings"
 	"testing"
@@ -205,15 +206,32 @@ func TestXattrExtentGrowRejected(t *testing.T) {
 	}
 }
 
-// TestXattrNodeFull confirms an insert that overflows the leaf fails cleanly
-// and leaves the image readable.
+// TestXattrNodeFull drives the leaf holding /xattr.txt's records to genuinely
+// full, rather than assuming a single max-size insert already overflows it:
+// how much of the leaf the fixture's other records happen to occupy is
+// incidental and could change (a different file set, a different macOS
+// version's layout), which would silently stop this test from exercising the
+// "node full" path at all. Inserting maximum-size (3804-byte) xattrs
+// repeatedly forces the leaf to run out of room regardless of its starting
+// occupancy — a 4 KiB block cannot hold more than one or two such records to
+// begin with, so this reaches "node full" within a handful of iterations.
 func TestXattrNodeFull(t *testing.T) {
 	img := loadImage(t, "apfs-gpt")
 	e := entryFor(t, openFS(t, img), "/xattr.txt")
-	err := e.WriteStream("user.nemo.toobig", make([]byte, xattrMaxEmbeddedSize))
-	if err == nil || !strings.Contains(err.Error(), "node full") {
-		t.Fatalf("err = %v, want a 'node full' error", err)
+
+	const maxInserts = 64 // generous; a 4 KiB leaf fills within 1-2 inserts
+	var fullErr error
+	for i := 0; i < maxInserts; i++ {
+		name := fmt.Sprintf("user.nemo.fill%02d", i)
+		if err := e.WriteStream(name, make([]byte, xattrMaxEmbeddedSize)); err != nil {
+			fullErr = err
+			break
+		}
 	}
+	if fullErr == nil || !strings.Contains(fullErr.Error(), "node full") {
+		t.Fatalf("after up to %d max-size inserts, err = %v, want a 'node full' error", maxInserts, fullErr)
+	}
+
 	// The failed write must not have corrupted the tree.
 	if v, err := entryFor(t, openFS(t, img), "/xattr.txt").ReadStream("user.nemo.test"); err != nil || string(v) != "nemo" {
 		t.Fatalf("after rejected write: (%q, %v), want (%q, nil)", v, err, "nemo")
