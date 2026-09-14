@@ -120,7 +120,7 @@ Reading and writing slack needs raw device access, because no normal file API on
 any OS exposes bytes past end-of-file. In nemo's image mode the image is the raw
 bytes, so nothing beyond read access to the file is required. In live mode,
 slack-space means opening `\\.\PhysicalDriveN`, `/dev/diskN`, or `/dev/sdX` and
-running the same parser, which needs admin or root. Per `docs/architecture.md`,
+running the same parser, which needs admin or root. Per [Live Mode](../architecture/live-mode.html),
 live `hide`, `detect`, and `clear` with `--technique slack-space` must detect the
 missing-privilege condition and fail with a clear error rather than silently
 degrade. `named-stream` and `timestomp` do not have this requirement; they go

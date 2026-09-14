@@ -153,7 +153,7 @@ with, such as the `$FN` copy, the `ctime` the kernel controls, a journal entry,
 or a snapshot. nemo does not parse any of those yet, so it has nothing to compare
 against and cannot honestly report a finding. Giving `TimestompCapable` a reader
 plus a cross-check source, starting with NTFS `$SI` and `$FN`, is the follow-up
-`docs/architecture.md` records against CORE-04.
+[Technique Interfaces](../architecture/technique.html) records against CORE-04.
 
 The same gap constrains `clear`. With no way to recover a prior value, `nemo
 clear --technique timestomp` requires the original timestamp supplied explicitly
