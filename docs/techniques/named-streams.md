@@ -212,8 +212,17 @@ DeleteStream(name string) error
   overwritten with anything that fits its existing extents, and a value that
   would need to grow past either limit fails with a clear error. Deleting a
   stream-backed xattr drops the record but leaves its extents allocated.
-- NTFS parses (`internal/filesystem/ntfs/`) but named streams are not wired up:
-  `ntfs.Entry.NamedStreams` returns `nil, nil`.
+- NTFS is implemented. `internal/filesystem/ntfs/namedstream.go` reads and
+  writes ADS by editing the MFT record directly: `NamedStreams` lists every
+  named `$DATA` attribute, `ReadStream` returns a resident value or follows
+  non-resident data runs, and `WriteStream`/`DeleteStream` repack the record
+  in place. A resident stream can be replaced or created if it fits the
+  record's free space; a non-resident stream can be overwritten only within
+  its existing cluster runs, since no run allocation is built yet. Every
+  write is verified by reading the record back, and a write to one of the
+  first few MFT records, or to a data run overlapping `$MFTMirr`'s on-disk
+  bytes, is refused rather than leaving the mirror stale. See
+  [NTFS](../file-systems/ntfs.html#named-streams) for the full write path.
 
 When adding a filesystem, mirror `fakefs.Entry`
 (`internal/filesystem/fakefs/fakefs.go`), the test double that already

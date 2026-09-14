@@ -1,7 +1,7 @@
 ---
 title: APFS
 parent: File Systems
-nav_order: 1
+nav_order: 2
 ---
 
 # Nemo's APFS parser
@@ -11,9 +11,9 @@ the B-tree code, the in-place write path, and every layout the parser
 refuses instead of misreading.
 
 For what named streams are and how detection works at the technique level,
-see [docs/techniques/named-streams.md](../techniques/named-streams.md). For
+see [Named-Stream Hiding](../techniques/named-streams.html). For
 where this package sits in the overall layering, see
-[docs/architecture.md](../architecture.md).
+[Architecture](../architecture/).
 
 ## Detection
 
@@ -332,7 +332,7 @@ Some things aren't attempted at all, not even refused with an error.
   That's why every write path above is capped to "fits in what's already
   allocated."
 - **Slack-space access, timestomp, and live mode for APFS.** Not built yet.
-  See `docs/work-breakdown.md` items 19c/20d/21e.
+  See [Roadmap](../roadmap.html) items 19c/20d/21e.
 
 ## Safety against crafted images
 

@@ -1,6 +1,6 @@
 ---
 title: Techniques
-nav_order: 6
+nav_order: 4
 has_children: true
 ---
 
@@ -13,11 +13,11 @@ touched filesystem forensics.
 
 Read the shared vocabulary below first, then the technique you are working on:
 
-- [named-streams.md](named-streams.md) covers NTFS Alternate Data Streams, ext4
+- [named-streams.md](named-streams.html) covers NTFS Alternate Data Streams, ext4
   and APFS extended attributes, and APFS resource forks.
-- [slack-space.md](slack-space.md) covers writing into allocated-but-unused bytes
+- [slack-space.md](slack-space.html) covers writing into allocated-but-unused bytes
   at the tail of a cluster, block, or metadata record.
-- [timestomping.md](timestomping.md) covers rewriting a file's MACB timestamps.
+- [timestomping.md](timestomping.html) covers rewriting a file's MACB timestamps.
 
 ## Where each technique sits in the codebase
 
@@ -41,7 +41,7 @@ needs and returns `technique.ErrUnsupported` when the assertion fails
 | ---------- | ------------ | ----------- | --------- |
 | ext4       | done, `internal/filesystem/ext4/ext4.go` and `xattr.go` | not built | done, `internal/filesystem/ext4/timestomp.go` |
 | APFS       | done, `internal/filesystem/apfs/namedstream.go` (in-place B-tree leaf rewrite, no allocation) | not built | not built |
-| NTFS       | parser only, `NamedStreams` stubbed | not built | not built |
+| NTFS       | done, `internal/filesystem/ntfs/namedstream.go` (resident and non-resident, MFT-mirror aware) | not built | not built |
 | fakefs     | done | done | done (test double, `internal/filesystem/fakefs`) |
 
 `fakefs` is an in-memory filesystem that implements all three capabilities
@@ -51,7 +51,7 @@ interfaces `fakefs.Entry` already does.
 
 `nemo features` prints this matrix at runtime from the `Techniques` field each
 filesystem declares on its `filesystem.Detector`, so it cannot drift from what is
-actually registered. See `docs/architecture.md`.
+actually registered. See [Filesystem Interfaces](../architecture/filesystem.html).
 
 ## Shared vocabulary
 
@@ -62,7 +62,7 @@ cluster (default 4 KiB); ext4 and APFS call it a block (also 4 KiB by default). 
 **Allocated size vs. used size.** The allocated size is how many bytes the
 filesystem reserved, always a whole number of clusters. The used size (sometimes
 "valid data length") is how many of those bytes hold the file's content. The gap
-is slack. See [slack-space.md](slack-space.md).
+is slack. See [slack-space.md](slack-space.html).
 
 **Resident vs. non-resident.** NTFS and APFS can store a small attribute value
 inline inside the file's metadata record (resident) rather than in its own
@@ -75,7 +75,7 @@ slack.
 Modified (content changed), Accessed (content read), Changed (metadata changed,
 the NTFS/ext4 `ctime`), Birth (created, `crtime`). Not every filesystem stores
 all four, and no two store them the same way. See
-[timestomping.md](timestomping.md).
+[timestomping.md](timestomping.html).
 
 **"Detectable."** A technique is detectable when an examiner has a reliable
 signal that data was hidden: a structural anomaly, a second copy of the same
@@ -90,7 +90,7 @@ read-only and never writes to the custody log.
 
 ## Techniques nemo does not implement
 
-These are out of scope per `docs/overall-plan.md`. Recognise them so you do not
+These are out of scope per [Overview](../overview.html). Recognise them so you do not
 reach for one by accident, and so you know where nemo's guarantees stop.
 
 **Unallocated-space hiding and file carving.** Writing a payload into blocks the
