@@ -1,12 +1,14 @@
 package technique
 
 import (
+	"bytes"
 	"errors"
 	"io/fs"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/sahithyandev/nemo/internal/custody"
 	"github.com/sahithyandev/nemo/internal/filesystem"
 	"github.com/sahithyandev/nemo/internal/filesystem/fakefs"
 )
@@ -90,6 +92,74 @@ func TestSlackSpaceHideRejectsPayloadWhenFrameExceedsRegion(t *testing.T) {
 	_, err = selected.Hide(entry, HideRequest{Data: []byte("payload"), Image: fake.Img})
 	if err == nil || !strings.Contains(err.Error(), "payload plus") {
 		t.Fatalf("Hide error = %v; want framed capacity error", err)
+	}
+}
+
+func TestSlackSpaceFrameHideDetectClearRoundTrip(t *testing.T) {
+	fake := fakefs.New("/target")
+	region := filesystem.SlackRegion{Offset: 20, Length: 80}
+	fake.Entry("/target").Slack = []filesystem.SlackRegion{region}
+	for i := region.Offset; i < region.Offset+region.Length; i++ {
+		fake.Img.Data[i] = 0xa5
+	}
+	entry, err := fake.Open("/target")
+	if err != nil {
+		t.Fatal(err)
+	}
+	recorder := custody.Wrap(fake.Img)
+	selected, _ := Get(SlackSpace)
+	result, err := selected.Hide(entry, HideRequest{Data: []byte("payload"), Image: recorder})
+	if err != nil {
+		t.Fatal(err)
+	}
+	frameLength := int64(slackFrameHeaderSize + len("payload"))
+	untouched := append([]byte(nil), fake.Img.Data[region.Offset+frameLength:region.Offset+region.Length]...)
+	beforeDetect := append([]byte(nil), fake.Img.Data...)
+
+	findings, err := DetectSlackSpace(entry, recorder)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(findings) != 1 || findings[0].Size != 7 || findings[0].Location != result.Detail {
+		t.Fatalf("findings = %+v", findings)
+	}
+	if !bytes.Equal(fake.Img.Data, beforeDetect) || len(recorder.EventsSnapshot()) != 1 {
+		t.Fatal("slack detection modified the image")
+	}
+
+	cleared, err := ClearSlackSpace(entry, recorder)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cleared.Bytes != 7 || cleared.Detail != result.Detail {
+		t.Fatalf("clear result = %+v", cleared)
+	}
+	if !bytes.Equal(fake.Img.Data[region.Offset:region.Offset+frameLength], make([]byte, frameLength)) {
+		t.Fatal("validated slack frame was not cleared")
+	}
+	if !bytes.Equal(fake.Img.Data[region.Offset+frameLength:region.Offset+region.Length], untouched) {
+		t.Fatal("clear changed bytes outside the Nemo frame")
+	}
+	if len(recorder.EventsSnapshot()) != 2 {
+		t.Fatalf("custody events = %d; want hide and clear", len(recorder.EventsSnapshot()))
+	}
+}
+
+func TestSlackSpaceDetectRejectsCorruptFrameWithoutWriting(t *testing.T) {
+	fake := fakefs.New("/target")
+	fake.Entry("/target").Slack = []filesystem.SlackRegion{{Offset: 20, Length: 80}}
+	entry, _ := fake.Open("/target")
+	selected, _ := Get(SlackSpace)
+	if _, err := selected.Hide(entry, HideRequest{Data: []byte("payload"), Image: fake.Img}); err != nil {
+		t.Fatal(err)
+	}
+	fake.Img.Data[20+slackFrameHeaderSize] ^= 0xff
+	before := append([]byte(nil), fake.Img.Data...)
+	if _, err := DetectSlackSpace(entry, fake.Img); err == nil || !strings.Contains(err.Error(), "hash mismatch") {
+		t.Fatalf("DetectSlackSpace error = %v", err)
+	}
+	if !bytes.Equal(fake.Img.Data, before) {
+		t.Fatal("corrupt-frame detection modified the image")
 	}
 }
 
