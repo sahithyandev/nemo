@@ -160,7 +160,7 @@ func encodeLeaf(raw []byte, blockSize uint32, recs []record) error {
 // setBtreeInfo overwrites the longest-key/longest-val hints and the
 // tree-wide key count in a root node's trailing btree_info_t. Callers must
 // know keyCount/longestKey/longestVal are exact for the whole tree, not just
-// for the node at hand — see the call site in encodeLeaf.
+// for the node at hand; see the call site in encodeLeaf.
 func setBtreeInfo(raw []byte, keyCount, longestKey, longestVal int) {
 	info := raw[len(raw)-btreeInfoSize:]
 	binary.LittleEndian.PutUint32(info[btInfoLongestKey:], uint32(longestKey))

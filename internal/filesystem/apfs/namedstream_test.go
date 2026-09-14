@@ -213,7 +213,7 @@ func TestXattrExtentGrowRejected(t *testing.T) {
 // version's layout), which would silently stop this test from exercising the
 // "node full" path at all. Inserting maximum-size (3804-byte) xattrs
 // repeatedly forces the leaf to run out of room regardless of its starting
-// occupancy — a 4 KiB block cannot hold more than one or two such records to
+// occupancy: a 4 KiB block cannot hold more than one or two such records to
 // begin with, so this reaches "node full" within a handful of iterations.
 func TestXattrNodeFull(t *testing.T) {
 	img := loadImage(t, "apfs-gpt")
