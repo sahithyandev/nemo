@@ -71,29 +71,37 @@ func (f *FS) readMFTRecord(number uint64) ([]byte, error) {
 func (f *FS) loadMFTRecord(number uint64) (mftRecord, error) {
 	f.mftMu.Lock()
 	defer f.mftMu.Unlock()
-	if number != 0 && len(f.mftRuns) == 0 {
-		zero, err := f.readMFTRecord(0)
-		if err != nil {
-			return mftRecord{}, err
-		}
-		parsed, err := parseMFTRecord(zero)
-		if err != nil {
-			return mftRecord{}, err
-		}
-		if parsed.data == nil || parsed.data.resident {
-			return mftRecord{}, errors.New("ntfs: $MFT has no non-resident unnamed DATA attribute")
-		}
-		if err = f.validateRuns(parsed.data.runs); err != nil {
-			return mftRecord{}, err
-		}
-		f.mftRuns = parsed.data.runs
-		f.mftDataSize = parsed.data.dataSize
-	}
-	b, err := f.readMFTRecord(number)
+	b, err := f.loadMFTBytes(number)
 	if err != nil {
 		return mftRecord{}, err
 	}
 	return parseMFTRecord(b)
+}
+
+// loadMFTBytes requires mftMu, which also serializes named-stream mutations.
+func (f *FS) loadMFTBytes(number uint64) ([]byte, error) {
+	if number != 0 && len(f.mftRuns) == 0 {
+		zero, err := f.readMFTRecord(0)
+		if err != nil {
+			return nil, err
+		}
+		parsed, err := parseMFTRecord(zero)
+		if err != nil {
+			return nil, err
+		}
+		if parsed.data == nil || parsed.data.resident {
+			return nil, errors.New("ntfs: $MFT has no non-resident unnamed DATA attribute")
+		}
+		if parsed.data.flags != 0 {
+			return nil, errors.New("ntfs: compressed/encrypted/sparse MFT unsupported")
+		}
+		if _, err = f.streamRuns(parsed.data.runs, true); err != nil {
+			return nil, err
+		}
+		f.mftRuns = parsed.data.runs
+		f.mftDataSize = parsed.data.dataSize
+	}
+	return f.readMFTRecord(number)
 }
 
 func applyFixups(record []byte, sectorSize uint32, magic string) error {

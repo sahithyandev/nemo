@@ -1,4 +1,4 @@
-// Package ntfs implements read-only traversal of NTFS filesystem images.
+// Package ntfs implements traversal and bounded named-stream edits of NTFS images.
 package ntfs
 
 import (
@@ -17,9 +17,10 @@ const ntfsMagic = "NTFS    "
 
 func init() {
 	filesystem.Register(filesystem.Detector{
-		Type:  filesystem.TypeNTFS,
-		Sniff: Sniff,
-		New:   New,
+		Type:       filesystem.TypeNTFS,
+		Sniff:      Sniff,
+		New:        New,
+		Techniques: []string{"named-stream"},
 	})
 }
 
@@ -97,9 +98,8 @@ type Entry struct {
 
 var _ filesystem.Entry = (*Entry)(nil)
 
-func (e *Entry) Path() string                    { return e.path }
-func (e *Entry) IsDir() bool                     { return e.isDir }
-func (e *Entry) NamedStreams() ([]string, error) { return nil, nil }
+func (e *Entry) Path() string { return e.path }
+func (e *Entry) IsDir() bool  { return e.isDir }
 func (e *Entry) Children() ([]filesystem.Entry, error) {
 	if !e.isDir {
 		return nil, nil
