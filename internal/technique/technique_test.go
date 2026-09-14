@@ -97,6 +97,27 @@ func TestTimestompHideSetsSelectedField(t *testing.T) {
 	}
 }
 
+func TestTimestompHidePreservesFractionalTimestampInResult(t *testing.T) {
+	fake := fakefs.New("/target")
+	entry, err := fake.Open("/target")
+	if err != nil {
+		t.Fatal(err)
+	}
+	selected, err := Get(Timestomp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := time.Date(2026, time.September, 14, 12, 0, 0, 123456789, time.FixedZone("offset", 5*60*60+30*60))
+
+	result, err := selected.Hide(entry, HideRequest{Field: filesystem.TimeAccessed, Timestamp: want})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Detail != "accessed=2026-09-14T12:00:00.123456789+05:30" {
+		t.Fatalf("result detail = %q", result.Detail)
+	}
+}
+
 type basicEntry struct{}
 
 func (basicEntry) Path() string { return "/target" }

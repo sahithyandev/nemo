@@ -127,7 +127,7 @@ func (timestompTechnique) Hide(entry filesystem.Entry, request HideRequest) (Res
 	return Result{
 		Technique: Timestomp,
 		Target:    entry.Path(),
-		Detail:    fmt.Sprintf("%s=%s", request.Field, request.Timestamp.Format(time.RFC3339)),
+		Detail:    fmt.Sprintf("%s=%s", request.Field, request.Timestamp.Format(time.RFC3339Nano)),
 	}, nil
 }
 
