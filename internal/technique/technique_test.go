@@ -50,7 +50,7 @@ func TestSlackSpaceHideWritesFirstLargeEnoughRegion(t *testing.T) {
 	fake := fakefs.New("/target")
 	fake.Entry("/target").Slack = []filesystem.SlackRegion{
 		{Offset: 10, Length: 2},
-		{Offset: 20, Length: 8},
+		{Offset: 20, Length: 64},
 	}
 	entry, err := fake.Open("/target")
 	if err != nil {
@@ -65,11 +65,31 @@ func TestSlackSpaceHideWritesFirstLargeEnoughRegion(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.Detail != "20-27" || result.Bytes != 7 {
+	if result.Detail != "20-75" || result.Bytes != 7 {
 		t.Fatalf("unexpected result: %+v", result)
 	}
-	if got := string(fake.Img.Data[20:27]); got != "payload" {
+	if got := string(fake.Img.Data[20+slackFrameHeaderSize : 20+slackFrameHeaderSize+7]); got != "payload" {
 		t.Fatalf("unexpected slack payload %q", got)
+	}
+	if got := fake.Img.Data[20:28]; string(got) != string(slackFrameMagic[:]) {
+		t.Fatalf("unexpected slack magic %q", got)
+	}
+}
+
+func TestSlackSpaceHideRejectsPayloadWhenFrameExceedsRegion(t *testing.T) {
+	fake := fakefs.New("/target")
+	fake.Entry("/target").Slack = []filesystem.SlackRegion{{Offset: 20, Length: slackFrameHeaderSize + 6}}
+	entry, err := fake.Open("/target")
+	if err != nil {
+		t.Fatal(err)
+	}
+	selected, err := Get(SlackSpace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = selected.Hide(entry, HideRequest{Data: []byte("payload"), Image: fake.Img})
+	if err == nil || !strings.Contains(err.Error(), "payload plus") {
+		t.Fatalf("Hide error = %v; want framed capacity error", err)
 	}
 }
 

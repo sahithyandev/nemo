@@ -2,7 +2,6 @@
 package technique
 
 import (
-	"errors"
 	"fmt"
 	"time"
 
@@ -80,36 +79,7 @@ type slackSpaceTechnique struct{}
 func (slackSpaceTechnique) Name() string { return SlackSpace }
 
 func (slackSpaceTechnique) Hide(entry filesystem.Entry, request HideRequest) (Result, error) {
-	capable, ok := entry.(filesystem.SlackSpaceCapable)
-	if !ok {
-		return Result{}, unsupported(SlackSpace)
-	}
-	if request.Image == nil {
-		return Result{}, errors.New("slack-space requires image-backed storage")
-	}
-	regions, err := capable.SlackRegions()
-	if err != nil {
-		return Result{}, fmt.Errorf("inspect slack regions: %w", err)
-	}
-	for _, region := range regions {
-		if region.Length < int64(len(request.Data)) {
-			continue
-		}
-		n, err := request.Image.WriteAt(request.Data, region.Offset)
-		if err != nil {
-			return Result{}, fmt.Errorf("write slack space: %w", err)
-		}
-		if n != len(request.Data) {
-			return Result{}, fmt.Errorf("write slack space: short write (%d of %d bytes)", n, len(request.Data))
-		}
-		return Result{
-			Technique: SlackSpace,
-			Target:    entry.Path(),
-			Detail:    fmt.Sprintf("%d-%d", region.Offset, region.Offset+int64(n)),
-			Bytes:     int64(n),
-		}, nil
-	}
-	return Result{}, fmt.Errorf("insufficient slack space for %d-byte payload", len(request.Data))
+	return writeSlackFrame(entry, request.Image, request.Data)
 }
 
 type timestompTechnique struct{}
