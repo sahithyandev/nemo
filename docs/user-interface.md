@@ -3,7 +3,7 @@ title: User Interface
 nav_order: 3
 ---
 
-# Nemo: User Interface
+# User Interface
 
 This describes the intended interface. Built today: `hide`, `detect`, `features`, `version`, `help`, all image mode only. `clear` and live mode are planned; where a section describes them, it is design intent.
 

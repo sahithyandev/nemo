@@ -3,7 +3,7 @@ title: Work Breakdown
 nav_order: 5
 ---
 
-# Nemo: Work Breakdown
+# Work Breakdown
 
 Numbered so each item maps 1:1 to a GitHub issue. Three owners, one per filesystem, plus a shared core that must land first.
 
