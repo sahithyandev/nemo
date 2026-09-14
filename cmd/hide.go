@@ -56,10 +56,10 @@ func defaultHideDependencies() hideDependencies {
 			recorder := custody.Wrap(img)
 			fs, err := filesystem.Open(recorder)
 			if err != nil {
-				_ = img.Close()
+				_ = recorder.Close()
 				return openedTarget{}, err
 			}
-			return openedTarget{filesystem: fs, image: recorder, close: img.Close}, nil
+			return openedTarget{filesystem: fs, image: recorder, close: recorder.Close}, nil
 		},
 		openLive: func(string) (openedTarget, error) {
 			return openedTarget{}, errors.New("live mode is unavailable: no native filesystem implementation is registered")
