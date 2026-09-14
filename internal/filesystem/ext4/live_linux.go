@@ -281,10 +281,7 @@ func (e *LiveEntry) SetTimestamp(field filesystem.TimeField, value time.Time) er
 	})
 }
 
-// LiveSlackError explains why raw block slack is unavailable in live mode.
+// LiveSlackError explains why mounted raw slack writes are refused.
 func LiveSlackError() error {
-	if os.Geteuid() != 0 {
-		return errors.New("ext4 live slack-space requires root privileges for raw-device access")
-	}
-	return errors.New("ext4 live slack-space is unsupported on a mounted filesystem: raw writes can corrupt ext4 metadata or cached data; use a disposable offline image")
+	return fmt.Errorf("ext4 live slack-space writes are unsupported on a mounted filesystem: raw writes can corrupt ext4 metadata or cached data; use a disposable offline image: %w", filesystem.ErrUnsupported)
 }
