@@ -142,5 +142,11 @@ build_gpt apfs-gpt APFS
 POPULATE_FN=populate
 build_bare apfs-bare
 
+# --- apfs-casesensitive.img: case-sensitive APFS volume -----------------
+# Exercises decodeDrecKey's plain (non-hashed) directory-record key layout,
+# which a case-insensitive volume never selects.
+POPULATE_FN=populate
+build_gpt apfs-casesensitive "Case-sensitive APFS"
+
 echo "done. sizes:"
 ls -lh apfs-*.img.gz

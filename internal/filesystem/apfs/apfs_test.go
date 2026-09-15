@@ -11,7 +11,7 @@ import (
 	"github.com/sahithyandev/nemo/internal/filesystem/fakefs"
 )
 
-var fixtures = []string{"apfs-bare", "apfs-gpt"}
+var fixtures = []string{"apfs-bare", "apfs-gpt", "apfs-casesensitive"}
 
 func TestContainerSuperblock(t *testing.T) {
 	for _, name := range fixtures {
