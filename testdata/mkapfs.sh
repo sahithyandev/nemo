@@ -58,6 +58,17 @@ populate() {
 	printf 'R%.0s' $(seq 6000) >"$1/rsrc.txt/..namedfork/rsrc"
 }
 
+# populate_manyfiles adds enough empty files to force the volume's filesystem
+# B-tree past a single node, so traversal exercises real multi-level descent.
+populate_manyfiles() {
+	populate "$1"
+	i=0
+	while [ "$i" -lt 2000 ]; do
+		: >"$1/$(printf 'f%04d' "$i")"
+		i=$((i + 1))
+	done
+}
+
 finish() {
 	# $1 = raw image path (no extension)
 	gzip -9 -f "$1"
@@ -147,6 +158,10 @@ build_bare apfs-bare
 # which a case-insensitive volume never selects.
 POPULATE_FN=populate
 build_gpt apfs-casesensitive "Case-sensitive APFS"
+
+# --- apfs-manyfiles.img: enough files to force a multi-level B-tree ----
+POPULATE_FN=populate_manyfiles
+build_gpt apfs-manyfiles APFS
 
 echo "done. sizes:"
 ls -lh apfs-*.img.gz

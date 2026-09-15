@@ -458,7 +458,48 @@ func fsKeyCompare(a, b []byte) int {
 	if aTyp == objTypeXattr {
 		aName, aOk := decodeXattrName(a)
 		bName, bOk := decodeXattrName(b)
-		if aOk && bOk && aName != bName {
+		// encodeJKey builds a bare 8-byte search key with no name at all, to
+		// seek the first xattr of an oid; a key that short can't decode a
+		// name here, but it must still sort before every real (named) xattr
+		// of that oid rather than tie with all of them, or a multi-leaf
+		// xattr set for one file misroutes exactly like the DIR_REC case
+		// below did before this comment was added.
+		switch {
+		case !aOk && !bOk:
+		case !aOk:
+			return -1
+		case !bOk:
+			return 1
+		case aName != bName:
+			if aName < bName {
+				return -1
+			}
+			return 1
+		}
+	}
+	if aTyp == objTypeDirRec {
+		aHash, aName, aHashed, aOk := drecSortKey(a)
+		bHash, bName, _, bOk := drecSortKey(b)
+		// Same reasoning as the xattr case above: encodeJKey's bare search
+		// key has no sub-key to decode, and must sort as the smallest
+		// possible DIR_REC for its oid rather than tie with every real
+		// entry. Without this, seeking the first DIR_REC of a directory
+		// with enough entries to span multiple leaves lands on the LAST
+		// leaf that has any (since a tie-everywhere run's search boundary
+		// falls at its end, not its start), silently dropping every entry
+		// before it.
+		switch {
+		case !aOk && !bOk:
+		case !aOk:
+			return -1
+		case !bOk:
+			return 1
+		case aHashed && aHash != bHash:
+			if aHash < bHash {
+				return -1
+			}
+			return 1
+		case aName != bName:
 			if aName < bName {
 				return -1
 			}
@@ -477,22 +518,36 @@ func fsKeyCompare(a, b []byte) int {
 // this parser needs), this tries the hashed layout first and falls back to
 // the plain layout if the result doesn't look like a valid, printable name.
 func decodeDrecKey(k []byte) (string, bool) {
+	_, name, _, ok := drecSortKey(k)
+	return name, ok
+}
+
+// drecSortKey extracts both the name and the on-disk ordering fields from a
+// DIR_REC key, using the same layout-detection trial as decodeDrecKey: try
+// the hashed layout (j_drec_hashed_key_t) first, falling back to the plain
+// layout (j_drec_key_t) if the result isn't a plausible printable name. For
+// a hashed key, hashed is true and hash is the raw length+hash u32, which is
+// the field the real on-disk tree is actually sorted by — the decoded name
+// alone is not enough to route a multi-leaf directory correctly, since
+// distinct names can decode with the same length prefix ambiguity that
+// isPrintableName's plausibility check can't resolve on its own.
+func drecSortKey(k []byte) (hash uint32, name string, hashed, ok bool) {
 	if len(k) >= 12 {
 		lh := binary.LittleEndian.Uint32(k[8:12])
 		nameLen, err := binutil.Bits(uint64(lh), 0, 10) // includes trailing NUL
 		if err == nil {
-			if name, ok := extractDrecName(k[12:], int(nameLen)); ok {
-				return name, true
+			if n, ok := extractDrecName(k[12:], int(nameLen)); ok {
+				return lh, n, true, true
 			}
 		}
 	}
 	if len(k) >= 10 {
 		nameLen := binary.LittleEndian.Uint16(k[8:10])
-		if name, ok := extractDrecName(k[10:], int(nameLen)); ok {
-			return name, true
+		if n, ok := extractDrecName(k[10:], int(nameLen)); ok {
+			return 0, n, false, true
 		}
 	}
-	return "", false
+	return 0, "", false, false
 }
 
 // extractDrecName trims a possible trailing NUL from raw[:nameLen] and
