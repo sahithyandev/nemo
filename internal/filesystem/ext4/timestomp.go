@@ -13,8 +13,10 @@ const (
 	goodOldInodeSize = 128
 
 	inodeAtimeOffset       = 8
+	inodeCtimeOffset       = 12
 	inodeMtimeOffset       = 16
 	inodeExtraIsizeOffset  = 128
+	inodeCtimeExtraOffset  = 132
 	inodeMtimeExtraOffset  = 136
 	inodeAtimeExtraOffset  = 140
 	inodeCrtimeOffset      = 144
@@ -122,6 +124,8 @@ func timestampLayout(raw []byte, field filesystem.TimeField) (inodeTimestampLayo
 		return inodeTimestampLayout{lowOffset: inodeMtimeOffset, extraOffset: inodeMtimeExtraOffset, hasExtra: has(inodeMtimeExtraOffset)}, nil
 	case filesystem.TimeAccessed:
 		return inodeTimestampLayout{lowOffset: inodeAtimeOffset, extraOffset: inodeAtimeExtraOffset, hasExtra: has(inodeAtimeExtraOffset)}, nil
+	case filesystem.TimeChanged:
+		return inodeTimestampLayout{lowOffset: inodeCtimeOffset, extraOffset: inodeCtimeExtraOffset, hasExtra: has(inodeCtimeExtraOffset)}, nil
 	case filesystem.TimeCreated:
 		if !has(inodeCrtimeOffset) {
 			return inodeTimestampLayout{}, fmt.Errorf("ext4: %w: %q requires i_crtime in the inode extra area", errTimestampFieldUnavailable, field)
