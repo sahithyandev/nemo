@@ -371,12 +371,22 @@ or corrupted image, not just a well-formed one.
 
 ## Testing
 
-`apfs_test.go`, `btree_test.go`, `btree_cursor_test.go`,
-`btree_write_test.go`, and `namedstream_test.go` build synthetic
-container and volume images byte by byte. The helpers for that live in
-`testimage_test.go`.
+`btree_test.go`, `btree_cursor_test.go`, and `btree_write_test.go` build
+synthetic node buffers byte by byte, pinning down exact on-disk layout
+assumptions (fixed vs. variable kv, root vs. non-root leaf encoding) without
+needing a full image.
 
-This means tests don't depend on an image produced by a real Mac. They run
-on any OS, and they pin down exact on-disk layout assumptions, things like
-fixed vs. variable kv, root vs. non-root leaf encoding, hashed vs. plain
-directory-record keys, and embedded vs. stream xattr values.
+`apfs_test.go`, `namedstream_test.go`, `timestomp_test.go`, and
+`fixtures_test.go` instead run against real APFS images produced by a real
+Mac: `testdata/apfs-{gpt,bare}.img.gz` and a handful of purpose-built
+variants (`apfs-casesensitive`, `apfs-manyfiles`, `apfs-16k`,
+`apfs-multivol`, `apfs-encrypted`), each exercising a parser path a plain
+volume can't reach on its own. `testimage_test.go`'s `loadImage` decompresses
+one into a private, writable temp copy per test. `testdata/mkapfs.sh`
+(macOS-only, builtin `hdiutil`/`newfs_apfs`/`diskutil`) generates the whole
+set; CI just consumes the committed `.gz` files and never regenerates them.
+A couple of on-disk states — multiple non-contiguous extents on one stream,
+a filesystem-owned xattr — turned out not to be reliably producible with
+only builtin macOS tooling, so `fixtures_test.go` fabricates those directly
+through the package's own unexported btree insert path instead of via a
+fixture.
