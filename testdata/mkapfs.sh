@@ -60,6 +60,9 @@ finish() {
 
 # --- apfs-gpt.img: default GPT-wrapped APFS container -----------------
 img=apfs-gpt.img
+if [ -f "$img.gz" ]; then
+	echo "$img.gz already exists, skipping"
+else
 rm -f "$img" "$img.gz"
 hdiutil create -size 32m -fs APFS -volname NEMO -ov "$img"
 mnt=$(hdiutil mount "${img}.dmg" | grep -o '/Volumes/[^ ]*' | head -1)
@@ -70,9 +73,13 @@ hdiutil detach "$current_dev" >/dev/null 2>&1 || hdiutil detach "$mnt"
 current_dev=""
 mv "$img.dmg" "$img"
 finish "$img"
+fi
 
 # --- apfs-bare.img: APFS container with no partition map --------------
 img=apfs-bare.img
+if [ -f "$img.gz" ]; then
+	echo "$img.gz already exists, skipping"
+else
 rm -f "$img" "$img.gz"
 hdiutil create -size 32m -layout NONE -ov "$img"
 current_dev=$(hdiutil attach -nomount "$img.dmg" -imagekey diskimage-class=CRawDiskImage | awk '{print $1; exit}')
@@ -99,6 +106,7 @@ hdiutil detach "$current_dev"
 current_dev=""
 mv "$img.dmg" "$img"
 finish "$img"
+fi
 
 echo "done. sizes:"
 ls -lh apfs-*.img.gz
