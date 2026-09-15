@@ -24,7 +24,7 @@ Options:
 - `--image, -i`: path to a raw disk image. If given, `hide` runs in image mode against that image instead of the live filesystem.
 - `--data, -d`: path to the file whose contents to hide. Required for `named-stream` and `slack-space`.
 - `--stream-name`: name of the stream to write (NTFS ADS name, xattr name, or APFS resource-fork stream name). Required for `named-stream`.
-- `--field`: which timestamp to alter (`created`, `modified`, or `accessed`). Required for `timestomp`.
+- `--field`: which timestamp to alter (`created`, `modified`, `accessed`, or `changed`). Required for `timestomp`.
 - `--timestamp`: the value to set the chosen timestamp field to, in RFC 3339 format. Required for `timestomp`.
 - `--manifest`: path to the backup manifest (default `nemo-manifest.jsonl`). For `slack-space`, `hide` appends the residual bytes it is about to overwrite to this JSON Lines file so a later `clear` can restore them; the hide aborts if the manifest cannot be written. See [Technique Interfaces](../architecture/technique.html) for the full backup contract.
 

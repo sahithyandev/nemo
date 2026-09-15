@@ -302,9 +302,24 @@ costs one tree scan per path component.
 object id, then scans forward, decoding one child per record until the
 `(oid, type)` no longer matches.
 
-An `apfs.Entry` implements `filesystem.NamedStreamCapable`. It does not
-implement slack-space or timestomp capability. Those are not built for
-APFS yet.
+An `apfs.Entry` implements `filesystem.NamedStreamCapable` and
+`filesystem.TimestompCapable` (`timestomp.go`). It does not implement
+slack-space capability. That is not built for APFS yet.
+
+## Timestomping (`timestomp.go`)
+
+The four timestamps live at fixed offsets in the `j_inode_val_t` INODE record:
+`create_time` (16), `mod_time` (24), `change_time` (32), `access_time` (40), each a
+`uint64` nanosecond count since the Unix epoch. `SetTimestamp` finds that record
+through `fsTree.rewriteLeaf` (the same in-place leaf rewrite `namedstream.go` uses)
+and overwrites 8 of its bytes, leaving the rest of the record, including `xfields`,
+untouched. The record's length never changes, so this is the same same-size-replace
+case `replaceXattr` already covers: no B-tree rebalance, no `btree_info_t` update
+beyond what `bumpRootKeyCount` already does for a zero-delta mutation.
+
+`change_time` maps to `filesystem.TimeChanged`, the fourth `TimeField`. It is the
+one MACB timestamp no live userland API can set; writing it through the image
+gives a stomp with no ctime/mtime mismatch to give it away.
 
 ## Limitations
 
@@ -331,8 +346,8 @@ Some things aren't attempted at all, not even refused with an error.
 - **The space manager and reaper.** Nothing here allocates or frees blocks.
   That's why every write path above is capped to "fits in what's already
   allocated."
-- **Slack-space access, timestomp, and live mode for APFS.** Not built yet.
-  See [Roadmap](../roadmap.html) items 19c/20d/21e.
+- **Slack-space access and live mode for APFS.** Not built yet. See
+  [Roadmap](../roadmap.html) items 20d/21e.
 
 ## Safety against crafted images
 
