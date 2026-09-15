@@ -44,3 +44,17 @@ func TestBlockSize16K(t *testing.T) {
 	}
 	entryFor(t, fs, "/hello.txt")
 }
+
+// TestMultiVolume loads apfs-multivol, a container with two volumes, and
+// confirms nemo mounts the first volume in nx_fs_oid (NEMO, carrying the
+// standard populate() set) rather than the second (NEMO2).
+func TestMultiVolume(t *testing.T) {
+	fs := openFS(t, loadImage(t, "apfs-multivol"))
+	if fs.volume.name != "NEMO" {
+		t.Fatalf("volume name = %q, want %q", fs.volume.name, "NEMO")
+	}
+	entryFor(t, fs, "/hello.txt")
+	if _, err := fs.Open("/second.txt"); err == nil {
+		t.Fatalf("Open(/second.txt): expected error (that file lives on NEMO2), got nil")
+	}
+}

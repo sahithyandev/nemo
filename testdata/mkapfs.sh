@@ -167,5 +167,31 @@ build_gpt apfs-manyfiles APFS
 POPULATE_FN=populate
 build_bare apfs-16k -b 16384
 
+# --- apfs-multivol.img: a second volume in the same container ---------
+# populate_multivol lands the standard file set in a *second* volume so a
+# test can confirm the parser mounts the first volume in nx_fs_oid (NEMO),
+# not this one.
+populate_multivol() {
+	containerdev=$(diskutil info "$1" | awk '/APFS Container:/{print $3; exit}')
+	diskutil apfs addVolume "$containerdev" APFS NEMO2 >/dev/null
+	mnt2="/Volumes/NEMO2"
+	i=0
+	while [ ! -d "$mnt2" ] && [ "$i" -lt 20 ]; do
+		sleep 0.5
+		i=$((i + 1))
+	done
+	[ -d "$mnt2" ] || {
+		echo "failed to find mounted NEMO2 volume" >&2
+		exit 1
+	}
+	printf 'this file lives on the second volume\n' >"$mnt2/second.txt"
+	diskutil unmount "$mnt2" >/dev/null
+	populate "$1"
+}
+POPULATE_FN=populate_multivol
+# APFS refuses to add a second volume to a container this small (~69493);
+# 600m is comfortably past whatever the real per-volume reserve threshold is.
+build_gpt apfs-multivol APFS 600m
+
 echo "done. sizes:"
 ls -lh apfs-*.img.gz
