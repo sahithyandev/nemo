@@ -163,5 +163,9 @@ build_gpt apfs-casesensitive "Case-sensitive APFS"
 POPULATE_FN=populate_manyfiles
 build_gpt apfs-manyfiles APFS
 
+# --- apfs-16k.img: 16 KiB block size, instead of the usual 4 KiB -------
+POPULATE_FN=populate
+build_bare apfs-16k -b 16384
+
 echo "done. sizes:"
 ls -lh apfs-*.img.gz

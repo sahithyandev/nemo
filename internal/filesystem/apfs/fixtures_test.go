@@ -33,3 +33,14 @@ func TestMultiLevelTree(t *testing.T) {
 		t.Fatalf("len(children) = %d, want >= 2000", len(children))
 	}
 }
+
+// TestBlockSize16K loads apfs-16k, the only fixture formatted with a
+// non-default block size, and confirms both the reported size and that
+// ordinary traversal still works at that size.
+func TestBlockSize16K(t *testing.T) {
+	fs := openFS(t, loadImage(t, "apfs-16k"))
+	if fs.blockSize != 16384 {
+		t.Fatalf("blockSize = %d, want 16384", fs.blockSize)
+	}
+	entryFor(t, fs, "/hello.txt")
+}
