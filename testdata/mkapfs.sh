@@ -133,12 +133,18 @@ build_bare() {
 		sleep 0.5
 		i=$((i + 1))
 	done
-	[ -d "$mnt" ] || {
-		echo "failed to mount $containerdev""s1 as $mnt" >&2
-		exit 1
-	}
-	[ -z "${POPULATE_FN:-}" ] || "$POPULATE_FN" "$mnt"
-	diskutil unmount "$mnt" >/dev/null
+	if [ -z "${POPULATE_FN:-}" ]; then
+		# An encrypted volume may refuse to auto-mount without key material;
+		# that's fine when nothing needs to be written to it.
+		[ -d "$mnt" ] || echo "note: $name did not mount (expected for an encrypted, unpopulated volume)"
+	else
+		[ -d "$mnt" ] || {
+			echo "failed to mount $containerdev""s1 as $mnt" >&2
+			exit 1
+		}
+		"$POPULATE_FN" "$mnt"
+		diskutil unmount "$mnt" >/dev/null
+	fi
 	hdiutil detach "$current_dev"
 	current_dev=""
 	mv "$img.dmg" "$img"
@@ -192,6 +198,12 @@ POPULATE_FN=populate_multivol
 # APFS refuses to add a second volume to a container this small (~69493);
 # 600m is comfortably past whatever the real per-volume reserve threshold is.
 build_gpt apfs-multivol APFS 600m
+
+# --- apfs-encrypted.img: an encrypted volume, deliberately unpopulated -
+# Exercises the parser's encrypted-volume refusal against a real APSB
+# rather than a synthetic flag flip. Nothing needs to be written to it.
+unset POPULATE_FN
+build_bare apfs-encrypted -E -S nemo-test-passphrase
 
 echo "done. sizes:"
 ls -lh apfs-*.img.gz
