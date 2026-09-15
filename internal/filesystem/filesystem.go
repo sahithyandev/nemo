@@ -52,12 +52,17 @@ const (
 	TimeCreated  TimeField = "created"
 	TimeModified TimeField = "modified"
 	TimeAccessed TimeField = "accessed"
+	// TimeChanged is metadata-change time (ext4 i_ctime, APFS change_time):
+	// kernel-controlled, not settable through any live userland API. A
+	// filesystem that can write it back through an image editor can produce
+	// a timestomp with no ctime/mtime mismatch to betray it.
+	TimeChanged TimeField = "changed"
 )
 
 // Valid reports whether f is one of the known timestamp fields.
 func (f TimeField) Valid() bool {
 	switch f {
-	case TimeCreated, TimeModified, TimeAccessed:
+	case TimeCreated, TimeModified, TimeAccessed, TimeChanged:
 		return true
 	default:
 		return false
