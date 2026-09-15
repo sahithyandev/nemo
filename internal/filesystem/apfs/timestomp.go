@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"math"
 	"time"
 
 	"github.com/sahithyandev/nemo/internal/filesystem"
@@ -93,8 +94,8 @@ func (f *FS) setTimestamp(oid uint64, field filesystem.TimeField, t time.Time) e
 	if err != nil {
 		return err
 	}
-	if t.Before(time.Unix(0, 0)) {
-		return fmt.Errorf("apfs: timestamp %s is before the Unix epoch, which j_inode_val_t cannot represent", t)
+	if t.Before(time.Unix(0, 0)) || t.After(time.Unix(0, math.MaxInt64)) {
+		return fmt.Errorf("apfs: timestamp %s is out of range for j_inode_val_t (must be between 1970 and 2262)", t)
 	}
 	ns := t.UnixNano()
 
