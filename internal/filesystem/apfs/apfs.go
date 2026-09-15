@@ -4,9 +4,10 @@
 //
 // Named streams (extended attributes and the resource fork) are implemented
 // in namedstream.go, with an in-place, no-allocation write path: see that
-// file's doc comment for what it can and cannot change. Timestomp, slack
-// space, and live mode are not implemented here; see docs/work-breakdown.md
-// items 19c/20d/21e.
+// file's doc comment for what it can and cannot change. Timestomp is
+// implemented in timestomp.go, patching the fixed-offset fields of the
+// INODE record in place. Slack space and live mode are not implemented
+// here; see docs/work-breakdown.md items 20d/21e.
 //
 // # Limitations
 //
@@ -45,7 +46,7 @@ func init() {
 		Type:       filesystem.TypeAPFS,
 		Sniff:      sniff,
 		New:        New,
-		Techniques: []string{"named-stream"},
+		Techniques: []string{"named-stream", "timestomp"},
 	})
 }
 
