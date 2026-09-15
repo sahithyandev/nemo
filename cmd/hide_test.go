@@ -52,7 +52,7 @@ func TestHideRejectsMissingAndIncompatibleFlagsBeforeOpeningTarget(t *testing.T)
 		{name: "slack data", args: []string{"/target", "-t", "slack-space"}, want: "--data is required"},
 		{name: "slack incompatible", args: []string{"/target", "-t", "slack-space", "--data", "payload", "--stream-name", "secret"}, want: "incompatible"},
 		{name: "timestomp field", args: []string{"/target", "-t", "timestomp", "--timestamp", "2026-08-23T12:00:00Z"}, want: "--field is required"},
-		{name: "timestomp field value", args: []string{"/target", "-t", "timestomp", "--field", "changed", "--timestamp", "2026-08-23T12:00:00Z"}, want: "created, modified, or accessed"},
+		{name: "timestomp field value", args: []string{"/target", "-t", "timestomp", "--field", "birth", "--timestamp", "2026-08-23T12:00:00Z"}, want: "created, modified, accessed, or changed"},
 		{name: "timestomp timestamp", args: []string{"/target", "-t", "timestomp", "--field", "modified"}, want: "--timestamp is required"},
 		{name: "timestomp format", args: []string{"/target", "-t", "timestomp", "--field", "modified", "--timestamp", "yesterday"}, want: "RFC 3339"},
 		{name: "timestomp incompatible", args: []string{"/target", "-t", "timestomp", "--field", "modified", "--timestamp", "2026-08-23T12:00:00Z", "--data", "payload"}, want: "incompatible"},

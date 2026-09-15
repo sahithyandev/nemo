@@ -60,7 +60,7 @@ func newClearCommand(dependencies clearDependencies) *cobra.Command {
 	flags.StringVarP(&options.technique, "technique", "t", "", "technique: named-stream, slack-space, or timestomp (required)")
 	flags.StringVarP(&options.image, "image", "i", "", "raw disk image path (selects image mode)")
 	flags.StringVar(&options.streamName, "stream-name", "", "stream to delete (required for named-stream)")
-	flags.StringVar(&options.field, "field", "", "timestamp field: created, modified, or accessed (required for timestomp)")
+	flags.StringVar(&options.field, "field", "", "timestamp field: created, modified, accessed, or changed (required for timestomp)")
 	flags.StringVar(&options.timestamp, "timestamp", "", "original RFC 3339 timestamp to restore (required for timestomp)")
 	flags.StringVar(&options.manifest, "manifest", technique.ManifestName, "backup manifest for slack restoration; explicit paths require a matching backup")
 	return command
@@ -182,7 +182,7 @@ func validateClear(command *cobra.Command, options clearOptions) (technique.Tech
 			return nil, time.Time{}, errors.New("--field is required for timestomp")
 		}
 		if !validTimeField(options.field) {
-			return nil, time.Time{}, errors.New("--field must be created, modified, or accessed")
+			return nil, time.Time{}, errors.New("--field must be created, modified, accessed, or changed")
 		}
 		if options.timestamp == "" {
 			return nil, time.Time{}, errors.New("--timestamp is required for timestomp")

@@ -95,7 +95,7 @@ func TestEntryReportsTimestampSupportFromInodeLayout(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			entry := timestampTestEntry(t, syntheticTimestampImage(test.extraIsize))
-			for _, field := range []filesystem.TimeField{filesystem.TimeModified, filesystem.TimeAccessed} {
+			for _, field := range []filesystem.TimeField{filesystem.TimeModified, filesystem.TimeAccessed, filesystem.TimeChanged} {
 				got, err := entry.SupportsTimestamp(field)
 				if err != nil || !got {
 					t.Fatalf("SupportsTimestamp(%q) = %v, %v; want true", field, got, err)
@@ -130,6 +130,7 @@ func TestEntryTimestampRoundTripRestoresOriginalInode(t *testing.T) {
 		filesystem.TimeCreated:  mustRFC3339(t, "2038-01-19T03:14:08.123456789Z"),
 		filesystem.TimeModified: mustRFC3339(t, "1969-12-31T23:59:59.987654321Z"),
 		filesystem.TimeAccessed: mustRFC3339(t, "2310-04-04T16:10:40.000000001Z"),
+		filesystem.TimeChanged:  mustRFC3339(t, "2174-02-25T09:42:23.555000111Z"),
 	}
 	for field, value := range originals {
 		writeTimestampFixture(t, raw, field, value)

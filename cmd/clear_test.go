@@ -71,7 +71,7 @@ func TestClearValidationBeforeOpening(t *testing.T) {
 		{[]string{"/a", "-t", "slack-space", "--stream-name=s"}, "incompatible"},
 		{[]string{"/a", "-t", "slack-space", "--timestamp=x"}, "incompatible"},
 		{[]string{"/a", "-t", "timestomp"}, "--field is required"},
-		{[]string{"/a", "-t", "timestomp", "--field=x"}, "created, modified, or accessed"},
+		{[]string{"/a", "-t", "timestomp", "--field=x"}, "created, modified, accessed, or changed"},
 		{[]string{"/a", "-t", "timestomp", "--field=modified"}, "--timestamp is required"},
 		{[]string{"/a", "-t", "timestomp", "--field=modified", "--timestamp=yesterday"}, "RFC 3339"},
 		{[]string{"/a", "-t", "timestomp", "--field=modified", "--timestamp=0001-01-01T00:00:00Z"}, "non-zero"},

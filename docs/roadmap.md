@@ -90,11 +90,11 @@ Acceptance for each: `nemo hide`/`detect`/`clear` with `--technique <x>` succeed
 
 ### APFS (owner: APFS dev)
 
-17a done (parser and `Detector` registered, no techniques wired). Rest not started.
+17a, 18b, 19c done. 20d and 21e not started.
 
 **17a. APFS core parser (done)**: `apfs.go`, `btree.go`; registers `Detector`. Depends on: 5.
 **18b. APFS named streams (done)**: `namedstream.go` (xattr + resource fork), `btree_write.go` (in-place B-tree leaf rewrite), `NamedStreamCapable`. Depends on: 17a, 6.
-**19c. APFS timestomp**: `timestomp.go`. Depends on: 17a, 6.
+**19c. APFS timestomp (done)**: `timestomp.go`, `TimestompCapable`. Depends on: 17a, 6.
 **20d. APFS slack space**: `slack.go`. Depends on: 17a, 6.
 **21e. APFS live mode**: `live_darwin.go`, `live_stub.go`. Depends on: 18b, 19c.
 

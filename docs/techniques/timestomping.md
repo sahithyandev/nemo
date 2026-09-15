@@ -161,27 +161,41 @@ and errors on a zero value (`timestompTechnique.Clear`). There is no manifest
 path for timestomp the way there is for slack-space, because `hide` has no
 original value to record.
 
-`internal/filesystem/ext4/timestomp.go` already implements `Timestamp` (a reader)
-and `SupportsTimestamp` for its own use. They are just not part of the shared
-capability interface yet, so the technique layer cannot call them. Wiring a
-reader into `TimestompCapable` is step one of that follow-up.
+`internal/filesystem/ext4/timestomp.go` and `internal/filesystem/apfs/timestomp.go`
+already implement `Timestamp` (a reader), ext4 with `SupportsTimestamp` alongside it,
+for their own use. Neither is part of the shared capability interface yet, so the
+technique layer cannot call them. Wiring a reader into `TimestompCapable` is step one
+of that follow-up.
 
 ## How nemo implements it
 
 `timestompTechnique` (`internal/technique/technique.go`):
 
-- `hide` requires `--field` (`created`, `modified`, or `accessed`) and a non-zero
-  `--timestamp` in RFC 3339, then calls `SetTimestamp`.
+- `hide` requires `--field` (`created`, `modified`, `accessed`, or `changed`) and a
+  non-zero `--timestamp` in RFC 3339, then calls `SetTimestamp`.
 - `detect` always returns no findings, as above.
 - `clear` requires `--field` and the original `--timestamp`, then calls
   `SetTimestamp` to put it back.
 
-ext4 is implemented. `internal/filesystem/ext4/timestomp.go` writes the full
-inode in one `WriteAt`, so `custody.Wrap` sees the mutation, and it refreshes the
-inode checksum when `metadata_csum` is enabled.
+`changed` (`filesystem.TimeChanged`) maps to `i_ctime` on ext4 and `change_time` on
+APFS: the one MACB field the kernel sets on its own and no live userland API lets a
+process write. Editing the image directly bypasses that, so `hide --field changed`
+sets exactly what a live attacker cannot, closing the "old mtime, fresh ctime" gap
+that otherwise gives a stomp away.
 
-APFS and NTFS are pending. APFS needs the inode-record fields written back to the
-B-tree. NTFS needs `$SI`, and to be thorough `$FN`, in the MFT record.
+ext4 and APFS are implemented. `internal/filesystem/ext4/timestomp.go` writes the
+full inode in one `WriteAt`, so `custody.Wrap` sees the mutation, and it refreshes
+the inode checksum when `metadata_csum` is enabled. `internal/filesystem/apfs/timestomp.go`
+patches the four `uint64` nanosecond fields of the `j_inode_val_t` INODE record in
+place, through the same in-place B-tree leaf rewrite `namedstream.go` uses for
+xattrs (see `btree_write.go`): the record's size does not change, so the existing
+checksum and `btree_info_t` handling covers it without any new machinery.
+
+NTFS is pending; it needs `$SI`, and to be thorough `$FN`, in the MFT record.
+
+A timestomp still leaves independent copies of the dates behind. On APFS
+specifically: the directory entry's own `date_added` (`j_drec_val_t`), Spotlight
+metadata, and local snapshots all keep the value as it was before the stomp.
 
 `fakefs.Entry.SetTimestamp` (`internal/filesystem/fakefs/fakefs.go`) is the test
 double.

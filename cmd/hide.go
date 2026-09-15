@@ -91,7 +91,7 @@ func newHideCommand(dependencies hideDependencies) *cobra.Command {
 	flags.StringVarP(&options.image, "image", "i", "", "raw disk image path (selects image mode)")
 	flags.StringVarP(&options.data, "data", "d", "", "payload file path (required for named-stream and slack-space)")
 	flags.StringVar(&options.streamName, "stream-name", "", "stream name (required for named-stream)")
-	flags.StringVar(&options.field, "field", "", "timestamp field: created, modified, or accessed (required for timestomp)")
+	flags.StringVar(&options.field, "field", "", "timestamp field: created, modified, accessed, or changed (required for timestomp)")
 	flags.StringVar(&options.timestamp, "timestamp", "", "RFC 3339 timestamp value (required for timestomp)")
 	flags.StringVar(&options.manifest, "manifest", technique.ManifestName, "path to the backup manifest (records overwritten slack bytes so clear can restore them)")
 
@@ -195,7 +195,7 @@ func validateHide(command *cobra.Command, options hideOptions) (technique.Techni
 			return nil, time.Time{}, errors.New("--field is required for timestomp")
 		}
 		if !validTimeField(options.field) {
-			return nil, time.Time{}, errors.New("--field must be created, modified, or accessed")
+			return nil, time.Time{}, errors.New("--field must be created, modified, accessed, or changed")
 		}
 		if options.timestamp == "" {
 			return nil, time.Time{}, errors.New("--timestamp is required for timestomp")
@@ -214,10 +214,5 @@ func validateHide(command *cobra.Command, options hideOptions) (technique.Techni
 }
 
 func validTimeField(field string) bool {
-	switch filesystem.TimeField(field) {
-	case filesystem.TimeCreated, filesystem.TimeModified, filesystem.TimeAccessed:
-		return true
-	default:
-		return false
-	}
+	return filesystem.TimeField(field).Valid()
 }

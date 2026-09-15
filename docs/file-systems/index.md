@@ -17,7 +17,7 @@ Per-filesystem parser docs: detection, mounting, on-disk structures, and the in-
 | Filesystem | detection | traversal | named streams | slack space | timestomp |
 | ---------- | --------- | --------- | -------------- | ----------- | --------- |
 | NTFS | done | done | done, resident and non-resident | not built | not built |
-| APFS | done | done | done, embedded and stream-backed | not built | not built |
+| APFS | done | done | done, embedded and stream-backed | not built | done |
 | ext4 | done | done | done, in-inode and external block | not built | done |
 
 Each parser refuses any on-disk layout it doesn't fully understand with a clear error, rather than guessing. See each page's Limitations section for the specific refusals.
