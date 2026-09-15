@@ -6,16 +6,22 @@
 # .img.gz files are the source of truth; re-run this only when the fixture
 # set itself needs to change, then commit the new .img.gz files.
 #
-# Each image gets the same small file set written into its volume:
-#   hello.txt      - plain small file
-#   xattr.txt      - small file with a "user.nemo.test" xattr
-#   slack.bin      - file sized to leave a partial trailing block (slack space)
+# Every image gets the same small file set written into its volume (see
+# populate() below), plus whatever extra content its own recipe adds.
 #
-# Usage: sh testdata/mkapfs.sh
+# Usage: sh testdata/mkapfs.sh [-f|--force]
+#   -f, --force   rebuild every image even if its .img.gz already exists
 
 set -eu
 
 cd "$(dirname "$0")"
+
+force=0
+for arg in "$@"; do
+	case "$arg" in
+	-f | --force) force=1 ;;
+	esac
+done
 
 # Tracks the disk currently attached mid-script, so a failure partway through
 # still detaches it instead of leaving it mounted for the next run to trip
@@ -29,7 +35,8 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 # Detach anything left attached by a previous failed run of this script.
-for f in apfs-gpt.img.dmg apfs-bare.img.dmg; do
+for f in apfs-*.img.dmg; do
+	[ -e "$f" ] || continue
 	dev=$(hdiutil info | awk -v f="$f" '$0 ~ f {getline; print $1; exit}')
 	[ -n "$dev" ] && hdiutil detach "$dev" >/dev/null 2>&1 || true
 done
@@ -51,6 +58,17 @@ populate() {
 	printf 'R%.0s' $(seq 6000) >"$1/rsrc.txt/..namedfork/rsrc"
 }
 
+# populate_manyfiles adds enough empty files to force the volume's filesystem
+# B-tree past a single node, so traversal exercises real multi-level descent.
+populate_manyfiles() {
+	populate "$1"
+	i=0
+	while [ "$i" -lt 2000 ]; do
+		: >"$1/$(printf 'f%04d' "$i")"
+		i=$((i + 1))
+	done
+}
+
 finish() {
 	# $1 = raw image path (no extension)
 	gzip -9 -f "$1"
@@ -58,47 +76,134 @@ finish() {
 	echo "wrote $1.gz"
 }
 
-# --- apfs-gpt.img: default GPT-wrapped APFS container -----------------
-img=apfs-gpt.img
-rm -f "$img" "$img.gz"
-hdiutil create -size 32m -fs APFS -volname NEMO -ov "$img"
-mnt=$(hdiutil mount "${img}.dmg" | grep -o '/Volumes/[^ ]*' | head -1)
-[ -n "$mnt" ] || mnt="/Volumes/NEMO"
-current_dev=$(hdiutil info | awk -v f="$img.dmg" '$0 ~ f {getline; print $1; exit}')
-populate "$mnt"
-hdiutil detach "$current_dev" >/dev/null 2>&1 || hdiutil detach "$mnt"
-current_dev=""
-mv "$img.dmg" "$img"
-finish "$img"
+# build_gpt builds a GPT-wrapped APFS container.
+#   $1 = image base name (e.g. apfs-gpt), no extension
+#   $2 = diskutil/hdiutil filesystem personality (e.g. APFS, APFSX)
+# POPULATE_FN, if set, names the function to populate the mounted volume;
+# unset it to leave the volume empty.
+build_gpt() {
+	name=$1
+	personality=$2
+	size=${3:-32m}
+	if [ -f "$name.img.gz" ] && [ "$force" -ne 1 ]; then
+		echo "$name.img.gz already exists, skipping"
+		return
+	fi
+	img="$name.img"
+	rm -f "$img" "$img.gz"
+	hdiutil create -size "$size" -fs "$personality" -volname NEMO -ov "$img"
+	mnt=$(hdiutil mount "${img}.dmg" | grep -o '/Volumes/[^ ]*' | head -1)
+	[ -n "$mnt" ] || mnt="/Volumes/NEMO"
+	[ -z "${POPULATE_FN:-}" ] || "$POPULATE_FN" "$mnt"
+	hdiutil detach "$mnt"
+	mv "$img.dmg" "$img"
+	finish "$img"
+}
 
-# --- apfs-bare.img: APFS container with no partition map --------------
-img=apfs-bare.img
-rm -f "$img" "$img.gz"
-hdiutil create -size 32m -layout NONE -ov "$img"
-current_dev=$(hdiutil attach -nomount "$img.dmg" -imagekey diskimage-class=CRawDiskImage | awk '{print $1; exit}')
-newfs_apfs -v NEMO "$current_dev"
-# newfs_apfs on a raw, partition-less disk creates a synthesized container
-# disk distinct from the physical store ($current_dev) we attached; mount its
-# volume, not $current_dev itself.
-containerdev=$(diskutil apfs list | awk -v phys="${current_dev##*/}" '
-	/Container disk/ { c = $3 }
-	$0 ~ ("Physical Store " phys) { print c; exit }
-')
-mnt="/Volumes/NEMO"
-i=0
-while [ ! -d "$mnt" ] && [ "$i" -lt 20 ]; do
-	diskutil mount "${containerdev}s1" >/dev/null 2>&1 || true
-	[ -d "$mnt" ] && break
-	sleep 0.5
-	i=$((i + 1))
-done
-[ -d "$mnt" ] || { echo "failed to mount $containerdev""s1 as $mnt" >&2; exit 1; }
-populate "$mnt"
-diskutil unmount "$mnt" >/dev/null
-hdiutil detach "$current_dev"
-current_dev=""
-mv "$img.dmg" "$img"
-finish "$img"
+# build_bare builds an APFS container with no partition map, formatted via
+# newfs_apfs directly (the only way to pass block-size/encryption flags).
+#   $1   = image base name, no extension
+#   rest = extra newfs_apfs arguments (before the device path); always
+#          mounts/expects volume name NEMO
+# POPULATE_FN works the same as in build_gpt.
+build_bare() {
+	name=$1
+	shift
+	if [ -f "$name.img.gz" ] && [ "$force" -ne 1 ]; then
+		echo "$name.img.gz already exists, skipping"
+		return
+	fi
+	img="$name.img"
+	rm -f "$img" "$img.gz"
+	hdiutil create -size 32m -layout NONE -ov "$img"
+	current_dev=$(hdiutil attach -nomount "$img.dmg" -imagekey diskimage-class=CRawDiskImage | awk '{print $1; exit}')
+	newfs_apfs "$@" -v NEMO "$current_dev"
+	# newfs_apfs on a raw, partition-less disk creates a synthesized container
+	# disk distinct from the physical store ($current_dev) we attached; mount
+	# its volume, not $current_dev itself.
+	containerdev=$(diskutil apfs list | awk -v phys="${current_dev##*/}" '
+		/Container disk/ { c = $3 }
+		$0 ~ ("Physical Store " phys) { print c; exit }
+	')
+	mnt="/Volumes/NEMO"
+	i=0
+	while [ ! -d "$mnt" ] && [ "$i" -lt 20 ]; do
+		diskutil mount "${containerdev}s1" >/dev/null 2>&1 || true
+		[ -d "$mnt" ] && break
+		sleep 0.5
+		i=$((i + 1))
+	done
+	if [ -z "${POPULATE_FN:-}" ]; then
+		# An encrypted volume may refuse to auto-mount without key material;
+		# that's fine when nothing needs to be written to it.
+		[ -d "$mnt" ] || echo "note: $name did not mount (expected for an encrypted, unpopulated volume)"
+	else
+		[ -d "$mnt" ] || {
+			echo "failed to mount $containerdev""s1 as $mnt" >&2
+			exit 1
+		}
+		"$POPULATE_FN" "$mnt"
+		diskutil unmount "$mnt" >/dev/null
+	fi
+	hdiutil detach "$current_dev"
+	current_dev=""
+	mv "$img.dmg" "$img"
+	finish "$img"
+}
+
+# --- apfs-gpt.img: default GPT-wrapped APFS container ------------------
+POPULATE_FN=populate
+build_gpt apfs-gpt APFS
+
+# --- apfs-bare.img: APFS container with no partition map ---------------
+POPULATE_FN=populate
+build_bare apfs-bare
+
+# --- apfs-casesensitive.img: case-sensitive APFS volume -----------------
+# Exercises decodeDrecKey's plain (non-hashed) directory-record key layout,
+# which a case-insensitive volume never selects.
+POPULATE_FN=populate
+build_gpt apfs-casesensitive "Case-sensitive APFS"
+
+# --- apfs-manyfiles.img: enough files to force a multi-level B-tree ----
+POPULATE_FN=populate_manyfiles
+build_gpt apfs-manyfiles APFS
+
+# --- apfs-16k.img: 16 KiB block size, instead of the usual 4 KiB -------
+POPULATE_FN=populate
+build_bare apfs-16k -b 16384
+
+# --- apfs-multivol.img: a second volume in the same container ---------
+# populate_multivol lands the standard file set in a *second* volume so a
+# test can confirm the parser mounts the first volume in nx_fs_oid (NEMO),
+# not this one.
+populate_multivol() {
+	containerdev=$(diskutil info "$1" | awk '/APFS Container:/{print $3; exit}')
+	diskutil apfs addVolume "$containerdev" APFS NEMO2 >/dev/null
+	mnt2="/Volumes/NEMO2"
+	i=0
+	while [ ! -d "$mnt2" ] && [ "$i" -lt 20 ]; do
+		sleep 0.5
+		i=$((i + 1))
+	done
+	[ -d "$mnt2" ] || {
+		echo "failed to find mounted NEMO2 volume" >&2
+		exit 1
+	}
+	printf 'this file lives on the second volume\n' >"$mnt2/second.txt"
+	diskutil unmount "$mnt2" >/dev/null
+	populate "$1"
+}
+POPULATE_FN=populate_multivol
+# APFS refuses to add a second volume to a container this small (~69493);
+# 600m is comfortably past whatever the real per-volume reserve threshold is.
+build_gpt apfs-multivol APFS 600m
+
+# --- apfs-encrypted.img: an encrypted volume, deliberately unpopulated -
+# Exercises the parser's encrypted-volume refusal against a real APSB
+# rather than a synthetic flag flip. Nothing needs to be written to it.
+unset POPULATE_FN
+build_bare apfs-encrypted -E -S nemo-test-passphrase
 
 echo "done. sizes:"
 ls -lh apfs-*.img.gz
