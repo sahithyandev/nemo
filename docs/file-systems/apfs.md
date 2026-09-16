@@ -302,9 +302,9 @@ costs one tree scan per path component.
 object id, then scans forward, decoding one child per record until the
 `(oid, type)` no longer matches.
 
-An `apfs.Entry` implements `filesystem.NamedStreamCapable` and
-`filesystem.TimestompCapable` (`timestomp.go`). It does not implement
-slack-space capability. That is not built for APFS yet.
+An `apfs.Entry` implements `filesystem.NamedStreamCapable`,
+`filesystem.TimestompCapable` (`timestomp.go`), and
+`filesystem.SlackSpaceCapable` (`slack.go`).
 
 ## Timestomping (`timestomp.go`)
 
@@ -320,6 +320,52 @@ beyond what `bumpRootKeyCount` already does for a zero-delta mutation.
 `change_time` maps to `filesystem.TimeChanged`, the fourth `TimeField`. It is the
 one MACB timestamp no live userland API can set; writing it through the image
 gives a stomp with no ctime/mtime mismatch to give it away.
+
+## Slack space (`slack.go`)
+
+`Entry.SlackRegions` reports the unused tail bytes past a file's logical
+size, as absolute byte offsets into the caller's `image.Image` (not into
+`FS.img`, which for a GPT-wrapped container is a partition-relative
+`section`; `slack.go` adds the container's own byte offset, `FS.base`, back
+in). Nemo's technique layer (`internal/technique`) does the actual
+hide/detect/clear against those regions: this package only has to say where
+they are.
+
+A file's content is a data stream described by a `j_dstream_t`, which isn't
+a fixed-offset field of `j_inode_val_t` like the timestamps are. It's an
+extended field (xfield), `INO_EXT_TYPE_DSTREAM`, appended after the
+92-byte fixed part. `inodeDStream` walks the xfield table (`xf_blob_t` +
+`x_field_t[]` + values, each value padded up to the next 8-byte boundary) to
+find it. The stream's actual blocks are then read the same way a
+stream-backed xattr's are, via `extentsOf`, keyed by the inode's
+`private_id` (offset 8) rather than the inode's own object id.
+
+Slack is computed per extent, not once across the whole file: extents are
+not necessarily contiguous on disk, so a single region spanning two of them
+could point at unrelated blocks. Since every extent's length is a whole
+number of blocks, this also means a region never crosses a block boundary
+without meaning to.
+
+Two layouts make the dstream's logical size meaningless, so `SlackRegions`
+refuses them with an error wrapping `filesystem.ErrUnsupported` rather than
+silently reporting a wrong (or simply absent) region:
+
+- **HFS-style compression.** A `com.apple.decmpfs` xattr means the
+  dstream's bytes are compressed, or that the real content lives in the
+  xattr or resource fork instead.
+- **Per-file encryption.** A `default_crypto_id` that isn't `0` (no
+  per-file key) or `CRYPTO_SW_ID` means the dstream's plaintext bytes are
+  encrypted with a key this parser doesn't have.
+
+A directory, an empty file, or an inode with no `DSTREAM` xfield at all
+(e.g. a symlink) reports no regions and no error: hide then fails through
+the ordinary "insufficient slack space" path instead of turning a
+whole-image `detect` scan into a hard stop on the first file it can't use.
+
+Slack space in a block a clone shares with another file isn't detected as
+unsafe: nemo doesn't read `EXTENT_REF`/reference-count records, so writing
+there could corrupt the clone's own content. Sparse (hole) extents are
+already refused by `extentsOf`, before `slack.go` ever sees them.
 
 ## Limitations
 
@@ -346,8 +392,10 @@ Some things aren't attempted at all, not even refused with an error.
 - **The space manager and reaper.** Nothing here allocates or frees blocks.
   That's why every write path above is capped to "fits in what's already
   allocated."
-- **Slack-space access and live mode for APFS.** Not built yet. See
-  [Roadmap](../roadmap.html) items 20d/21e.
+- **Clone-aware slack safety.** `slack.go` doesn't check whether a block is
+  shared between clones before reporting it as slack.
+- **Live mode for APFS.** Not built yet. See [Roadmap](../roadmap.html)
+  item 21e.
 
 ## Safety against crafted images
 
@@ -376,9 +424,9 @@ synthetic node buffers byte by byte, pinning down exact on-disk layout
 assumptions (fixed vs. variable kv, root vs. non-root leaf encoding) without
 needing a full image.
 
-`apfs_test.go`, `namedstream_test.go`, `timestomp_test.go`, and
-`fixtures_test.go` instead run against real APFS images produced by a real
-Mac: `testdata/apfs-{gpt,bare}.img.gz` and a handful of purpose-built
+`apfs_test.go`, `namedstream_test.go`, `timestomp_test.go`, `slack_test.go`,
+and `fixtures_test.go` instead run against real APFS images produced by a
+real Mac: `testdata/apfs-{gpt,bare}.img.gz` and a handful of purpose-built
 variants (`apfs-casesensitive`, `apfs-manyfiles`, `apfs-16k`,
 `apfs-multivol`, `apfs-encrypted`), each exercising a parser path a plain
 volume can't reach on its own. `testimage_test.go`'s `loadImage` decompresses
