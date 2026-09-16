@@ -353,9 +353,9 @@ silently reporting a wrong (or simply absent) region:
 - **HFS-style compression.** A `com.apple.decmpfs` xattr means the
   dstream's bytes are compressed, or that the real content lives in the
   xattr or resource fork instead.
-- **Per-file encryption.** A `default_crypto_id` that isn't `0` (no
-  per-file key) or `CRYPTO_SW_ID` means the dstream's plaintext bytes are
-  encrypted with a key this parser doesn't have.
+- **Per-file encryption.** A non-zero `default_crypto_id` is refused
+  outright, rather than special-casing any particular value as "not really
+  encrypted": this parser has no key material to confirm that against.
 
 A directory, an empty file, or an inode with no `DSTREAM` xfield at all
 (e.g. a symlink) reports no regions and no error: hide then fails through

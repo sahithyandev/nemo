@@ -24,12 +24,6 @@ const (
 	inoExtTypeDstream = 8  // INO_EXT_TYPE_DSTREAM
 	dstreamSize       = 40 // sizeof(j_dstream_t)
 
-	// cryptoSWID is CRYPTO_SW_ID: the one non-zero default_crypto_id this
-	// parser treats as "not actually encrypting this file's content" (it
-	// covers unprotected files on a otherwise key-rolled volume). Any other
-	// non-zero id means per-file encryption this parser has no key for.
-	cryptoSWID = 4
-
 	// decmpfsXattrName is the xattr APFS uses to mark and describe an
 	// HFS-compression-style compressed file: when present, the dstream's
 	// bytes are compressed (or the "real" content lives in the xattr/resource
@@ -159,7 +153,11 @@ func (f *FS) slackRegions(e *Entry) ([]filesystem.SlackRegion, error) {
 	if !ok || ds.size == 0 {
 		return nil, nil
 	}
-	if ds.defaultCryptoID != 0 && ds.defaultCryptoID != cryptoSWID {
+	// default_crypto_id 0 means "no per-file crypto context"; every other
+	// value is refused rather than special-cased, since this parser has no
+	// way to confirm any particular non-zero id is safe to treat as
+	// plaintext without key material to check it against.
+	if ds.defaultCryptoID != 0 {
 		return nil, fmt.Errorf("%q uses per-file encryption (crypto id %d): %w", e.path, ds.defaultCryptoID, filesystem.ErrUnsupported)
 	}
 

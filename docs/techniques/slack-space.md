@@ -92,10 +92,10 @@ filesystem is how the regions get computed.
   partial one gets a region for each. The logical size and physical extents
   come from the inode's `j_dstream_t` extended field, keyed by its
   `private_id`, the same lookup a stream-backed xattr's data uses.
-- A `com.apple.decmpfs`-compressed file, or one whose data stream uses per-file
-  encryption (a `default_crypto_id` outside `{0, CRYPTO_SW_ID}`), is refused
-  outright rather than given a region computed against a meaningless logical
-  size. See [the APFS parser doc](../file-systems/apfs.html#slack-space-slackgo)
+- A `com.apple.decmpfs`-compressed file, or one whose data stream carries any
+  non-zero `default_crypto_id` (per-file encryption), is refused outright
+  rather than given a region computed against a meaningless logical size.
+  See [the APFS parser doc](../file-systems/apfs.html#slack-space-slackgo)
   for the details.
 - The copy-on-write caveat matters here more than anywhere else. APFS never
   overwrites a live block. Any modification to the file, including one the OS
