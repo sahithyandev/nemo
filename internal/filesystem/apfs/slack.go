@@ -19,7 +19,7 @@ import (
 //
 // The FILE_EXTENT records that actually hold the stream's physical blocks
 // are keyed by j_inode_val_t's private_id (offset 8), not by the inode's own
-// object id — usually the same value, but not guaranteed once clones exist.
+// object id: usually the same value, but not guaranteed once clones exist.
 const (
 	inoExtTypeDstream = 8  // INO_EXT_TYPE_DSTREAM
 	dstreamSize       = 40 // sizeof(j_dstream_t)

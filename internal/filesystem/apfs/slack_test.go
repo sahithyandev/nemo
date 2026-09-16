@@ -469,8 +469,8 @@ func TestSlackRegionsEmptyFile(t *testing.T) {
 
 // TestSlackRegionsCompressedRefused inserts a filesystem-owned
 // com.apple.decmpfs xattr (the same technique fixtures_test.go's
-// TestSystemOwnedXattrRefused uses — real HFS compression turns out not to
-// be reliably producible with only builtin macOS tooling) and confirms
+// TestSystemOwnedXattrRefused uses, since real HFS compression turns out not
+// to be reliably producible with only builtin macOS tooling) and confirms
 // SlackRegions refuses to report a region computed against a meaningless
 // logical size.
 func TestSlackRegionsCompressedRefused(t *testing.T) {
