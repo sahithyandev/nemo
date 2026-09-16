@@ -1,6 +1,14 @@
 package filesystem
 
-import "time"
+import (
+	"errors"
+	"time"
+)
+
+// ErrUnsupported is returned when an operation is attempted against an Entry
+// whose filesystem does not implement the required capability. It is a
+// stable sentinel: match it with errors.Is, not by string.
+var ErrUnsupported = errors.New("unsupported on this filesystem")
 
 // Type = type of "file system"
 type Type string

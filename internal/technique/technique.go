@@ -21,8 +21,10 @@ const (
 
 // ErrUnsupported is returned when a technique is run against an Entry whose
 // filesystem does not implement the required capability. It is a stable
-// sentinel: match it with errors.Is, not by string.
-var ErrUnsupported = errors.New("unsupported on this filesystem")
+// sentinel: match it with errors.Is, not by string. It is an alias for
+// filesystem.ErrUnsupported so a filesystem implementation (e.g. apfs) can
+// return it directly without importing this package.
+var ErrUnsupported = filesystem.ErrUnsupported
 
 // Finding describes hidden data detected in an entry.
 type Finding struct {
