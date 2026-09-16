@@ -59,10 +59,13 @@ func inodeDStream(val []byte) (dstream, bool, error) {
 	if len(xfields) < 4 {
 		return dstream{}, false, errors.New("apfs: inode xfields blob shorter than xf_blob_t")
 	}
+	// numExts and size below are both widened from a uint16, so they're
+	// always non-negative and neither the multiplication nor the additions
+	// against them can overflow an int.
 	numExts := int(binary.LittleEndian.Uint16(xfields[0:2]))
 	descOff := 4
 	dataOff := descOff + numExts*4
-	if dataOff < 0 || dataOff > len(xfields) {
+	if dataOff > len(xfields) {
 		return dstream{}, false, fmt.Errorf("apfs: inode xfields blob: %d entries don't fit in %d bytes", numExts, len(xfields))
 	}
 
@@ -71,7 +74,7 @@ func inodeDStream(val []byte) (dstream, bool, error) {
 		entry := xfields[descOff+i*4 : descOff+i*4+4]
 		typ := entry[0]
 		size := int(binary.LittleEndian.Uint16(entry[2:4]))
-		if size < 0 || valOff+size > len(xfields) {
+		if valOff+size > len(xfields) {
 			return dstream{}, false, fmt.Errorf("apfs: inode xfield %d value runs past the blob", i)
 		}
 		if typ == inoExtTypeDstream {
