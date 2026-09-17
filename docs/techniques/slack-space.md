@@ -86,7 +86,17 @@ filesystem is how the regions get computed.
 
 ### APFS
 
-- Block slack works the same way: the tail of the file's last allocated block.
+- Implemented in `internal/filesystem/apfs/slack.go`. Every allocated byte past
+  the file's logical size counts as slack, computed per `FILE_EXTENT`, not just
+  the tail of the last one: a file with unused whole blocks before its final
+  partial one gets a region for each. The logical size and physical extents
+  come from the inode's `j_dstream_t` extended field, keyed by its
+  `private_id`, the same lookup a stream-backed xattr's data uses.
+- A `com.apple.decmpfs`-compressed file, or one whose data stream carries any
+  non-zero `default_crypto_id` (per-file encryption), is refused outright
+  rather than given a region computed against a meaningless logical size.
+  See [the APFS parser doc](../file-systems/apfs.html#slack-space-slackgo)
+  for the details.
 - The copy-on-write caveat matters here more than anywhere else. APFS never
   overwrites a live block. Any modification to the file, including one the OS
   makes for its own reasons, writes the changed data to a new block and repoints
@@ -203,8 +213,9 @@ SlackRegions() ([]filesystem.SlackRegion, error)  // {Offset, Length} into the i
 `Request.Image` (image-backed storage), frames the payload, and writes into the
 first region that fits.
 
-- No real filesystem implements this yet. ext4, APFS, and NTFS all need
-  `SlackRegions` added, computing the region from the last extent or data-run.
+- APFS implements it (`internal/filesystem/apfs/slack.go`); ext4 and NTFS still
+  need `SlackRegions` added, computing the region from the last extent or
+  data-run.
 - `fakefs.Entry.SlackRegions` (`internal/filesystem/fakefs/fakefs.go`) is the
   reference. It returns regions pointing into its backing byte-slice image, and
   it is what the technique's tests run against.

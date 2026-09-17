@@ -6,8 +6,11 @@
 // in namedstream.go, with an in-place, no-allocation write path: see that
 // file's doc comment for what it can and cannot change. Timestomp is
 // implemented in timestomp.go, patching the fixed-offset fields of the
-// INODE record in place. Slack space and live mode are not implemented
-// here; see docs/work-breakdown.md items 20d/21e.
+// INODE record in place. Slack space is implemented in slack.go: it locates
+// the unused tail bytes past a file's logical size within its data-stream
+// extents, refusing compressed or per-file-encrypted files rather than
+// reporting a meaningless region. Live mode is not implemented here; see
+// docs/work-breakdown.md item 21e.
 //
 // # Limitations
 //
@@ -46,7 +49,7 @@ func init() {
 		Type:       filesystem.TypeAPFS,
 		Sniff:      sniff,
 		New:        New,
-		Techniques: []string{"named-stream", "timestomp"},
+		Techniques: []string{"named-stream", "timestomp", "slack-space"},
 	})
 }
 
@@ -557,6 +560,13 @@ type FS struct {
 	volume    *volumeSB
 	volOmap   *omap
 	fsTree    *tree
+	// base is container's byte offset within the underlying image: 0 for a
+	// bare container, or the GPT Apple_APFS partition's start for a
+	// GPT-wrapped one. Everything else on FS (img, block addresses) is
+	// container-relative; base lets slack.go translate a physical block
+	// address into an absolute offset into the caller's image.Image, which
+	// is what a technique's Request.Image actually is.
+	base int64
 }
 
 var _ filesystem.FileSystem = (*FS)(nil)
@@ -570,6 +580,7 @@ func New(img image.Image) (filesystem.FileSystem, error) {
 	}
 
 	var container image.Image = img
+	var containerBase int64
 	if !hasNXMagic(prefix) {
 		first, last, ok, err := findAPFSPartitionInImage(img)
 		if err != nil {
@@ -584,6 +595,7 @@ func New(img image.Image) (filesystem.FileSystem, error) {
 			return nil, errors.New("apfs: GPT Apple_APFS partition out of range")
 		}
 		container = &section{img: img, base: base, size: size}
+		containerBase = base
 	}
 
 	sb, err := readContainerSuperblock(container)
@@ -638,6 +650,7 @@ func New(img image.Image) (filesystem.FileSystem, error) {
 			volume:    vol,
 			volOmap:   volOmap,
 			fsTree:    fsTree,
+			base:      containerBase,
 		}, nil
 	}
 	if lastErr != nil {
