@@ -357,10 +357,12 @@ silently reporting a wrong (or simply absent) region:
   outright, rather than special-casing any particular value as "not really
   encrypted": this parser has no key material to confirm that against.
 
-A directory, an empty file, or an inode with no `DSTREAM` xfield at all
-(e.g. a symlink) reports no regions and no error: hide then fails through
-the ordinary "insufficient slack space" path instead of turning a
-whole-image `detect` scan into a hard stop on the first file it can't use.
+A directory, an empty file, an inode with no `DSTREAM` xfield at all (e.g.
+a symlink), or a file with a logical size but no `FILE_EXTENT` records at
+all (e.g. grown by `ftruncate` or a seek past EOF without ever being
+written to) reports no regions and no error: hide then fails through the
+ordinary "insufficient slack space" path instead of turning a whole-image
+`detect` scan into a hard stop on the first file it can't use.
 
 Slack space in a block a clone shares with another file isn't detected as
 unsafe: nemo doesn't read `EXTENT_REF`/reference-count records, so writing

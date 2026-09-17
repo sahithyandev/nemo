@@ -42,6 +42,16 @@ const (
 	extentLengthMask = (1 << 56) - 1
 )
 
+// errNoFileExtents is wrapped into extentsOf's error when objID has no
+// FILE_EXTENT records at all. That's a legitimate on-disk state, not
+// necessarily corruption: a file grown past its logical size without ever
+// being written to (e.g. ftruncate, or seeking past EOF and closing) can
+// have a non-zero j_dstream_t.size with zero extents. Callers that can
+// treat "no data at all" as "nothing here" rather than a hard failure match
+// on this sentinel with errors.Is; readXattr/writeExtents don't, since a
+// stream-backed xattr claiming a size is never expected to have no extents.
+var errNoFileExtents = errors.New("apfs: object has no file extents")
+
 // xattrDStream is a decoded j_xattr_dstream_t.
 type xattrDStream struct {
 	objID             uint64
@@ -261,7 +271,7 @@ func (f *FS) extentsOf(objID uint64) ([]fileExtent, error) {
 		return nil, err
 	}
 	if len(out) == 0 {
-		return nil, fmt.Errorf("apfs: object %d has no file extents", objID)
+		return nil, fmt.Errorf("apfs: object %d has no file extents: %w", objID, errNoFileExtents)
 	}
 	return out, nil
 }

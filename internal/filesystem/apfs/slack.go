@@ -129,12 +129,12 @@ func slackFromExtents(exts []fileExtent, size uint64, blockSize uint32, base, im
 
 // slackRegions computes e's slack regions, in absolute image offsets. A nil,
 // nil result means "no slack space here" (a directory, an empty file, a
-// symlink) rather than an error: hide then fails through the ordinary
-// "insufficient slack space" path instead of aborting a whole-image scan. A
-// non-nil error wrapping filesystem.ErrUnsupported means the layout itself
-// (compression, per-file encryption) makes the dstream's logical size
-// meaningless, so a caller must be told clearly rather than silently getting
-// zero regions.
+// symlink, or a file with a logical size but no allocated extents at all)
+// rather than an error: hide then fails through the ordinary "insufficient
+// slack space" path instead of aborting a whole-image scan. A non-nil error
+// wrapping filesystem.ErrUnsupported means the layout itself (compression,
+// per-file encryption) makes the dstream's logical size meaningless, so a
+// caller must be told clearly rather than silently getting zero regions.
 func (f *FS) slackRegions(e *Entry) ([]filesystem.SlackRegion, error) {
 	if e.isDir {
 		return nil, nil
@@ -173,6 +173,13 @@ func (f *FS) slackRegions(e *Entry) ([]filesystem.SlackRegion, error) {
 
 	privateID := binary.LittleEndian.Uint64(val[8:16])
 	exts, err := f.extentsOf(privateID)
+	if errors.Is(err, errNoFileExtents) {
+		// A non-zero logical size with zero FILE_EXTENT records is a
+		// legitimate, if unusual, on-disk state (e.g. ftruncate or a seek
+		// past EOF with no write), not corruption: there's simply no
+		// allocated data to have slack in.
+		return nil, nil
+	}
 	if err != nil {
 		return nil, fmt.Errorf("read extents for %q: %w", e.path, err)
 	}

@@ -596,10 +596,32 @@ func TestSlackRegionsCorruptedDStreamXfieldErrors(t *testing.T) {
 	}
 }
 
-// TestSlackRegionsMissingExtentsErrors points /slack.bin's private_id at an
-// object id with no FILE_EXTENT records and confirms SlackRegions surfaces
-// that as an error instead of silently reporting no slack.
-func TestSlackRegionsMissingExtentsErrors(t *testing.T) {
+// rewriteInodeVal replaces oid's INODE record value with val, through the
+// same in-place leaf rewrite path production code uses. It's a test helper
+// shared by the corrupted-inode-value tests below.
+func rewriteInodeVal(t *testing.T, f *FS, oid uint64, val []byte) {
+	t.Helper()
+	err := f.fsTree.rewriteLeaf(encodeJKey(oid, objTypeInode), func(recs []record, _ bool) ([]record, int, error) {
+		for i := range recs {
+			if isInodeRecord(recs[i].key, oid) {
+				recs[i].val = val
+				return recs, 0, nil
+			}
+		}
+		return nil, 0, fs.ErrNotExist
+	})
+	if err != nil {
+		t.Fatalf("rewriteLeaf: %v", err)
+	}
+}
+
+// TestSlackRegionsNoExtentsReportsNoSlack points /slack.bin's private_id at
+// an object id with a non-zero logical size but zero FILE_EXTENT records: a
+// legitimate on-disk state (e.g. a file grown by ftruncate or a seek past
+// EOF without ever being written to), not corruption. SlackRegions must
+// report no slack and no error here, not a hard failure that would abort a
+// whole-image detect scan on the first such file it meets.
+func TestSlackRegionsNoExtentsReportsNoSlack(t *testing.T) {
 	img := loadImage(t, "apfs-gpt")
 	f := openFS(t, img)
 	e := entryFor(t, f, "/slack.bin")
@@ -610,28 +632,47 @@ func TestSlackRegionsMissingExtentsErrors(t *testing.T) {
 	}
 	corrupted := append([]byte(nil), val...)
 	binary.LittleEndian.PutUint64(corrupted[8:16], 0xDEADBEEF) // private_id
+	rewriteInodeVal(t, f, e.oid, corrupted)
 
-	err = f.fsTree.rewriteLeaf(encodeJKey(e.oid, objTypeInode), func(recs []record, _ bool) ([]record, int, error) {
-		for i := range recs {
-			if isInodeRecord(recs[i].key, e.oid) {
-				recs[i].val = corrupted
-				return recs, 0, nil
-			}
-		}
-		return nil, 0, fs.ErrNotExist
-	})
+	f2 := openFS(t, img)
+	e2 := entryFor(t, f2, "/slack.bin")
+	regions, err := e2.SlackRegions()
 	if err != nil {
-		t.Fatalf("rewriteLeaf: %v", err)
+		t.Fatalf("SlackRegions: expected no error for a size with zero extents, got %v", err)
 	}
+	if regions != nil {
+		t.Fatalf("SlackRegions = %+v, want nil", regions)
+	}
+}
+
+// TestSlackRegionsHoleExtentErrors confirms the fix above doesn't overreach:
+// a private_id that does have FILE_EXTENT records, one of them an
+// unsupported hole extent, is still a hard error, not silently "no slack".
+// Only the specific zero-extents case is treated as legitimate.
+func TestSlackRegionsHoleExtentErrors(t *testing.T) {
+	img := loadImage(t, "apfs-gpt")
+	f := openFS(t, img)
+	e := entryFor(t, f, "/slack.bin")
+
+	const objID = 999999998
+	insertFileExtent(t, f, objID, 0, uint64(f.blockSize), 0) // phys 0: a hole
+
+	val, err := f.inodeRecordValue(e.oid)
+	if err != nil {
+		t.Fatalf("inodeRecordValue: %v", err)
+	}
+	corrupted := append([]byte(nil), val...)
+	binary.LittleEndian.PutUint64(corrupted[8:16], objID) // private_id
+	rewriteInodeVal(t, f, e.oid, corrupted)
 
 	f2 := openFS(t, img)
 	e2 := entryFor(t, f2, "/slack.bin")
 	_, err = e2.SlackRegions()
 	if err == nil {
-		t.Fatal("SlackRegions: expected an error for a private_id with no extents, got nil")
+		t.Fatal("SlackRegions: expected an error for a hole extent, got nil")
 	}
-	if !strings.Contains(err.Error(), "extent") {
-		t.Fatalf("SlackRegions err = %v, want it to mention extents", err)
+	if errors.Is(err, filesystem.ErrUnsupported) {
+		t.Fatalf("SlackRegions err = %v, want a parse error, not ErrUnsupported", err)
 	}
 }
 
