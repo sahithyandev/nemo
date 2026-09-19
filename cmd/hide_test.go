@@ -338,3 +338,22 @@ func TestHidePayloadReadFailureDoesNotOpenOrWrite(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
+
+func TestHideLiveSlackFailsBeforeOpeningTarget(t *testing.T) {
+	dependencies := defaultHideDependencies()
+	dependencies.readFile = func(string) ([]byte, error) { return []byte("payload"), nil }
+	dependencies.openLive = func(string) (openedTarget, error) {
+		t.Fatal("live raw target opened for slack-space")
+		return openedTarget{}, nil
+	}
+	dependencies.persistCustody = func(custody.Record) error {
+		t.Fatal("custody record written without a mutation")
+		return nil
+	}
+	command := newHideCommand(dependencies)
+	command.SetArgs([]string{"/target", "-t", "slack-space", "-d", "payload.bin"})
+	err := command.Execute()
+	if err == nil || !strings.Contains(err.Error(), "live slack-space") {
+		t.Fatalf("expected live slack-space error, got %v", err)
+	}
+}
