@@ -396,8 +396,69 @@ Some things aren't attempted at all, not even refused with an error.
   allocated."
 - **Clone-aware slack safety.** `slack.go` doesn't check whether a block is
   shared between clones before reporting it as slack.
-- **Live mode for APFS.** Not built yet. See [Roadmap](../roadmap.html)
-  item 21e.
+
+## Live mode (macOS)
+
+`live_darwin.go` implements live mode for APFS on macOS: no volume parsing, every
+operation is a syscall against a path. It's a second, independent `filesystem.Entry`
+(`liveEntry`), not the image-mode `Entry` running with a different backing store; see
+[Live Mode](../architecture/live-mode.html) for why they're kept separate. Every other
+OS gets `live_unsupported.go` (`//go:build !darwin`), which returns
+`filesystem.ErrUnsupported` so cross-compiling stays clean.
+
+**Named streams** map directly onto xattrs: `OpenLive`'s `liveEntry` implements
+`NamedStreamCapable` with `unix.Getxattr`/`Setxattr`/`Removexattr`/`Listxattr`
+(`golang.org/x/sys/unix`, not in stdlib `syscall` on darwin). The resource fork is just
+the `com.apple.ResourceFork` xattr, same as image mode; writing it makes
+`path/..namedfork/rsrc` readable through the ordinary filesystem. A missing xattr
+(`ENOATTR`) is mapped onto `fs.ErrNotExist`, matching image-mode `Entry.ReadStream`. All
+of this follows a symlink target rather than operating on the link itself, since none of
+the xattr calls pass `XATTR_NOFOLLOW`.
+
+**Timestomp** implements `TimestompCapable`. `modified` and `accessed` go through
+`os.Chtimes`. `created` (birthtime) needs `setattrlist(ATTR_CMN_CRTIME)`, which stdlib
+has no equivalent for. `changed` stays `filesystem.ErrUnsupported`, same as image mode:
+it's kernel-controlled metadata-change time with no live userland API to set directly.
+One APFS quirk: setting `modified` (or `accessed`) to a time earlier than
+the file's current birthtime also pulls the birthtime down to match, since APFS treats
+birthtime as "the earliest known point in this file's history." `live_darwin_test.go`
+pins this down explicitly so a future macOS change to it shows up as a test failure
+rather than a silent surprise.
+
+`liveEntry` deliberately does not implement `SlackSpaceCapable`. The unused tail bytes
+of an allocated block have no path-based API on any OS; reaching them needs the raw
+container device, which `OpenLiveSlack` opens separately (`/dev/diskN` derived from
+`unix.Statfs`'s `f_mntfromname`, with its trailing volume-slice suffix stripped) and
+parses with `NewVolume` against the specific mounted volume (`f_mntonname`'s last path
+component).
+
+A live slack-space write can never succeed on a mounted volume. macOS refuses a read-write open of a block device while
+its volume is mounted (`EBUSY`), and a live target path only exists while its volume
+is mounted. So `nemo hide -t slack-space` with no `--image`, and `nemo clear -t
+slack-space` the same way, always fail with an error naming the busy device and
+suggesting `diskutil unmountDisk` or `--image` instead. A read-only open of the
+device while mounted is allowed (as root), so `nemo detect -t slack-space` without
+`--image` does work, scanning the live volume's slack through the same read-only
+wrapper image-mode detect uses. Either way the device open needs root; a permission
+failure names the device and suggests `sudo`. `scripts/live-check.sh` exercises both
+halves of this (detect succeeding, hide failing with the busy message) against a
+scratch disk image when it has `sudo`.
+
+Because slack-space is the only technique that touches the raw device, and only when
+`--technique slack-space` is given explicitly, an unqualified `nemo detect` (no
+`--technique`) never attempts to open it. It scans named streams and timestomps
+through the ordinary path-backed `liveEntry` and silently skips slack space, the same
+way it already skips any technique a filesystem doesn't support.
+
+Every mutating operation, live or image mode, gets one `custody.Record` appended to the
+custody log by the command layer after it succeeds; that's unconditional, not
+specific to live mode. What live mode adds is `internal/custody.Wrap` around the raw
+device for a live slack-space write (`cmd/live.go`'s `openLiveSlack`, mirroring
+`cmd/hide.go`'s image-mode `openImage`), so the same per-write SHA-256 event log applies
+whether the bytes underneath are an image file or `/dev/diskN`. Live named-stream and
+timestomp writes are plain xattr/setattrlist syscalls with no `image.Image` in the
+picture at all, so only the top-level custody record applies to them, exactly as it does
+for every other technique.
 
 ## Safety against crafted images
 
@@ -440,3 +501,13 @@ a filesystem-owned xattr — turned out not to be reliably producible with
 only builtin macOS tooling, so `fixtures_test.go` fabricates those directly
 through the package's own unexported btree insert path instead of via a
 fixture.
+
+`live_darwin_test.go` (`//go:build darwin`) covers live mode against real temp files:
+xattr and resource-fork round trips including several Unicode filename and stream-name
+cases, symlink and directory targets, and timestomp round trips including the
+birthtime-lowering quirk above. `live_unsupported_test.go` (`//go:build !darwin`)
+confirms the stub. `scripts/live-check.sh` is a standalone shell script (not part of `go
+test`) that drives a built `bin/nemo` binary through the same checks end to end, plus
+the privileged slack-space device path against a scratch disk image when run with
+`sudo` available; see its header comment for what it needs and what it skips without
+root.

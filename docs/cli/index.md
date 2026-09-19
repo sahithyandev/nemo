@@ -6,14 +6,17 @@ has_children: true
 
 # CLI Reference
 
-Built today: `hide`, `detect`, `features`, `version`, `help`, all image mode only. `clear` and live mode are planned; where a page describes them, it is design intent.
+Built today: `hide`, `detect`, `clear`, `features`, `version`, `help`. Live mode is built
+for APFS on macOS; every other filesystem/OS combination is still design intent, and
+falls back to a clear "unsupported" error rather than silently degrading. Where a page
+describes an unbuilt combination, it is design intent, not current behavior.
 
 ## Modes
 
 Nemo runs in one of two modes, chosen per command:
 
 - **Image mode** (used when `--image` is given): operates offline against a raw disk image. Filesystem type is detected from the image, not specified by the user.
-- **Live mode** (planned; used when `--image` is omitted): operates directly on a file on the local, running machine, using the OS's native filesystem calls. This is the mode an everyday user reaches for to hide a file on their own machine.
+- **Live mode** (used when `--image` is omitted): operates directly on a file on the local, running machine, using the OS's native filesystem calls. This is the mode an everyday user reaches for to hide a file on their own machine. Built for APFS on macOS today; see [APFS live mode](../file-systems/apfs.html#live-mode-macos).
 
 Until a native filesystem implementation or image detector is registered, the corresponding mode fails with a clear unsupported/unrecognized error; nemo never falls back from one mode to the other. See [Live Mode](../architecture/live-mode.html) for how the two modes are built internally.
 
@@ -33,7 +36,7 @@ On success, `hide` and `clear` emit their custody record as one JSON object on s
 | --- | --- | --- |
 | [`hide`](hide.html) | write payload data into a target using one technique | built |
 | [`detect`](detect.html) | scan a target or image for hidden data | built |
-| [`clear`](clear.html) | remove previously hidden data and restore the target | planned |
+| [`clear`](clear.html) | remove previously hidden data and restore the target | built |
 | [`features`](info.html#nemo-features) | print the filesystem × technique support matrix | built |
 | [`version`](info.html#nemo-version) | print the tool's version | built |
 | [`help`](info.html#nemo-help) | print usage information | built |

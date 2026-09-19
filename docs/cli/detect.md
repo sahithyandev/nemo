@@ -26,3 +26,9 @@ Options:
 Output: a `TECHNIQUE  TARGET  LOCATION  SIZE` table, one row per finding. The columns are the technique, the entry it was found in, the location within that entry (stream name or slack offset range), and the size in bytes of the hidden data recovered. An empty result prints nothing and exits 0.
 
 When `--technique` is given explicitly and no entry in the scan supports it, `detect` exits with an error naming the technique. The default all-three scan silently skips techniques a filesystem does not support. `timestomp` never yields findings, regardless of filesystem, because nemo cannot read a timestamp back to judge whether it was altered; see [Timestomping](../techniques/timestomping.html#why-nemos-detect-reports-nothing-for-timestomp) for why. `detect` never touches the custody log.
+
+Live mode is only built for APFS on macOS today. An unqualified live scan (no
+`--technique`) never attempts a live `slack-space` detect, the same way it skips any
+technique a filesystem doesn't support; `--technique slack-space` explicitly does,
+opening the volume's raw device read-only (needs root). See [APFS live
+mode](../file-systems/apfs.html#live-mode-macos).

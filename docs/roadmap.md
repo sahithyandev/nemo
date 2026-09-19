@@ -90,15 +90,18 @@ Acceptance for each: `nemo hide`/`detect`/`clear` with `--technique <x>` succeed
 
 ### APFS (owner: APFS dev)
 
-17a, 18b, 19c, 20d done. 21e not started.
+17a, 18b, 19c, 20d, 21e done.
 
 **17a. APFS core parser (done)**: `apfs.go`, `btree.go`; registers `Detector`. Depends on: 5.
 **18b. APFS named streams (done)**: `namedstream.go` (xattr + resource fork), `btree_write.go` (in-place B-tree leaf rewrite), `NamedStreamCapable`. Depends on: 17a, 6.
 **19c. APFS timestomp (done)**: `timestomp.go`, `TimestompCapable`. Depends on: 17a, 6.
 **20d. APFS slack space (done)**: `slack.go`, `SlackSpaceCapable`. Depends on: 17a, 6.
-**21e. APFS live mode**: `live_darwin.go`, `live_stub.go`. Depends on: 18b, 19c.
+**21e. APFS live mode (done)**: `live_darwin.go` (xattr/setattrlist syscalls for named-stream and timestomp; raw-device access for slack space), `live_unsupported.go` (non-darwin build tag, clean "unsupported" error). Depends on: 18b, 19c.
 
-Acceptance: same shape as NTFS, against an APFS test image or macOS live path.
+Acceptance: same shape as NTFS, against an APFS test image or macOS live path. Live
+slack-space write always fails against a mounted volume (macOS refuses a read-write
+device open while its volume is mounted); live slack-space detect works read-only, as
+root. See [APFS live mode](../file-systems/apfs.html#live-mode-macos).
 
 ### ext4 (owner: ext4 dev)
 

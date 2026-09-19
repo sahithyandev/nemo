@@ -224,6 +224,12 @@ DeleteStream(name string) error
   bytes, is refused rather than leaving the mirror stale. See
   [NTFS](../file-systems/ntfs.html#named-streams) for the full write path.
 
+APFS also has a live-mode path on macOS
+(`internal/filesystem/apfs/live_darwin.go`): a named stream there is just an
+xattr syscall against the target's real path (the resource fork included, as
+`com.apple.ResourceFork`), no volume parsing or elevated privilege needed.
+See [APFS live mode](../file-systems/apfs.html#live-mode-macos).
+
 When adding a filesystem, mirror `fakefs.Entry`
 (`internal/filesystem/fakefs/fakefs.go`), the test double that already
 implements all three capabilities. The technique layer needs no changes.

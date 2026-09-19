@@ -136,6 +136,13 @@ missing-privilege condition and fail with a clear error rather than silently
 degrade. `named-stream` and `timestomp` do not have this requirement; they go
 through ordinary syscalls.
 
+APFS on macOS implements this (`internal/filesystem/apfs/live_darwin.go`): a
+permission failure opening the device names it and suggests `sudo`, and a live
+slack-space **write** additionally always fails with a "busy" error, since macOS
+refuses a read-write device open while its volume is mounted. Only live slack-space
+`detect`, which opens the device read-only, actually works. See [APFS live
+mode](../file-systems/apfs.html#live-mode-macos).
+
 ## nemo's payload frame
 
 Raw slack normally holds whatever residual bytes the last file to own that block
