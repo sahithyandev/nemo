@@ -73,7 +73,7 @@ func OpenLiveSlack(path string, write bool, wrap func(*image.RawImage) (image.Im
 	}
 	raw, err := openDevice(device)
 	if err != nil {
-		return nil, nil, nil, classifyDeviceError(device, err)
+		return nil, nil, nil, classifyDeviceError(device, write, err)
 	}
 
 	wrapped, closeFn := wrap(raw)
@@ -128,13 +128,21 @@ func isDigits(s string) bool {
 
 // classifyDeviceError turns a raw device open failure into a message that
 // names the actual macOS condition, rather than a bare "permission denied"
-// or "resource busy" with no next step.
-func classifyDeviceError(device string, err error) error {
+// or "resource busy" with no next step. EBUSY isn't specific to a write
+// open: macOS can refuse even a read-only open of a whole-disk device (for
+// example the container disk backing an active boot volume group, where
+// System/Data/VM/Preboot/Recovery are all mounted on it at once), so the
+// message names the actual open mode rather than assuming it was a write.
+func classifyDeviceError(device string, write bool, err error) error {
 	switch {
 	case errors.Is(err, unix.EACCES), errors.Is(err, unix.EPERM):
 		return fmt.Errorf("live slack-space needs raw access to %s: permission denied; re-run with sudo", device)
 	case errors.Is(err, unix.EBUSY):
-		return fmt.Errorf("%s is busy: macOS refuses write access to the device of a mounted volume; unmount it (diskutil unmountDisk) or use --image", device)
+		mode := "read"
+		if write {
+			mode = "write"
+		}
+		return fmt.Errorf("%s is busy: macOS refused a %s-mode open of it (a whole-disk device backing a mounted volume, sometimes even for reading); unmount the volume (diskutil unmountDisk) or use --image", device, mode)
 	case errors.Is(err, unix.ENOENT):
 		return fmt.Errorf("apfs: derived device %s does not exist", device)
 	default:

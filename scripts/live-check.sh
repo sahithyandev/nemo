@@ -24,6 +24,30 @@ bad() {
 	fail=1
 }
 
+# This script can be invoked either unprivileged (the normal case, with only
+# specific commands below prefixed with sudo for the privileged half) or as
+# `sudo ./scripts/live-check.sh` (the whole script as root). The "must fail
+# without privilege" checks need a genuinely unprivileged run either way, so
+# run_unpriv drops back to the invoking user (via sudo -u) when the script
+# itself is already root, and runs the command directly otherwise.
+unpriv_user=""
+if [ "$(id -u)" -eq 0 ]; then
+	unpriv_user="${SUDO_USER:-$(stat -f%Su /dev/console 2>/dev/null || true)}"
+fi
+run_unpriv() {
+	if [ "$(id -u)" -eq 0 ]; then
+		if [ -n "$unpriv_user" ] && [ "$unpriv_user" != "root" ]; then
+			sudo -u "$unpriv_user" "$@"
+			return $?
+		fi
+		# 125 is a wrapper-couldn't-run sentinel (git/docker convention), well
+		# outside nemo's own exit codes, so the caller can tell "we never
+		# managed an unprivileged run" apart from "nemo failed as expected".
+		return 125
+	fi
+	"$@"
+}
+
 work="$(mktemp -d)"
 current_dev=""
 cleanup() {
@@ -158,7 +182,14 @@ fi
 echo "== slack space (privilege gating) =="
 slack_file="$work/slack.txt"
 printf 'target file\n' >"$slack_file"
-if "$nemo" detect -t slack-space "$slack_file" 2>"$work/slack-unpriv.log"; then
+if run_unpriv "$nemo" detect -t slack-space "$slack_file" >/dev/null 2>"$work/slack-unpriv.log"; then
+	unpriv_status=0
+else
+	unpriv_status=$?
+fi
+if [ "$unpriv_status" -eq 125 ]; then
+	echo "skip - running as root with no unprivileged user to drop to (set SUDO_USER, or re-run this script without sudo)"
+elif [ "$unpriv_status" -eq 0 ]; then
 	bad "slack-space detect as non-root: expected failure, succeeded"
 else
 	if grep -qiE 'sudo|permission' "$work/slack-unpriv.log"; then
@@ -179,7 +210,7 @@ if sudo -n true 2>/dev/null; then
 		current_dev=""
 
 		# Hide a slack frame through image mode, against the detached image.
-		if "$nemo" hide -t slack-space -d "$payload" -i "$dmg.dmg" "/target.bin" >"$work/slack-image-hide.log" 2>&1; then
+		if "$nemo" hide -t slack-space -d "$payload" -i "$dmg.dmg" --manifest "$work/slack-manifest.jsonl" "/target.bin" >"$work/slack-image-hide.log" 2>&1; then
 			ok "image-mode slack-space hide against the scratch dmg"
 		else
 			bad "image-mode slack-space hide failed (see $work/slack-image-hide.log)"

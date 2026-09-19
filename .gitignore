@@ -38,6 +38,9 @@ create-issues.sh
 /nemo
 /.claude/
 
+# default hide/clear backup manifest, when run from the repo root
+nemo-manifest.jsonl
+
 # Editor/IDE
 # .idea/
 # .vscode/
