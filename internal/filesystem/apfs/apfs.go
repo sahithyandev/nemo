@@ -571,9 +571,22 @@ type FS struct {
 
 var _ filesystem.FileSystem = (*FS)(nil)
 
-// New constructs an APFS FileSystem from img. It handles both a bare
-// container (nx_superblock_t at byte 0) and a GPT-wrapped one.
+// New constructs an APFS FileSystem from img, mounting the first volume in
+// the container. It handles both a bare container (nx_superblock_t at byte
+// 0) and a GPT-wrapped one.
 func New(img image.Image) (filesystem.FileSystem, error) {
+	return newFS(img, "")
+}
+
+// NewVolume is like New but mounts the named volume rather than the first
+// one in the container. Live mode uses this: a live target path names one
+// specific volume, which may not be the container's first. An empty volume
+// name behaves exactly like New.
+func NewVolume(img image.Image, volume string) (filesystem.FileSystem, error) {
+	return newFS(img, volume)
+}
+
+func newFS(img image.Image, volume string) (filesystem.FileSystem, error) {
 	prefix, err := readFull(img, 0, minInt64(4096, img.Size()))
 	if err != nil {
 		return nil, fmt.Errorf("apfs: read prefix: %w", err)
@@ -623,6 +636,9 @@ func New(img image.Image) (filesystem.FileSystem, error) {
 			lastErr = err
 			continue
 		}
+		if volume != "" && vol.name != volume {
+			continue
+		}
 		volOmap, err := readOmap(container, vol.omapOid, sb.blockSize)
 		if err != nil {
 			lastErr = err
@@ -652,6 +668,9 @@ func New(img image.Image) (filesystem.FileSystem, error) {
 			fsTree:    fsTree,
 			base:      containerBase,
 		}, nil
+	}
+	if volume != "" {
+		return nil, fmt.Errorf("apfs: no volume named %q in this container", volume)
 	}
 	if lastErr != nil {
 		return nil, fmt.Errorf("apfs: no mountable volume found: %w", lastErr)
