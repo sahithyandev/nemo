@@ -19,9 +19,17 @@ cd "$(dirname "$0")/.."
 
 fail=0
 ok() { printf 'ok   - %s\n' "$1"; }
+# bad prints a FAIL line, and, if given a log file as $2, prints its content
+# indented right there. The work directory (and everything logged into it)
+# is deleted when this script exits, so a failure's log has to be shown
+# inline now rather than left for a "see <path>" the reader can't reach
+# after the fact.
 bad() {
 	printf 'FAIL - %s\n' "$1"
 	fail=1
+	if [ -n "${2:-}" ] && [ -s "$2" ]; then
+		sed 's/^/       /' "$2"
+	fi
 }
 
 # This script can be invoked either unprivileged (the normal case, with only
@@ -54,7 +62,14 @@ cleanup() {
 	if [ -n "$current_dev" ]; then
 		hdiutil detach "$current_dev" >/dev/null 2>&1 || true
 	fi
-	rm -rf "$work"
+	# Every failing check already prints its own log inline (see bad()), but
+	# keep the scratch directory around on failure anyway as a fallback,
+	# instead of deleting the one place anything else useful might be.
+	if [ "$fail" -eq 0 ]; then
+		rm -rf "$work"
+	else
+		echo "scratch directory kept for inspection: $work"
+	fi
 }
 trap cleanup EXIT INT TERM
 
@@ -64,8 +79,7 @@ echo "== build, vet, unit tests =="
 if go vet ./... && go test ./... >"$work/test.log" 2>&1; then
 	ok "go vet && go test ./..."
 else
-	bad "go vet/test (see $work/test.log)"
-	cat "$work/test.log"
+	bad "go vet/test" "$work/test.log"
 fi
 if go build -o "$nemo" .; then
 	ok "go build"
@@ -78,12 +92,12 @@ echo "== cross-builds (non-darwin stubs stay clean) =="
 if GOOS=linux GOARCH=amd64 go build -o "$work/nemo-linux" . 2>"$work/linux.log"; then
 	ok "GOOS=linux build"
 else
-	bad "GOOS=linux build (see $work/linux.log)"
+	bad "GOOS=linux build" "$work/linux.log"
 fi
 if GOOS=windows GOARCH=amd64 go build -o "$work/nemo-windows.exe" . 2>"$work/windows.log"; then
 	ok "GOOS=windows build"
 else
-	bad "GOOS=windows build (see $work/windows.log)"
+	bad "GOOS=windows build" "$work/windows.log"
 fi
 
 # Everything from here on runs nemo itself, whose custody log lives under
@@ -213,16 +227,22 @@ if sudo -n true 2>/dev/null; then
 		if "$nemo" hide -t slack-space -d "$payload" -i "$dmg.dmg" --manifest "$work/slack-manifest.jsonl" "/target.bin" >"$work/slack-image-hide.log" 2>&1; then
 			ok "image-mode slack-space hide against the scratch dmg"
 		else
-			bad "image-mode slack-space hide failed (see $work/slack-image-hide.log)"
+			bad "image-mode slack-space hide failed" "$work/slack-image-hide.log"
 		fi
 
 		attach_out="$(hdiutil attach "$dmg.dmg" 2>"$work/hdiutil-attach2.log")"
 		current_dev="$(printf '%s\n' "$attach_out" | awk '{print $1; exit}')"
 
-		if sudo "$nemo" detect -t slack-space "$mnt/target.bin" 2>"$work/slack-live-detect.log" | grep -q slack-space; then
+		# Capture stdout AND stderr: a successful-but-empty detect (no error,
+		# no findings) would otherwise leave nothing in the log to diagnose.
+		sudo "$nemo" detect -t slack-space "$mnt/target.bin" >"$work/slack-live-detect.log" 2>&1 || true
+		if grep -q slack-space "$work/slack-live-detect.log"; then
 			ok "live slack-space detect (read-only raw device) finds the hidden frame"
 		else
-			bad "live slack-space detect did not find the frame (see $work/slack-live-detect.log)"
+			bad "live slack-space detect did not find the frame" "$work/slack-live-detect.log"
+			if [ ! -s "$work/slack-live-detect.log" ]; then
+				echo "       (log is empty: detect exited 0 with no output at all)"
+			fi
 		fi
 
 		if sudo "$nemo" hide -t slack-space -d "$payload" "$mnt/target.bin" 2>"$work/slack-live-hide.log"; then
@@ -238,7 +258,7 @@ if sudo -n true 2>/dev/null; then
 		hdiutil detach "$current_dev" >/dev/null 2>&1 || true
 		current_dev=""
 	else
-		bad "hdiutil create failed (see $work/hdiutil-create.log)"
+		bad "hdiutil create failed" "$work/hdiutil-create.log"
 	fi
 else
 	echo "skip - sudo -n unavailable: skipping the privileged half of the slack-space check"
