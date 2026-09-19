@@ -1,6 +1,8 @@
 package image
 
 import (
+	"fmt"
+	"io"
 	"os"
 )
 
@@ -37,10 +39,25 @@ func open(path string, flag int) (*RawImage, error) {
 		return nil, err
 	}
 
+	size := info.Size()
+	// A block device (e.g. /dev/diskN, opened for live slack-space access)
+	// reports a Stat size of 0; seeking to the end finds its real capacity.
+	if size == 0 && info.Mode()&os.ModeDevice != 0 {
+		size, err = file.Seek(0, io.SeekEnd)
+		if err != nil {
+			file.Close()
+			return nil, fmt.Errorf("size device %q: %w", path, err)
+		}
+		if size == 0 {
+			file.Close()
+			return nil, fmt.Errorf("size device %q: device reports zero size", path)
+		}
+	}
+
 	return &RawImage{
 		file: file,
 		path: path,
-		size: info.Size(),
+		size: size,
 	}, nil
 
 }
