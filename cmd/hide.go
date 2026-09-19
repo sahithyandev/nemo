@@ -9,6 +9,7 @@ import (
 
 	"github.com/sahithyandev/nemo/internal/custody"
 	"github.com/sahithyandev/nemo/internal/filesystem"
+	"github.com/sahithyandev/nemo/internal/filesystem/ext4"
 	imagepkg "github.com/sahithyandev/nemo/internal/image"
 	"github.com/sahithyandev/nemo/internal/technique"
 	"github.com/spf13/cobra"
@@ -40,15 +41,21 @@ type hideDependencies struct {
 
 func defaultHideDependencies() hideDependencies {
 	return hideDependencies{
-		openImage: openImageTarget,
-		openLive: func(string) (openedTarget, error) {
-			return openedTarget{}, errors.New("live mode is unavailable: no native filesystem implementation is registered")
-		},
+		openImage:      openImageTarget,
+		openLive:       openLiveTarget,
 		readFile:       os.ReadFile,
 		now:            time.Now,
 		persistCustody: custody.Persist,
 		writeCustody:   custody.Write,
 	}
+}
+
+func openLiveTarget(path string) (openedTarget, error) {
+	fs, err := ext4.OpenLive(path)
+	if err != nil {
+		return openedTarget{}, err
+	}
+	return openedTarget{filesystem: fs}, nil
 }
 
 func openImageTarget(path string) (openedTarget, error) {
@@ -112,6 +119,9 @@ func runHide(command *cobra.Command, target string, options hideOptions, depende
 	if command.Flags().Changed("image") {
 		opened, err = dependencies.openImage(options.image)
 	} else {
+		if options.technique == technique.SlackSpace {
+			return ext4.LiveSlackError()
+		}
 		opened, err = dependencies.openLive(target)
 	}
 	if err != nil {
