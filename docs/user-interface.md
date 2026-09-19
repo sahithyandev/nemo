@@ -38,6 +38,14 @@ Extended inode timestamps preserve nanoseconds and the ext4 epoch bits; legacy
 128-byte timestamps accept only whole seconds in the signed 32-bit range.
 Timestomp writes refresh inode checksums when metadata checksums are enabled.
 
+On Linux, live mode accepts paths on a mounted ext4 filesystem. Named streams
+are `user.*` extended attributes (for example, `--stream-name user.secret`).
+Live mode supports access and modification times; Linux file APIs do not allow
+setting creation time. Symlink targets are rejected. Live slack-space writes
+are unavailable: without root, Nemo reports the privilege requirement; even
+with root, writing raw blocks of a mounted ext4 volume is unsafe, so use a
+disposable offline image instead.
+
 Ext4 slack-space operations use only the unused tail of the final allocated
 regular-file block. Nemo stores a versioned frame containing the payload length
 and SHA-256 digest. Detection validates that frame and is read-only; clearing
