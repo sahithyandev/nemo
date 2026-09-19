@@ -19,7 +19,7 @@ type detectOptions struct {
 
 type detectDependencies struct {
 	openImage func(string) (openedTarget, error)
-	openLive  func(string) (openedTarget, error)
+	openLive  func(target, technique string, write bool) (openedTarget, error)
 }
 
 func defaultDetectDependencies() detectDependencies {
@@ -37,9 +37,7 @@ func defaultDetectDependencies() detectDependencies {
 			}
 			return openedTarget{filesystem: fs, image: ro, close: img.Close}, nil
 		},
-		openLive: func(string) (openedTarget, error) {
-			return openedTarget{}, errors.New("live mode is unavailable: no native filesystem implementation is registered")
-		},
+		openLive: openLiveTarget,
 	}
 }
 
@@ -102,7 +100,7 @@ func runDetect(command *cobra.Command, target string, options detectOptions, dep
 	if imageMode {
 		opened, err = dependencies.openImage(options.image)
 	} else {
-		opened, err = dependencies.openLive(target)
+		opened, err = dependencies.openLive(target, options.technique, false)
 	}
 	if err != nil {
 		return err

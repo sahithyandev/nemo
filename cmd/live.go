@@ -1,0 +1,46 @@
+package cmd
+
+import (
+	"github.com/sahithyandev/nemo/internal/custody"
+	"github.com/sahithyandev/nemo/internal/filesystem/apfs"
+	imagepkg "github.com/sahithyandev/nemo/internal/image"
+	"github.com/sahithyandev/nemo/internal/technique"
+)
+
+// openLiveTarget opens target on the running machine. Named-stream and
+// timestomp go through a path-backed Entry (xattr and setattrlist
+// syscalls, no special privilege needed). Slack-space is volume-level and
+// needs the raw device backing target's mounted volume, which is only
+// attempted when tech explicitly asks for it. An unqualified detect scan
+// should not reach for a device it may not have permission to open; see
+// docs/architecture/live-mode.md.
+func openLiveTarget(target, tech string, write bool) (openedTarget, error) {
+	if tech == technique.SlackSpace {
+		return openLiveSlack(target, write)
+	}
+	fs, err := apfs.OpenLive(target)
+	if err != nil {
+		return openedTarget{}, err
+	}
+	return openedTarget{filesystem: fs}, nil
+}
+
+// openLiveSlack opens the raw device backing target's volume. The wrap
+// closure applies the same custody-logging policy image mode uses for a
+// write, or a plain read-only wrapper for a scan, so a live slack-space
+// mutation goes through custody logging exactly like an image-mode one:
+// it is never handed the unwrapped device.
+func openLiveSlack(target string, write bool) (openedTarget, error) {
+	wrap := func(raw *imagepkg.RawImage) (imagepkg.Image, func() error) {
+		if !write {
+			return imagepkg.ReadOnly(raw), raw.Close
+		}
+		recorder := custody.Wrap(raw)
+		return recorder, recorder.Close
+	}
+	fs, img, closeFn, err := apfs.OpenLiveSlack(target, write, wrap)
+	if err != nil {
+		return openedTarget{}, err
+	}
+	return openedTarget{filesystem: fs, image: img, close: closeFn}, nil
+}

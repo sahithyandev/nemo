@@ -32,7 +32,7 @@ type openedTarget struct {
 
 type hideDependencies struct {
 	openImage func(string) (openedTarget, error)
-	openLive  func(string) (openedTarget, error)
+	openLive  func(target, technique string, write bool) (openedTarget, error)
 	readFile  func(string) ([]byte, error)
 	now       func() time.Time
 	// logCustody appends the record to the on-disk custody log
@@ -61,9 +61,7 @@ func defaultHideDependencies() hideDependencies {
 			}
 			return openedTarget{filesystem: fs, image: recorder, close: recorder.Close}, nil
 		},
-		openLive: func(string) (openedTarget, error) {
-			return openedTarget{}, errors.New("live mode is unavailable: no native filesystem implementation is registered")
-		},
+		openLive:     openLiveTarget,
 		readFile:     os.ReadFile,
 		now:          time.Now,
 		logCustody:   custody.Persist,
@@ -116,7 +114,7 @@ func runHide(command *cobra.Command, target string, options hideOptions, depende
 	if command.Flags().Changed("image") {
 		opened, err = dependencies.openImage(options.image)
 	} else {
-		opened, err = dependencies.openLive(target)
+		opened, err = dependencies.openLive(target, options.technique, true)
 	}
 	if err != nil {
 		return err
