@@ -9,7 +9,9 @@ nav_order: 4
 APFS live mode is built on macOS (`internal/filesystem/apfs/live_darwin.go`); every other
 combination of filesystem and OS is still design intent. See
 [APFS](../file-systems/apfs.html#live-mode-macos) for what it supports and its raw-device
-limitation.
+limitation, and [Only APFS, nothing else, even on
+macOS](../file-systems/apfs.html#only-apfs-nothing-else-even-on-macos) for what happens
+when live mode is pointed at a mounted NTFS, ext4, or other non-APFS volume there.
 
 Image mode and live mode will not share one code path per filesystem. They split by technique, not by a mode flag on a single `Entry`:
 

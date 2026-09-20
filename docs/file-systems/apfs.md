@@ -406,6 +406,34 @@ operation is a syscall against a path. It's a second, independent `filesystem.En
 OS gets `live_unsupported.go` (`//go:build !darwin`), which returns
 `filesystem.ErrUnsupported` so cross-compiling stays clean.
 
+### Only APFS, nothing else, even on macOS
+
+`cmd`'s live-mode router calls `apfs.OpenLive`/`apfs.OpenLiveSlack` directly; it does
+not detect the target's filesystem and dispatch. So on macOS, live mode only ever
+means APFS, regardless of what's actually mounted at the target path:
+
+- A target on an HFS+, exFAT, or FAT32 volume, or an NTFS volume mounted through a
+  third-party driver (native macOS NTFS support is read-only), refuses cleanly.
+  `OpenLive` checks the target's `f_fstypename` via `unix.Statfs` before doing
+  anything else, so the error names the actual filesystem: `"/Volumes/X" is on a
+  "ntfs" filesystem, not apfs`. Nothing gets misread as APFS.
+- An ext4 drive is further along the same road before you even get there: macOS has
+  no native ext2/3/4 support at all, so it typically won't mount without third-party
+  software (fuse-ext2, ext4fuse via macFUSE, Paragon extFS). With nothing installed,
+  there's no live path to point nemo at in the first place.
+- NTFS and ext4 live mode aren't built for any OS yet (`internal/filesystem/ntfs` and
+  `internal/filesystem/ext4` have no live file at all; see the "Not built yet" note on
+  each's own page). That's also not a gap macOS closes once those land elsewhere: live
+  mode's design ties a filesystem's live implementation to running on that
+  filesystem's native OS, NTFS live is planned Windows-only, ext4 live Linux-only.
+
+The workaround is the same regardless of which foreign filesystem it is: unmount the
+drive (or don't mount it, for ext4) and use `--image /dev/diskN` against the raw
+device instead. Image mode doesn't touch the live OS's mount at all, it parses raw
+bytes directly, so nemo's NTFS and ext4 parsers work identically on macOS, Linux, or
+Windows; only *live* access to a currently-mounted foreign filesystem is unavailable
+on macOS.
+
 **Named streams** map directly onto xattrs: `OpenLive`'s `liveEntry` implements
 `NamedStreamCapable` with `unix.Getxattr`/`Setxattr`/`Removexattr`/`Listxattr`
 (`golang.org/x/sys/unix`, not in stdlib `syscall` on darwin). The resource fork is just

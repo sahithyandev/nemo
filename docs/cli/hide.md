@@ -30,8 +30,10 @@ Options:
 
 See [Modes](./#modes) and [Custody logging](./#custody-logging) for how `--image` and the custody record work.
 
-Live mode is only built for APFS on macOS today. `named-stream` and `timestomp` work
-against any path there; `slack-space` always fails against a mounted volume, since
-macOS refuses a read-write open of the raw device while its volume is mounted, use
-`--image` for a live slack-space hide instead. See [APFS live
+Live mode is only built for APFS on macOS today, and nothing else, even there: a
+target on a mounted NTFS, ext4, or other non-APFS volume refuses with a clear error
+naming that filesystem rather than falling through to something wrong. `named-stream`
+and `timestomp` work against any APFS path; `slack-space` always fails against a
+mounted volume, since macOS refuses a read-write open of the raw device while its
+volume is mounted, use `--image` for a live slack-space hide instead. See [APFS live
 mode](../file-systems/apfs.html#live-mode-macos).
