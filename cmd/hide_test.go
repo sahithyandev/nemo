@@ -67,7 +67,7 @@ func TestHideRejectsMissingAndIncompatibleFlagsBeforeOpeningTarget(t *testing.T)
 				opened = true
 				return openedTarget{}, errors.New("unexpected open")
 			}
-			dependencies.openLive = func(string) (openedTarget, error) {
+			dependencies.openLive = func(string, string, bool) (openedTarget, error) {
 				opened = true
 				return openedTarget{}, errors.New("unexpected open")
 			}
@@ -101,10 +101,13 @@ func TestHideNamedStreamLiveModeEndToEndWithCustodyRecord(t *testing.T) {
 	}
 	liveCalls := 0
 	imageCalls := 0
-	dependencies.openLive = func(target string) (openedTarget, error) {
+	dependencies.openLive = func(target, tech string, write bool) (openedTarget, error) {
 		liveCalls++
 		if target != "/target" {
 			t.Fatalf("unexpected live target %q", target)
+		}
+		if tech != "named-stream" || !write {
+			t.Fatalf("unexpected live open args tech=%q write=%v", tech, write)
 		}
 		return openedTarget{filesystem: fake}, nil
 	}
@@ -166,7 +169,7 @@ func TestHideSelectsImageModeWhenImageFlagIsPresent(t *testing.T) {
 	fake := fakefs.New("/target")
 	dependencies := defaultHideDependencies()
 	dependencies.readFile = func(string) ([]byte, error) { return []byte("x"), nil }
-	dependencies.openLive = func(string) (openedTarget, error) {
+	dependencies.openLive = func(string, string, bool) (openedTarget, error) {
 		t.Fatal("live mode selected despite --image")
 		return openedTarget{}, nil
 	}
@@ -222,7 +225,7 @@ func TestHideExecutesSlackSpaceAndTimestomp(t *testing.T) {
 	t.Run("timestomp", func(t *testing.T) {
 		fake := fakefs.New("/target")
 		dependencies := defaultHideDependencies()
-		dependencies.openLive = func(string) (openedTarget, error) {
+		dependencies.openLive = func(string, string, bool) (openedTarget, error) {
 			return openedTarget{filesystem: fake}, nil
 		}
 		dependencies.logCustody = func(custody.Record) error { return nil }
@@ -243,7 +246,7 @@ func TestHideExecutesSlackSpaceAndTimestomp(t *testing.T) {
 func TestHideDoesNotEmitCustodyRecordWhenOperationFails(t *testing.T) {
 	dependencies := defaultHideDependencies()
 	dependencies.readFile = func(string) ([]byte, error) { return []byte("x"), nil }
-	dependencies.openLive = func(string) (openedTarget, error) {
+	dependencies.openLive = func(string, string, bool) (openedTarget, error) {
 		return openedTarget{filesystem: fakefs.New()}, nil
 	}
 	recorded := false
@@ -274,7 +277,7 @@ func TestHideReturnsPersistenceFailureWithoutEmittingRecord(t *testing.T) {
 	fake := fakefs.New("/target")
 	dependencies := defaultHideDependencies()
 	dependencies.readFile = func(string) ([]byte, error) { return []byte("payload"), nil }
-	dependencies.openLive = func(string) (openedTarget, error) {
+	dependencies.openLive = func(string, string, bool) (openedTarget, error) {
 		return openedTarget{filesystem: fake}, nil
 	}
 	persistCalls := 0
@@ -301,7 +304,7 @@ func TestHideReturnsPersistenceFailureWithoutEmittingRecord(t *testing.T) {
 func TestHidePayloadReadFailureDoesNotOpenOrWrite(t *testing.T) {
 	dependencies := defaultHideDependencies()
 	dependencies.readFile = func(string) ([]byte, error) { return nil, errors.New("read failed") }
-	dependencies.openLive = func(string) (openedTarget, error) {
+	dependencies.openLive = func(string, string, bool) (openedTarget, error) {
 		t.Fatal("target opened after payload read failure")
 		return openedTarget{}, nil
 	}

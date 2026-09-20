@@ -168,7 +168,10 @@ on-disk state doesn't match what was intended.
   specifically (reading tolerates other sector sizes through the general
   fixup code; writing requires 512 to compute the fixup stride).
 - **Slack-space access, timestomp, and live mode for NTFS.** Not built yet.
-  See [Roadmap](../roadmap.html).
+  See [Roadmap](../roadmap.html). Live mode is planned Windows-only (an NTFS volume
+  mounted through a third-party driver on macOS or Linux wouldn't get one either);
+  `--image` against an NTFS device or `.img` already works on any host OS in the
+  meantime, mounted or not.
 
 ## Safety against crafted images
 

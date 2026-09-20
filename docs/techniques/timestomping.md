@@ -199,3 +199,9 @@ metadata, and local snapshots all keep the value as it was before the stomp.
 
 `fakefs.Entry.SetTimestamp` (`internal/filesystem/fakefs/fakefs.go`) is the test
 double.
+
+APFS also has a live-mode path on macOS (`internal/filesystem/apfs/live_darwin.go`):
+`modified`/`accessed` go through `os.Chtimes`, `created` through
+`setattrlist(ATTR_CMN_CRTIME)` (stdlib has no equivalent), and `changed` stays
+unsupported there too, for the same reason it's unsupported live everywhere else. See
+[APFS live mode](../file-systems/apfs.html#live-mode-macos).

@@ -24,7 +24,7 @@ type clearOptions struct {
 
 type clearDependencies struct {
 	openImage    func(string) (openedTarget, error)
-	openLive     func(string) (openedTarget, error)
+	openLive     func(target, technique string, write bool) (openedTarget, error)
 	loadManifest func(string) ([]technique.Backup, error)
 	now          func() time.Time
 	logCustody   func(custody.Record) error
@@ -82,7 +82,7 @@ func runClear(command *cobra.Command, target string, options clearOptions, depen
 	if command.Flags().Changed("image") {
 		opened, err = dependencies.openImage(options.image)
 	} else {
-		opened, err = dependencies.openLive(target)
+		opened, err = dependencies.openLive(target, options.technique, true)
 	}
 	if err != nil {
 		return err

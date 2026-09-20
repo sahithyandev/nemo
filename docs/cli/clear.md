@@ -29,3 +29,9 @@ Options:
 As with `hide`, every `clear` operation writes an entry to the chain-of-custody log, in both modes.
 
 Restoration limits: clearing a `slack-space` payload restores the original residual bytes only if a manifest from the earlier `hide` is available; without one the frame is zero-filled. See [Slack-Space Hiding](../techniques/slack-space.html#reversibility-the-manifest) for the manifest contract. Clearing a `timestomp` requires the original timestamp to be supplied explicitly, because nemo cannot read a prior value back off the filesystem; see [Timestomping](../techniques/timestomping.html#why-nemos-detect-reports-nothing-for-timestomp). There is no manifest path for timestomp the way there is for slack-space.
+
+Live mode is only built for APFS on macOS today, and nothing else, even there: a
+target on a mounted NTFS, ext4, or other non-APFS volume refuses with a clear error
+naming that filesystem rather than falling through to something wrong. It has the same
+`slack-space` limit `hide` has: it always fails against a mounted volume, use `--image`
+instead. See [APFS live mode](../file-systems/apfs.html#live-mode-macos).

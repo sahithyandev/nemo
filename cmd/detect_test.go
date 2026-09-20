@@ -19,7 +19,7 @@ func fakeDetectDeps(fs *fakefs.FS) detectDependencies {
 		openImage: func(string) (openedTarget, error) {
 			return openedTarget{filesystem: fs, image: imagepkg.ReadOnly(fs.Img)}, nil
 		},
-		openLive: func(string) (openedTarget, error) {
+		openLive: func(string, string, bool) (openedTarget, error) {
 			return openedTarget{}, errors.New("unexpected live open")
 		},
 	}

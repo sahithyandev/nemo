@@ -19,8 +19,10 @@ import (
 
 func fakeClearDeps(f *fakefs.FS) clearDependencies {
 	return clearDependencies{
-		openImage:    func(string) (openedTarget, error) { return openedTarget{filesystem: f, image: f.Img}, nil },
-		openLive:     func(string) (openedTarget, error) { return openedTarget{filesystem: f, image: f.Img}, nil },
+		openImage: func(string) (openedTarget, error) { return openedTarget{filesystem: f, image: f.Img}, nil },
+		openLive: func(string, string, bool) (openedTarget, error) {
+			return openedTarget{filesystem: f, image: f.Img}, nil
+		},
 		loadManifest: func(string) ([]technique.Backup, error) { return nil, os.ErrNotExist },
 		now:          func() time.Time { return time.Date(2026, 9, 14, 12, 0, 0, 0, time.UTC) },
 		logCustody:   func(custody.Record) error { return nil },
@@ -79,8 +81,12 @@ func TestClearValidationBeforeOpening(t *testing.T) {
 	} {
 		t.Run(strings.Join(tc.args, " "), func(t *testing.T) {
 			deps := clearDependencies{}
-			unexpected := func(string) (openedTarget, error) { t.Fatal("opened before validation"); return openedTarget{}, nil }
-			deps.openLive, deps.openImage = unexpected, unexpected
+			unexpectedImage := func(string) (openedTarget, error) { t.Fatal("opened before validation"); return openedTarget{}, nil }
+			unexpectedLive := func(string, string, bool) (openedTarget, error) {
+				t.Fatal("opened before validation")
+				return openedTarget{}, nil
+			}
+			deps.openLive, deps.openImage = unexpectedLive, unexpectedImage
 			deps.loadManifest = func(string) ([]technique.Backup, error) { t.Fatal("manifest read before validation"); return nil, nil }
 			_, err := runClearCmd(deps, tc.args...)
 			if err == nil || !strings.Contains(err.Error(), tc.want) {
@@ -108,11 +114,13 @@ func TestClearNamedStreamModesAndCustody(t *testing.T) {
 			}
 			return openedTarget{filesystem: f, image: f.Img, close: func() error { closed++; return nil }}, nil
 		}
-		unexpected := func(string) (openedTarget, error) { t.Fatal("wrong mode"); return openedTarget{}, nil }
-		deps.openLive, deps.openImage = open, unexpected
+		liveOpen := func(target, _ string, _ bool) (openedTarget, error) { return open(target) }
+		unexpectedImage := func(string) (openedTarget, error) { t.Fatal("wrong mode"); return openedTarget{}, nil }
+		unexpectedLive := func(string, string, bool) (openedTarget, error) { t.Fatal("wrong mode"); return openedTarget{}, nil }
+		deps.openLive, deps.openImage = liveOpen, unexpectedImage
 		args := []string{"/target", "-t", "named-stream", "--stream-name=secret"}
 		if imageMode {
-			deps.openLive, deps.openImage = unexpected, open
+			deps.openLive, deps.openImage = unexpectedLive, open
 			args = append(args, "-i", "disk.img")
 		}
 		deps.loadManifest = func(string) ([]technique.Backup, error) { t.Fatal("named-stream read manifest"); return nil, nil }
@@ -235,7 +243,7 @@ func TestClearUnsupportedCapabilities(t *testing.T) {
 		f := fakefs.New("/target")
 		deps := fakeClearDeps(f)
 		closed := false
-		deps.openLive = func(string) (openedTarget, error) {
+		deps.openLive = func(string, string, bool) (openedTarget, error) {
 			return openedTarget{filesystem: clearUnsupportedFS{f}, close: func() error { closed = true; return nil }}, nil
 		}
 		deps.logCustody = func(custody.Record) error { t.Fatal("logged failed clear"); return nil }
@@ -254,7 +262,7 @@ func TestClearFailuresAndCleanup(t *testing.T) {
 			f.Entry("/target").Streams = map[string][]byte{"s": []byte("x")}
 			deps := fakeClearDeps(f)
 			closed, logs, echoes := 0, 0, 0
-			deps.openLive = func(string) (openedTarget, error) {
+			deps.openLive = func(string, string, bool) (openedTarget, error) {
 				if stage == "open" {
 					return openedTarget{}, sentinel
 				}

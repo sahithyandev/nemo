@@ -173,7 +173,10 @@ for why that matters for `detect`.
 - **Mutating a shared external xattr block** (`refcount > 1`).
 - **Emptying an external xattr block via delete.**
 - **Slack-space access and live mode for ext4.** Not built yet. See
-  [Roadmap](../roadmap.html).
+  [Roadmap](../roadmap.html). Live mode is planned Linux-only. macOS has no native
+  ext2/3/4 support at all, so an ext4 drive there typically needs third-party
+  software (fuse-ext2, ext4fuse, Paragon extFS) just to mount; `--image` against the
+  raw device or a `.img` file works on any host OS regardless, mounted or not.
 
 ## Testing
 
