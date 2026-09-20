@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"github.com/sahithyandev/nemo/internal/filesystem"
+	"github.com/sahithyandev/nemo/internal/filesystem/fakefs"
+	"golang.org/x/sys/unix"
 )
 
 // liveTarget creates an empty file in a fresh temp dir and returns its
@@ -411,5 +413,75 @@ func TestLiveEntryHasNoSlackCapability(t *testing.T) {
 	var e filesystem.Entry = &liveEntry{}
 	if _, ok := e.(filesystem.SlackSpaceCapable); ok {
 		t.Fatal("liveEntry implements filesystem.SlackSpaceCapable, want it not to")
+	}
+}
+
+func TestRawDevicePath(t *testing.T) {
+	cases := map[string]string{
+		"/dev/disk5":   "/dev/rdisk5",
+		"/dev/disk5s1": "/dev/rdisk5s1",
+		"/dev/disk20":  "/dev/rdisk20",
+	}
+	for in, want := range cases {
+		if got := rawDevicePath(in); got != want {
+			t.Errorf("rawDevicePath(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+// TestMountRelativeFSOpen confirms mountRelativeFS.Open strips the mount
+// point off an OS-absolute live target path before delegating to the
+// container-rooted FileSystem NewVolume returns, which only understands
+// volume-relative paths.
+func TestMountRelativeFSOpen(t *testing.T) {
+	underlying := fakefs.New("/target.bin", "/dir/nested.txt")
+	adapted := &mountRelativeFS{underlying: underlying, mountPoint: "/Volumes/NEMOLIVE"}
+
+	entry, err := adapted.Open("/Volumes/NEMOLIVE/target.bin")
+	if err != nil {
+		t.Fatalf("Open(mounted path): %v", err)
+	}
+	if entry.Path() != "/target.bin" {
+		t.Fatalf("Open(mounted path).Path() = %q, want %q", entry.Path(), "/target.bin")
+	}
+
+	entry, err = adapted.Open("/Volumes/NEMOLIVE/dir/nested.txt")
+	if err != nil {
+		t.Fatalf("Open(nested mounted path): %v", err)
+	}
+	if entry.Path() != "/dir/nested.txt" {
+		t.Fatalf("Open(nested mounted path).Path() = %q, want %q", entry.Path(), "/dir/nested.txt")
+	}
+
+	// The mount point itself maps to the volume root.
+	if _, err := adapted.Open("/Volumes/NEMOLIVE"); err != nil {
+		t.Fatalf("Open(mount point itself): %v", err)
+	}
+
+	if _, err := adapted.Open("/somewhere/else/target.bin"); err == nil {
+		t.Fatal("Open(path outside the mount point): expected an error, got nil")
+	}
+
+	if adapted.Type() != underlying.Type() {
+		t.Fatalf("Type() = %q, want %q", adapted.Type(), underlying.Type())
+	}
+	if adapted.Root().Path() != underlying.Root().Path() {
+		t.Fatalf("Root().Path() = %q, want %q", adapted.Root().Path(), underlying.Root().Path())
+	}
+}
+
+func TestClassifyDeviceErrorNamesTheOpenMode(t *testing.T) {
+	readErr := classifyDeviceError("/dev/rdisk5", false, unix.EBUSY)
+	if !strings.Contains(readErr.Error(), "read-mode") {
+		t.Fatalf("read-mode EBUSY error = %v, want it to mention read-mode", readErr)
+	}
+	writeErr := classifyDeviceError("/dev/disk5", true, unix.EBUSY)
+	if !strings.Contains(writeErr.Error(), "write-mode") {
+		t.Fatalf("write-mode EBUSY error = %v, want it to mention write-mode", writeErr)
+	}
+
+	permErr := classifyDeviceError("/dev/rdisk3", false, unix.EACCES)
+	if !strings.Contains(permErr.Error(), "sudo") {
+		t.Fatalf("EACCES error = %v, want it to mention sudo", permErr)
 	}
 }

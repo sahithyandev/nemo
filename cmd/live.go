@@ -25,15 +25,16 @@ func openLiveTarget(target, tech string, write bool) (openedTarget, error) {
 	return openedTarget{filesystem: fs}, nil
 }
 
-// openLiveSlack opens the raw device backing target's volume. The wrap
+// openLiveSlack opens the device backing target's volume (buffered for a
+// write, raw character device for a read; see apfs.OpenLiveSlack). The wrap
 // closure applies the same custody-logging policy image mode uses for a
 // write, or a plain read-only wrapper for a scan, so a live slack-space
 // mutation goes through custody logging exactly like an image-mode one:
 // it is never handed the unwrapped device.
 func openLiveSlack(target string, write bool) (openedTarget, error) {
-	wrap := func(raw *imagepkg.RawImage) (imagepkg.Image, func() error) {
+	wrap := func(raw imagepkg.Image, rawClose func() error) (imagepkg.Image, func() error) {
 		if !write {
-			return imagepkg.ReadOnly(raw), raw.Close
+			return imagepkg.ReadOnly(raw), rawClose
 		}
 		recorder := custody.Wrap(raw)
 		return recorder, recorder.Close

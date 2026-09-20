@@ -427,22 +427,35 @@ rather than a silent surprise.
 
 `liveEntry` deliberately does not implement `SlackSpaceCapable`. The unused tail bytes
 of an allocated block have no path-based API on any OS; reaching them needs the raw
-container device, which `OpenLiveSlack` opens separately (`/dev/diskN` derived from
-`unix.Statfs`'s `f_mntfromname`, with its trailing volume-slice suffix stripped) and
-parses with `NewVolume` against the specific mounted volume (`f_mntonname`'s last path
-component).
+container device, which `OpenLiveSlack` derives from `unix.Statfs`'s `f_mntfromname`
+(trailing volume-slice suffix stripped) and parses with `NewVolume` against the
+specific mounted volume (`f_mntonname`'s last path component).
 
-A live slack-space write can never succeed on a mounted volume. macOS refuses a read-write open of a block device while
-its volume is mounted (`EBUSY`), and a live target path only exists while its volume
-is mounted. So `nemo hide -t slack-space` with no `--image`, and `nemo clear -t
-slack-space` the same way, always fail with an error naming the busy device and
-suggesting `diskutil unmountDisk` or `--image` instead. A read-only open of the
-device while mounted is allowed (as root), so `nemo detect -t slack-space` without
-`--image` does work, scanning the live volume's slack through the same read-only
-wrapper image-mode detect uses. Either way the device open needs root; a permission
-failure names the device and suggests `sudo`. `scripts/live-check.sh` exercises both
-halves of this (detect succeeding, hide failing with the busy message) against a
-scratch disk image when it has `sudo`.
+`hide` and `detect` open two different device nodes for this, because macOS's two
+disk device types behave differently while a volume is mounted:
+
+- `hide` (and `clear`) open the **buffered** device (`/dev/diskN`) read-write. macOS
+  refuses that outright while the volume is mounted (`EBUSY`): opening it would create
+  a second, independent view into blocks the mount's own buffer cache already manages.
+  A live slack-space write can never succeed on a mounted volume; `nemo hide -t
+  slack-space` and `nemo clear -t slack-space` with no `--image` always fail with an
+  error naming the busy device and suggesting `diskutil unmountDisk` or `--image`
+  instead.
+- `detect` opens the **raw character** device (`/dev/rdiskN`) read-only, through
+  `image.OpenRawReadOnly`. That bypasses the buffer cache entirely, and macOS allows it
+  even while the volume is mounted, the same way `sudo dd if=/dev/rdisk0 of=... `
+  works against a running Mac's own boot disk. It does need every read
+  sector-aligned, which `AlignedRawDevice` (`internal/image/aligned.go`) handles by
+  rounding each request out to the device's block size (via `DKIOCGETBLOCKSIZE`) and
+  copying back only the requested bytes.
+
+Either way, whether the open succeeds without privilege depends on who owns the
+device node, not on hide vs. detect: a disk image you attached yourself is normally
+owned by your own user, so `nemo detect -t slack-space` against it needs no `sudo` at
+all; the container disk behind your boot volume is owned by root (group `operator`),
+so detecting there does need `sudo`, and a permission failure names the device and
+suggests it. `scripts/live-check.sh` exercises both halves (detect succeeding, hide
+failing with the busy message) against a scratch disk image when it has `sudo`.
 
 Because slack-space is the only technique that touches the raw device, and only when
 `--technique slack-space` is given explicitly, an unqualified `nemo detect` (no

@@ -136,11 +136,13 @@ missing-privilege condition and fail with a clear error rather than silently
 degrade. `named-stream` and `timestomp` do not have this requirement; they go
 through ordinary syscalls.
 
-APFS on macOS implements this (`internal/filesystem/apfs/live_darwin.go`): a
-permission failure opening the device names it and suggests `sudo`, and a live
-slack-space **write** additionally always fails with a "busy" error, since macOS
-refuses a read-write device open while its volume is mounted. Only live slack-space
-`detect`, which opens the device read-only, actually works. See [APFS live
+APFS on macOS implements this (`internal/filesystem/apfs/live_darwin.go`). A live
+slack-space **write** always fails with a "busy" error: macOS refuses a read-write
+open of the buffered device while its volume is mounted, full stop. `detect` opens
+the raw character device instead, which macOS does allow read-only while mounted, so
+it actually works, whether that needs `sudo` depends on who owns that device node (a
+disk image you attached yourself, usually not; your boot volume's device, yes). A
+permission failure either way names the device and suggests `sudo`. See [APFS live
 mode](../file-systems/apfs.html#live-mode-macos).
 
 ## nemo's payload frame

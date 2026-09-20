@@ -100,8 +100,10 @@ Acceptance for each: `nemo hide`/`detect`/`clear` with `--technique <x>` succeed
 
 Acceptance: same shape as NTFS, against an APFS test image or macOS live path. Live
 slack-space write always fails against a mounted volume (macOS refuses a read-write
-device open while its volume is mounted); live slack-space detect works read-only, as
-root. See [APFS live mode](../file-systems/apfs.html#live-mode-macos).
+open of the buffered device while its volume is mounted); live slack-space detect
+opens the raw character device instead, which macOS does allow read-only while
+mounted, so it works. Whether that needs root depends on who owns the device node.
+See [APFS live mode](../file-systems/apfs.html#live-mode-macos).
 
 ### ext4 (owner: ext4 dev)
 

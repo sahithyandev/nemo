@@ -18,6 +18,6 @@ func OpenLive(path string) (filesystem.FileSystem, error) {
 	return nil, fmt.Errorf("apfs live mode requires macOS (this is %s): %w", runtime.GOOS, filesystem.ErrUnsupported)
 }
 
-func OpenLiveSlack(path string, write bool, wrap func(*image.RawImage) (image.Image, func() error)) (filesystem.FileSystem, image.Image, func() error, error) {
+func OpenLiveSlack(path string, write bool, wrap func(image.Image, func() error) (image.Image, func() error)) (filesystem.FileSystem, image.Image, func() error, error) {
 	return nil, nil, nil, fmt.Errorf("apfs live mode requires macOS (this is %s): %w", runtime.GOOS, filesystem.ErrUnsupported)
 }

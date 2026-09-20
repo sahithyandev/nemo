@@ -46,43 +46,92 @@ func OpenLive(path string) (filesystem.FileSystem, error) {
 	return &liveFS{root: path}, nil
 }
 
-// OpenLiveSlack opens the raw block device backing path's mounted APFS
-// container for slack-space access. write selects a read-write or
-// read-only open of the device; macOS refuses a read-write open while the
-// device's volume is mounted (EBUSY), so write is only ever satisfiable
-// against an unmounted device. See docs/file-systems/apfs.md.
+// OpenLiveSlack opens the device backing path's mounted APFS container for
+// slack-space access. A write goes through the buffered device
+// (/dev/diskN) with image.Open; macOS refuses that while the device's
+// volume is mounted (EBUSY), so a live write is only ever satisfiable
+// against an unmounted device. A read goes through the raw character
+// device (/dev/rdiskN) with image.OpenRawReadOnly instead: unlike the
+// buffered device, macOS allows a read-only open of the raw device even
+// while mounted, since it bypasses the mount's own buffer cache rather
+// than opening a second view into it. See docs/file-systems/apfs.md.
 //
 // wrap lets the caller apply its own image-wrapping policy (custody
 // logging for a write, a read-only wrapper for a scan) to the freshly
 // opened device before this package parses it, so a live mutation cannot
-// bypass custody logging by construction: the raw device is never handed
-// back unwrapped.
-func OpenLiveSlack(path string, write bool, wrap func(*image.RawImage) (image.Image, func() error)) (filesystem.FileSystem, image.Image, func() error, error) {
+// bypass custody logging by construction: the device is never handed back
+// unwrapped.
+func OpenLiveSlack(path string, write bool, wrap func(image.Image, func() error) (image.Image, func() error)) (filesystem.FileSystem, image.Image, func() error, error) {
 	stat, err := statfs(path)
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("apfs: statfs %q: %w", path, err)
 	}
-	device, volume, err := deviceAndVolume(stat)
+	device, volume, mountPoint, err := deviceAndVolume(stat)
 	if err != nil {
 		return nil, nil, nil, err
 	}
 
-	openDevice := image.OpenReadOnly
+	var raw image.Image
+	var rawClose func() error
+	openPath := device
 	if write {
-		openDevice = image.Open
-	}
-	raw, err := openDevice(device)
-	if err != nil {
-		return nil, nil, nil, classifyDeviceError(device, write, err)
+		r, err := image.Open(device)
+		if err != nil {
+			return nil, nil, nil, classifyDeviceError(device, write, err)
+		}
+		raw, rawClose = r, r.Close
+	} else {
+		openPath = rawDevicePath(device)
+		r, err := image.OpenRawReadOnly(openPath)
+		if err != nil {
+			return nil, nil, nil, classifyDeviceError(openPath, write, err)
+		}
+		raw, rawClose = r, r.Close
 	}
 
-	wrapped, closeFn := wrap(raw)
+	wrapped, closeFn := wrap(raw, rawClose)
 	fs, err := NewVolume(wrapped, volume)
 	if err != nil {
 		_ = closeFn()
-		return nil, nil, nil, fmt.Errorf("apfs: open live slack space on %q (device %s): %w", path, device, err)
+		return nil, nil, nil, fmt.Errorf("apfs: open live slack space on %q (device %s): %w", path, openPath, err)
 	}
-	return fs, wrapped, closeFn, nil
+	// fs.Open expects a path relative to the volume's root (e.g.
+	// /target.txt), the same shape image mode's Open always took; the
+	// caller's target is the OS-absolute live path instead (e.g.
+	// /Volumes/NEMOLIVETEST/target.txt). mountRelativeFS translates.
+	return &mountRelativeFS{underlying: fs, mountPoint: mountPoint}, wrapped, closeFn, nil
+}
+
+// mountRelativeFS adapts a container-rooted FileSystem (from NewVolume,
+// which only understands volume-relative paths) to the OS-absolute paths
+// every other live-mode entry point takes. Open strips mountPoint off the
+// front of the given path before delegating.
+type mountRelativeFS struct {
+	underlying filesystem.FileSystem
+	mountPoint string
+}
+
+var _ filesystem.FileSystem = (*mountRelativeFS)(nil)
+
+func (f *mountRelativeFS) Type() filesystem.Type  { return f.underlying.Type() }
+func (f *mountRelativeFS) Root() filesystem.Entry { return f.underlying.Root() }
+
+func (f *mountRelativeFS) Open(path string) (filesystem.Entry, error) {
+	if !strings.HasPrefix(path, f.mountPoint) {
+		return nil, fmt.Errorf("apfs: %q is not on the mounted volume %q", path, f.mountPoint)
+	}
+	rel := strings.TrimPrefix(path, f.mountPoint)
+	if rel == "" {
+		rel = "/"
+	}
+	return f.underlying.Open(rel)
+}
+
+// rawDevicePath turns a buffered device path (/dev/disk5) into its raw
+// character-device counterpart (/dev/rdisk5).
+func rawDevicePath(buffered string) string {
+	dir, base := filepath.Split(buffered)
+	return dir + "r" + base
 }
 
 func statfs(path string) (unix.Statfs_t, error) {
@@ -96,11 +145,11 @@ func statfs(path string) (unix.Statfs_t, error) {
 // device is reported as e.g. /dev/disk5s1 (the volume's own slice); the
 // container device slack-space needs is /dev/disk5, its slice suffix
 // stripped.
-func deviceAndVolume(stat unix.Statfs_t) (device, volume string, err error) {
+func deviceAndVolume(stat unix.Statfs_t) (device, volume, mountPoint string, err error) {
 	from := cString(stat.Mntfromname[:])
 	on := cString(stat.Mntonname[:])
 	if from == "" {
-		return "", "", errors.New("apfs: statfs returned no source device")
+		return "", "", "", errors.New("apfs: statfs returned no source device")
 	}
 
 	base := from
@@ -111,7 +160,7 @@ func deviceAndVolume(stat unix.Statfs_t) (device, volume string, err error) {
 	if on != "" && on != "/" {
 		volume = filepath.Base(on)
 	}
-	return base, volume, nil
+	return base, volume, on, nil
 }
 
 func isDigits(s string) bool {

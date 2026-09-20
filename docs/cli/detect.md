@@ -30,5 +30,6 @@ When `--technique` is given explicitly and no entry in the scan supports it, `de
 Live mode is only built for APFS on macOS today. An unqualified live scan (no
 `--technique`) never attempts a live `slack-space` detect, the same way it skips any
 technique a filesystem doesn't support; `--technique slack-space` explicitly does,
-opening the volume's raw device read-only (needs root). See [APFS live
+opening the volume's raw device read-only (root only if that device node isn't
+already readable by the current user). See [APFS live
 mode](../file-systems/apfs.html#live-mode-macos).
