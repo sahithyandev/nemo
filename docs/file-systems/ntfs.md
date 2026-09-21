@@ -152,6 +152,22 @@ then re-read the record and compare it byte-for-byte against the expected
 result, failing loudly on any mismatch instead of leaving a record whose
 on-disk state doesn't match what was intended.
 
+## Timestomping (`timestomp.go`)
+
+In image mode, `Entry` implements `filesystem.TimestompCapable` and reads
+timestamps through `Timestamp`. It updates creation, modification, metadata
+change, and access times in resident, unnamed `$STANDARD_INFORMATION` (`0x10`).
+Values must fit unsigned FILETIME (100 ns ticks since 1601-01-01) without
+rounding. `$FILE_NAME` timestamps, DATA streams, ADS, and all other attribute
+bytes are preserved.
+
+The operation holds the same MFT lock as named-stream edits and reuses their
+record loading, validation, mapped writes, FILE fixups, and read-back verification.
+All validation completes before any image write. Fragmented MFT records are
+supported; each physical write passes through the existing custody recorder.
+The same geometry and MFT mirror restrictions apply. I/O failures are reported;
+a partially completed physical write is not rolled back.
+
 ## Limitations
 
 - **`$ATTRIBUTE_LIST`-based records.** Both directory and file records that
@@ -167,7 +183,7 @@ on-disk state doesn't match what was intended.
 - **Sector sizes other than 512 bytes**, for the named-stream write path
   specifically (reading tolerates other sector sizes through the general
   fixup code; writing requires 512 to compute the fixup stride).
-- **Slack-space access, timestomp, and live mode for NTFS.** Not built yet.
+- **Slack-space access and live mode for NTFS.** Not built yet.
   See [Roadmap](../roadmap.html). Live mode is planned Windows-only (an NTFS volume
   mounted through a third-party driver on macOS or Linux wouldn't get one either);
   `--image` against an NTFS device or `.img` already works on any host OS in the

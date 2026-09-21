@@ -440,10 +440,10 @@ func TestNamedStreamConcurrentMutations(t *testing.T) {
 	}
 }
 
-func TestNTFSAdvertisesNamedStream(t *testing.T) {
+func TestNTFSAdvertisesTechniques(t *testing.T) {
 	for _, d := range filesystem.Detectors() {
 		if d.Type == filesystem.TypeNTFS {
-			if !reflect.DeepEqual(d.Techniques, []string{"named-stream"}) {
+			if !reflect.DeepEqual(d.Techniques, []string{"named-stream", "timestomp"}) {
 				t.Fatalf("techniques = %v", d.Techniques)
 			}
 			return
