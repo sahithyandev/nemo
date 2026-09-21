@@ -78,7 +78,7 @@ func (f *FS) loadMFTRecord(number uint64) (mftRecord, error) {
 	return parseMFTRecord(b)
 }
 
-// loadMFTBytes requires mftMu, which also serializes named-stream mutations.
+// loadMFTBytes requires mftMu, which also serializes record mutations.
 func (f *FS) loadMFTBytes(number uint64) ([]byte, error) {
 	if number != 0 && len(f.mftRuns) == 0 {
 		zero, err := f.readMFTRecord(0)
