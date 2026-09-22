@@ -1,4 +1,4 @@
-// Package ext4 implements traversal and native xattr mutation of extent-backed ext4 images.
+// Package ext4 implements traversal, native xattr mutation, and timestomping of extent-backed ext4 images.
 package ext4
 
 import (
