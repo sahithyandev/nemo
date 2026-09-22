@@ -2,14 +2,228 @@ package ext4
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"encoding/binary"
+	"encoding/hex"
 	"errors"
+	"io"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/sahithyandev/nemo/internal/custody"
 	"github.com/sahithyandev/nemo/internal/filesystem"
+	"github.com/sahithyandev/nemo/internal/technique"
 )
+
+func TestTimestompTechniquePreservesImageAndRestoresOriginal(t *testing.T) {
+	for _, test := range []struct {
+		field      filesystem.TimeField
+		low, extra int
+	}{
+		{filesystem.TimeCreated, 144, 148},
+		{filesystem.TimeModified, 16, 136},
+		{filesystem.TimeAccessed, 8, 140},
+		{filesystem.TimeChanged, 12, 132},
+	} {
+		t.Run(string(test.field), func(t *testing.T) {
+			field := test.field
+			img := syntheticTimestampImage(24)
+			entry := timestampTestEntry(t, img)
+			original := time.Unix(123456789, 123456789).UTC()
+			if err := entry.SetTimestamp(field, original); err != nil {
+				t.Fatal(err)
+			}
+			before := append([]byte(nil), img.data...)
+			tech, err := technique.Get(technique.Timestomp)
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := mustRFC3339(t, "2310-04-04T16:10:40.999999999Z")
+			if _, err := tech.Hide(entry, technique.Request{Field: field, Timestamp: want}); err != nil {
+				t.Fatal(err)
+			}
+			// Reopen to verify persisted bytes rather than entry-local state.
+			entry = timestampTestEntry(t, img)
+			if got, err := entry.Timestamp(field); err != nil || !got.Equal(want) {
+				t.Fatalf("timestamp = %v, %v; want %v", got, err, want)
+			}
+			raw, off, err := entry.fs.readRawInode(entry.inode)
+			if err != nil {
+				t.Fatal(err)
+			}
+			// Independent on-disk expectations, as in the NTFS preservation test:
+			// 2310-04-04 begins epoch 3 at signed low seconds -2^31.
+			if binary.LittleEndian.Uint32(raw[test.low:]) != 0x80000000 ||
+				binary.LittleEndian.Uint32(raw[test.extra:]) != uint32(999999999)<<2|3 {
+				t.Fatal("wrong on-disk timestamp")
+			}
+			for i, b := range before {
+				rel := i - int(off)
+				allowed := rel >= test.low && rel < test.low+4 || rel >= test.extra && rel < test.extra+4 || rel >= 124 && rel < 126 || rel >= 130 && rel < 132
+				if !allowed && img.data[i] != b {
+					t.Fatalf("unrelated byte changed at %d", i)
+				}
+			}
+			assertValidInodeChecksum(t, entry.fs.sb, entry.inode, raw)
+			if _, err := tech.Clear(entry, technique.Request{Field: field, Timestamp: original}); err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(before, img.data) {
+				t.Fatal("clear did not restore original image")
+			}
+		})
+	}
+}
+
+func TestSetTimestampRejectsInvalidValuesWithoutWriting(t *testing.T) {
+	for _, test := range []struct {
+		name  string
+		extra uint16
+		value time.Time
+	}{
+		{"zero", 24, time.Time{}},
+		{"before minimum", 24, time.Unix(-1<<31-1, 0)},
+		{"after maximum", 24, time.Unix((3<<32)+(1<<31), 0)},
+		{"legacy overflow", 0, time.Unix(1<<31, 0)},
+		{"legacy nanoseconds", 0, time.Unix(1, 1)},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			for _, field := range []filesystem.TimeField{filesystem.TimeAccessed, filesystem.TimeModified, filesystem.TimeChanged, filesystem.TimeCreated} {
+				// A 20-byte extra area provides creation seconds without crtime_extra.
+				extra := test.extra
+				if field == filesystem.TimeCreated && extra == 0 {
+					extra = 20
+				}
+				img := syntheticTimestampImage(extra)
+				recorder := custody.Wrap(img)
+				entry := timestampTestEntry(t, recorder)
+				before := append([]byte(nil), img.data...)
+				if err := entry.SetTimestamp(field, test.value); err == nil {
+					t.Fatalf("SetTimestamp(%s, %v) succeeded", field, test.value)
+				}
+				if !bytes.Equal(before, img.data) || len(recorder.EventsSnapshot()) != 0 {
+					t.Fatalf("invalid %s timestamp caused a write", field)
+				}
+			}
+		})
+	}
+}
+
+func TestSetTimestampRejectsMissingOrInvalidInode(t *testing.T) {
+	for _, test := range []struct {
+		name       string
+		invalidate func(*Entry, *testImage)
+	}{
+		{"zero reference", func(e *Entry, _ *testImage) { e.inode = 0 }},
+		{"reference past inode count", func(e *Entry, _ *testImage) { e.inode = e.fs.sb.inodesCount + 1 }},
+		{"missing inode group", func(e *Entry, _ *testImage) { e.fs.groupCount = 0 }},
+		{"invalid inode table", func(e *Entry, img *testImage) {
+			put32(img.data, int(e.fs.gdtOffset)+8, uint32(e.fs.sb.blocksCount))
+		}},
+		{"missing inode bytes", func(_ *Entry, img *testImage) {
+			img.data = img.data[:timestampTestInodeOffset()]
+		}},
+		{"truncated inode", func(_ *Entry, img *testImage) {
+			img.data = img.data[:timestampTestInodeOffset()+255]
+		}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			img := syntheticTimestampImage(24)
+			recorder := custody.Wrap(img)
+			entry := timestampTestEntry(t, recorder)
+			test.invalidate(entry, img)
+			before := append([]byte(nil), img.data...)
+			for _, field := range []filesystem.TimeField{filesystem.TimeAccessed, filesystem.TimeModified, filesystem.TimeChanged, filesystem.TimeCreated} {
+				if err := entry.SetTimestamp(field, time.Unix(123456789, 0)); err == nil {
+					t.Fatalf("SetTimestamp(%s) accepted invalid inode", field)
+				}
+			}
+			if !bytes.Equal(before, img.data) || len(recorder.EventsSnapshot()) != 0 {
+				t.Fatal("invalid inode caused a write")
+			}
+		})
+	}
+}
+
+func TestTimestampRejectsInvalidLayouts(t *testing.T) {
+	for _, size := range []int{0, 127, 129} {
+		if _, err := timestampLayout(make([]byte, size), filesystem.TimeModified); err == nil {
+			t.Fatalf("accepted inode size %d", size)
+		}
+	}
+	for _, extra := range []uint16{1, 2, 3, 5, 132} {
+		img := syntheticTimestampImage(extra)
+		before := append([]byte(nil), img.data...)
+		entry := timestampTestEntry(t, img)
+		if err := entry.SetTimestamp(filesystem.TimeModified, time.Unix(1, 0)); err == nil {
+			t.Fatalf("accepted extra-isize %d", extra)
+		}
+		if !bytes.Equal(before, img.data) {
+			t.Fatal("invalid layout mutated image")
+		}
+	}
+}
+
+type timestampWriteFailure struct {
+	*testImage
+	err error
+}
+
+func (i timestampWriteFailure) WriteAt([]byte, int64) (int, error) { return 0, i.err }
+
+func TestTimestampWriteErrors(t *testing.T) {
+	for _, writeErr := range []error{io.ErrClosedPipe, nil} {
+		img := timestampWriteFailure{syntheticTimestampImage(24), writeErr}
+		entry := timestampTestEntry(t, img)
+		err := entry.SetTimestamp(filesystem.TimeModified, time.Unix(1, 0))
+		if err == nil {
+			t.Fatal("expected write error")
+		}
+		if writeErr != nil && !errors.Is(err, writeErr) {
+			t.Fatalf("lost underlying error: %v", err)
+		}
+		if writeErr == nil && !strings.Contains(err.Error(), "short image write") {
+			t.Fatalf("unexpected short-write error: %v", err)
+		}
+	}
+}
+
+func TestTimestampRejectedWriteDoesNotRecordCustody(t *testing.T) {
+	for _, field := range []filesystem.TimeField{filesystem.TimeAccessed, filesystem.TimeModified, filesystem.TimeChanged, filesystem.TimeCreated} {
+		t.Run(string(field), func(t *testing.T) {
+			img := timestampWriteFailure{syntheticTimestampImage(24), io.ErrClosedPipe}
+			recorder := custody.Wrap(img)
+			entry := timestampTestEntry(t, recorder)
+			before := append([]byte(nil), img.data...)
+			if err := entry.SetTimestamp(field, time.Unix(123456789, 0)); !errors.Is(err, io.ErrClosedPipe) {
+				t.Fatalf("write error = %v; want underlying failure", err)
+			}
+			if !bytes.Equal(before, img.data) {
+				t.Fatal("rejected write changed image")
+			}
+			if len(recorder.EventsSnapshot()) != 0 {
+				t.Fatal("rejected write recorded a custody event")
+			}
+		})
+	}
+}
+
+type timestampPartialWrite struct{ *testImage }
+
+func (i timestampPartialWrite) WriteAt(p []byte, off int64) (int, error) {
+	// A storage failure can occur after some bytes have already been written.
+	n := copy(i.data[off:], p[:len(p)/2])
+	return n, io.ErrShortWrite
+}
+
+func TestTimestampPartialWriteReturnsFailure(t *testing.T) {
+	img := timestampPartialWrite{syntheticTimestampImage(24)}
+	entry := timestampTestEntry(t, img)
+	if err := entry.SetTimestamp(filesystem.TimeModified, time.Unix(123456789, 0)); !errors.Is(err, io.ErrShortWrite) {
+		t.Fatalf("partial write error = %v; want io.ErrShortWrite", err)
+	}
+}
 
 func TestExt4TimestampRFC3339EpochBoundaries(t *testing.T) {
 	tests := []struct {
@@ -163,31 +377,44 @@ func TestEntryTimestampRoundTripRestoresOriginalInode(t *testing.T) {
 }
 
 func TestSetTimestampUpdatesChecksumAndUsesCustodyWrappedImage(t *testing.T) {
-	img := syntheticTimestampImage(24)
-	recorder := custody.Wrap(img)
-	entry := timestampTestEntry(t, recorder)
-	want := mustRFC3339(t, "2446-05-10T22:38:55.999999999Z")
+	for _, field := range []filesystem.TimeField{filesystem.TimeAccessed, filesystem.TimeModified, filesystem.TimeChanged, filesystem.TimeCreated} {
+		t.Run(string(field), func(t *testing.T) {
+			img := syntheticTimestampImage(24)
+			recorder := custody.Wrap(img)
+			entry := timestampTestEntry(t, recorder)
+			want := mustRFC3339(t, "2446-05-10T22:38:55.999999999Z")
 
-	if err := entry.SetTimestamp(filesystem.TimeModified, want); err != nil {
-		t.Fatalf("SetTimestamp: %v", err)
-	}
-	got, err := entry.Timestamp(filesystem.TimeModified)
-	if err != nil || !got.Equal(want) {
-		t.Fatalf("Timestamp = %v, %v; want %v", got, err, want)
-	}
-	events := recorder.EventsSnapshot()
-	if len(events) != 1 {
-		t.Fatalf("custody events = %d, want 1", len(events))
-	}
-	if events[0].Offset != int64(timestampTestInodeOffset()) {
-		t.Fatalf("custody offset = %d, want %d", events[0].Offset, timestampTestInodeOffset())
-	}
+			before := time.Now()
+			if err := entry.SetTimestamp(field, want); err != nil {
+				t.Fatalf("SetTimestamp: %v", err)
+			}
+			after := time.Now()
+			got, err := entry.Timestamp(field)
+			if err != nil || !got.Equal(want) {
+				t.Fatalf("Timestamp = %v, %v; want %v", got, err, want)
+			}
+			events := recorder.EventsSnapshot()
+			if len(events) != 1 {
+				t.Fatalf("custody events = %d, want 1", len(events))
+			}
+			if events[0].Offset != int64(timestampTestInodeOffset()) {
+				t.Fatalf("custody offset = %d, want %d", events[0].Offset, timestampTestInodeOffset())
+			}
 
-	raw, _, err := entry.fs.readRawInode(entry.inode)
-	if err != nil {
-		t.Fatal(err)
+			raw, _, err := entry.fs.readRawInode(entry.inode)
+			if err != nil {
+				t.Fatal(err)
+			}
+			assertValidInodeChecksum(t, entry.fs.sb, entry.inode, raw)
+			sum := sha256.Sum256(raw)
+			if events[0].SHA256 != hex.EncodeToString(sum[:]) {
+				t.Fatal("custody hash does not cover the complete updated inode")
+			}
+			if events[0].Timestamp.Before(before) || events[0].Timestamp.After(after) || events[0].Timestamp.Location() != time.UTC {
+				t.Fatalf("invalid custody event time: %v", events[0].Timestamp)
+			}
+		})
 	}
-	assertValidInodeChecksum(t, entry.fs.sb, entry.inode, raw)
 }
 
 func TestSetTimestampUnavailableFieldDoesNotMutateImage(t *testing.T) {

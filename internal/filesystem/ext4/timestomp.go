@@ -143,6 +143,9 @@ func inodeExtraEnd(raw []byte) (int, error) {
 	if len(raw) == goodOldInodeSize {
 		return goodOldInodeSize, nil
 	}
+	if len(raw) < inodeExtraIsizeOffset+2 {
+		return 0, errors.New("truncated inode extra-isize field")
+	}
 	extra := int(binary.LittleEndian.Uint16(raw[inodeExtraIsizeOffset:]))
 	if extra == 0 {
 		return goodOldInodeSize, nil
@@ -168,11 +171,13 @@ func encodeExt4Timestamp(t time.Time, hasExtra bool) (uint32, uint32, error) {
 		return uint32(int32(seconds)), 0, nil
 	}
 
-	lowSigned := int64(int32(uint32(seconds)))
-	epoch := (seconds - lowSigned) >> 32
-	if epoch < 0 || epoch > ext4EpochMask {
+	// Check before subtracting the signed low word, which can overflow for
+	// time.Time values far outside ext4's representable range.
+	if seconds < -1<<31 || seconds > (int64(ext4EpochMask)<<32)+(1<<31-1) {
 		return 0, 0, fmt.Errorf("seconds %d are outside the ext4 extended inode range", seconds)
 	}
+	lowSigned := int64(int32(uint32(seconds)))
+	epoch := (seconds - lowSigned) >> 32
 	extra := uint32(t.Nanosecond())<<ext4EpochBits | uint32(epoch)
 	return uint32(seconds), extra, nil
 }
