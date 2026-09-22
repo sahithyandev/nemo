@@ -443,7 +443,7 @@ func TestNamedStreamConcurrentMutations(t *testing.T) {
 func TestNTFSAdvertisesTechniques(t *testing.T) {
 	for _, d := range filesystem.Detectors() {
 		if d.Type == filesystem.TypeNTFS {
-			if !reflect.DeepEqual(d.Techniques, []string{"named-stream", "timestomp"}) {
+			if !reflect.DeepEqual(d.Techniques, []string{"named-stream", "timestomp", "slack-space"}) {
 				t.Fatalf("techniques = %v", d.Techniques)
 			}
 			return

@@ -168,6 +168,23 @@ supported; each physical write passes through the existing custody recorder.
 The same geometry and MFT mirror restrictions apply. I/O failures are reported;
 a partially completed physical write is not rolled back.
 
+## Slack space (`slack.go`)
+
+In image mode, `Entry` implements `filesystem.SlackSpaceCapable`. Slack is
+allocated cluster bytes minus the unnamed DATA attribute's initialized size.
+Resident files and directories expose no cluster slack. Fragmented non-resident
+DATA is mapped in logical order, with one physical slack region per affected run.
+The existing slack technique reads, writes and clears framed payloads through the
+custody-wrapped image. Each frame must fit in one physical region.
+
+Before exposing any region, NTFS reloads the MFT record and validates the entire
+runlist, allocation sizes, image bounds, and overlaps with metadata or other
+attributes in the record. Sparse, compressed, encrypted and ATTRIBUTE_LIST-based
+files are refused. No clusters are allocated, and initialized content, file sizes,
+runlists and MFT bytes remain unchanged. Bytes between initialized size and logical
+EOF are included in slack; NTFS continues to treat that uninitialized range as zeros.
+As with named streams, volume-wide allocation ownership is not inferred.
+
 ## Limitations
 
 - **`$ATTRIBUTE_LIST`-based records.** Both directory and file records that
@@ -183,7 +200,7 @@ a partially completed physical write is not rolled back.
 - **Sector sizes other than 512 bytes**, for the named-stream write path
   specifically (reading tolerates other sector sizes through the general
   fixup code; writing requires 512 to compute the fixup stride).
-- **Slack-space access and live mode for NTFS.** Not built yet.
+- **Live mode for NTFS.** Not built yet.
   See [Roadmap](../roadmap.html). Live mode is planned Windows-only (an NTFS volume
   mounted through a third-party driver on macOS or Linux wouldn't get one either);
   `--image` against an NTFS device or `.img` already works on any host OS in the
