@@ -497,6 +497,26 @@ func (e *Entry) replaceNonresident(b []byte, r mftRecord, index int, data []byte
 	if err != nil {
 		return err
 	}
+	if err := e.validateStreamAllocation(r, index); err != nil {
+		return err
+	}
+	binary.LittleEndian.PutUint64(b[off+48:], uint64(len(data)))
+	binary.LittleEndian.PutUint64(b[off+56:], uint64(len(data)))
+	protected, expected, recordPlan, err := e.prepareStreamRecord(b)
+	if err != nil {
+		return err
+	}
+	// Clear the former logical tail on shrink; allocation and runlist stay intact.
+	if err := e.fs.writeStreamPlan(plan, data); err != nil {
+		return err
+	}
+	return e.commitStreamRecord(protected, expected, recordPlan)
+}
+
+// validateStreamAllocation rejects mappings into metadata or another attribute.
+// The caller must first validate the target with streamRuns(runs, true).
+func (e *Entry) validateStreamAllocation(r mftRecord, index int) error {
+	a := r.attributes[index]
 	// Refuse malformed ADS mappings into filesystem metadata or another
 	// attribute in this record. No volume-wide allocation ownership is inferred.
 	mirrorStart, mirrorEnd, err := e.fs.streamMirrorRange()
@@ -524,15 +544,5 @@ func (e *Entry) replaceNonresident(b []byte, r mftRecord, index int, data []byte
 			}
 		}
 	}
-	binary.LittleEndian.PutUint64(b[off+48:], uint64(len(data)))
-	binary.LittleEndian.PutUint64(b[off+56:], uint64(len(data)))
-	protected, expected, recordPlan, err := e.prepareStreamRecord(b)
-	if err != nil {
-		return err
-	}
-	// Clear the former logical tail on shrink; allocation and runlist stay intact.
-	if err := e.fs.writeStreamPlan(plan, data); err != nil {
-		return err
-	}
-	return e.commitStreamRecord(protected, expected, recordPlan)
+	return nil
 }

@@ -1,4 +1,4 @@
-// Package ntfs implements traversal, named-stream edits and timestomping of NTFS images.
+// Package ntfs implements traversal, named-stream edits, slack space and timestomping of NTFS images.
 package ntfs
 
 import (
@@ -20,7 +20,7 @@ func init() {
 		Type:       filesystem.TypeNTFS,
 		Sniff:      Sniff,
 		New:        New,
-		Techniques: []string{"named-stream", "timestomp"},
+		Techniques: []string{"named-stream", "timestomp", "slack-space"},
 	})
 }
 
