@@ -200,11 +200,30 @@ As with named streams, volume-wide allocation ownership is not inferred.
 - **Sector sizes other than 512 bytes**, for the named-stream write path
   specifically (reading tolerates other sector sizes through the general
   fixup code; writing requires 512 to compute the fixup stride).
-- **Live mode for NTFS.** Not built yet.
-  See [Roadmap](../roadmap.html). Live mode is planned Windows-only (an NTFS volume
-  mounted through a third-party driver on macOS or Linux wouldn't get one either);
-  `--image` against an NTFS device or `.img` already works on any host OS in the
-  meantime, mounted or not.
+- **Live mode for NTFS is read-only and Windows-only.** It reuses the image
+  parser against a volume opened with `GENERIC_READ`, so detection requires
+  administrator access. Live writes return `filesystem.ErrUnsupported` before
+  opening a device. Use an offline image for edits; image mode is unchanged.
+
+## Live mode (Windows)
+
+Targets may be absolute local file/directory paths, drive volumes (`\\.\C:`),
+or volume GUID paths (`\\?\Volume{GUID}`). Physical drives, UNC paths, relative
+paths, stream paths and arbitrary device names are rejected. Local paths are
+resolved to their volume GUID, including junctions and nested mount points.
+The NTFS boot sector is validated by the existing parser.
+
+Volume size and sector geometry come from Windows device queries. Reads are
+sector-aligned and bounded; both the device adapter and image wrappers reject
+writes. Caller wrapping happens before parsing and the returned close function
+owns the device, following APFS's custody/image lifetime pattern. Parse failures
+close it immediately. No volume locks, dismounts or raw writes are performed.
+
+Live reads are not a consistent snapshot: concurrent filesystem changes can
+cause inconsistent results or parser errors. The existing parser limitations
+apply. Native ADS and timestamp writes are not implemented in this phase.
+Non-Windows `OpenLive` calls return `filesystem.ErrUnsupported` without touching
+the target; NTFS image mode remains available on all supported hosts.
 
 ## Safety against crafted images
 
