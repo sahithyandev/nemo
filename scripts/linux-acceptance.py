@@ -21,6 +21,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--nemo', type=Path, help='existing binary; otherwise build in the disposable directory')
     parser.add_argument('--work-parent', type=Path, help='parent for disposable fixtures (use ext4 for native live coverage)')
+    parser.add_argument('--require-live', action='store_true', help='fail rather than skip when the disposable directory is not on ext4')
     args = parser.parse_args()
     for tool in ('mke2fs', 'debugfs', 'stat'):
         if shutil.which(tool) is None:
@@ -111,6 +112,8 @@ def main():
     fs_type = run('stat', '-f', '-c', '%T', host).stdout.strip()
     probe = run(binary, 'detect', host, '-t', 'named-stream', success=False)
     if probe.returncode and 'not on ext4' in probe.stderr:
+        if args.require_live:
+            raise RuntimeError(f'Native ext4 coverage required, but disposable directory filesystem is {fs_type}')
         print(f'SKIP native live round trips: disposable directory filesystem is {fs_type}, not ext4', flush=True)
     else:
         assert probe.returncode == 0, probe.stderr
