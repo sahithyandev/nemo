@@ -25,6 +25,8 @@ jobs:
           go-version-file: go.mod
           cache: true
           cache-dependency-path: go.sum
+      - name: Check VERSION and CHANGELOG format
+        run: sh scripts/check-release-files.sh
       - name: Check formatting
         shell: bash
         run: |
