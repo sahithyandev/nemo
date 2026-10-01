@@ -57,7 +57,7 @@ Every push to `main` releases `cmd/VERSION` if it isn't released yet, whether or
 
 `cmd/VERSION` must be a single `MAJOR.MINOR.PATCH` line, and `CHANGELOG.md` must start with `## Unreleased` followed by unique `## <version>` headings. The pre-commit hook and the first CI step both enforce this.
 
-If the release fails after the tag is created, CI deletes the tag so the next push to `main` retries. A GitHub release goreleaser already created is not removed, so delete it by hand if the retry trips on it.
+If the release fails after the tag is created, CI deletes the tag so the next push to `main` retries. Any GitHub release goreleaser already created is deleted too.
 
 Check the notes extraction locally with `sh scripts/release-notes_test.sh`. Don't run goreleaser locally to release.
 

@@ -164,4 +164,7 @@ jobs:
       - name: Delete tag of failed release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh api -X DELETE "repos/$GITHUB_REPOSITORY/git/refs/tags/${{ needs.tag.outputs.version }}"
+        run: |
+          v="${{ needs.tag.outputs.version }}"
+          gh release delete "$v" --repo "$GITHUB_REPOSITORY" --yes || true
+          gh api -X DELETE "repos/$GITHUB_REPOSITORY/git/refs/tags/$v"
