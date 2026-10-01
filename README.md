@@ -21,7 +21,9 @@ a CLI tool for hiding files.
 
 After cloning the repo, run `make hooks` which will setup the git-managed hooks for the project.
 
-Currently there is a pre-commit hook that formats staged `.go` files with `gofmt` and re-stages for the commit.
+Currently there is a pre-commit hook that:
+- checks the `cmd/VERSION` and `CHANGELOG.md` formats (using [`scripts/check-release-files.sh`](scripts/check-release-files.sh))
+- formats staged `.go` files with `gofmt` and re-stages for the commit
 
 ### Dependencies
 
@@ -51,7 +53,11 @@ Releases are driven by `cmd/VERSION`. Never push tags by hand.
 2. Bump `cmd/VERSION` if needed.
 3. Merge to `main`. CI tags `v<version>` and runs goreleaser, using that changelog section as the release notes.
 
-If `CHANGELOG.md` has no non-empty section for the version, or the tag already exists, CI skips the release and says so in a run annotation.
+Every push to `main` releases `cmd/VERSION` if it isn't released yet, whether or not the file changed in that push. If `CHANGELOG.md` has no non-empty section for the version, or the tag already exists, CI skips the release and says so in a run annotation.
+
+`cmd/VERSION` must be a single `MAJOR.MINOR.PATCH` line, and `CHANGELOG.md` must start with `## Unreleased` followed by unique `## <version>` headings. The pre-commit hook and the first CI step both enforce this.
+
+If the release fails after the tag is created, CI deletes the tag so the next push to `main` retries. A GitHub release goreleaser already created is not removed, so delete it by hand if the retry trips on it.
 
 Check the notes extraction locally with `sh scripts/release-notes_test.sh`. Don't run goreleaser locally to release.
 

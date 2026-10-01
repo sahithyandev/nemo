@@ -70,23 +70,12 @@ jobs:
       created: ${{ steps.tag.outputs.created }}
     steps:
       - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
       - id: tag
         shell: bash
-        env:
-          BEFORE: ${{ github.event.before }}
         run: |
           num="$(tr -d '[:space:]' < cmd/VERSION)"
           v="v$num"
           echo "version=$v" >> "$GITHUB_OUTPUT"
-
-          # only release when this push changed cmd/VERSION
-          if git diff --quiet "$BEFORE" HEAD -- cmd/VERSION 2>/dev/null; then
-            echo "cmd/VERSION unchanged, skipping release"
-            echo "created=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
 
           # require plain MAJOR.MINOR.PATCH (optional -prerelease)
           if ! printf '%s\n' "$num" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'; then
@@ -102,7 +91,7 @@ jobs:
           fi
 
           if git ls-remote --exit-code --tags origin "$v" >/dev/null 2>&1; then
-            echo "$v already exists, skipping release"
+            echo "$v already released, skipping"
             echo "created=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -161,3 +150,16 @@ jobs:
           args: release --clean --release-notes=notes.md
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  untag:
+    needs: [tag, sbom, release]
+    if: failure() && needs.tag.outputs.created == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - name: Delete tag of failed release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh api -X DELETE "repos/$GITHUB_REPOSITORY/git/refs/tags/${{ needs.tag.outputs.version }}"
