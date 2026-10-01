@@ -38,8 +38,6 @@ jobs:
           fi
       - name: Static analysis
         run: go vet ./...
-      - name: Test
-        run: go test ./...
 
   build:
     needs: checks
@@ -56,6 +54,8 @@ jobs:
           go-version-file: go.mod
           cache: true
           cache-dependency-path: go.sum
+      - name: Test
+        run: go test ./...
       - name: Build
         run: go build ./...
 
