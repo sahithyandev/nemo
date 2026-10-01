@@ -27,6 +27,8 @@ jobs:
           cache-dependency-path: go.sum
       - name: Check VERSION and CHANGELOG format
         run: sh scripts/check-release-files.sh
+      - name: Test release notes script
+        run: sh scripts/release-notes_test.sh
       - name: Check formatting
         shell: bash
         run: |
