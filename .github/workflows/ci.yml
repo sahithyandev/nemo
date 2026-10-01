@@ -145,11 +145,11 @@ jobs:
           name: sbom-cyclonedx
       - name: Extract changelog notes
         shell: bash
-        run: sh scripts/release-notes.sh > notes.md
+        run: sh scripts/release-notes.sh > "$RUNNER_TEMP/notes.md"
       - uses: goreleaser/goreleaser-action@v7
         with:
           version: '~> v2'
-          args: release --clean --release-notes=notes.md
+          args: release --clean --release-notes=${{ runner.temp }}/notes.md
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
