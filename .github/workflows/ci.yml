@@ -96,6 +96,8 @@ jobs:
           cache-dependency-path: go.sum
       - name: Check tag matches cmd/VERSION
         run: test "${GITHUB_REF_NAME#v}" = "$(tr -d '[:space:]' < cmd/VERSION)"
+      - name: Check tag is on main
+        run: git merge-base --is-ancestor "$GITHUB_SHA" origin/main
       - uses: actions/download-artifact@v4
         with:
           name: sbom-cyclonedx
