@@ -45,11 +45,13 @@ type SlackSpaceCapable interface {
 }
 
 type TimestompCapable interface {
+    Timestamp(field TimeField) (time.Time, error)
+    SupportsTimestamp(field TimeField) (bool, error)
     SetTimestamp(field TimeField, t time.Time) error
 }
 ```
 
-`internal/technique` type-asserts the `Entry` it is given against the capability it needs and returns an "unsupported on this filesystem" error if the assertion fails. This is what lets ext4 ship named-stream and timestomp support while its slack-space support does not exist yet, without a stub implementation of an oversized interface.
+`internal/technique` type-asserts the `Entry` it is given against the capability it needs and returns an "unsupported on this filesystem" error if the assertion fails. ext4 image entries implement all three capabilities. A capability can still return `ErrUnsupported` for an entry type it cannot handle, such as slack space on a directory; default scans skip that technique for the entry and continue walking.
 
 ## Technique selection and the `features` matrix
 
@@ -68,8 +70,8 @@ type Detector struct {
     Type       Type
     Sniff      func([]byte) bool
     New        func(image.Image) (FileSystem, error)
-    Techniques []string // ext4 today: []string{"named-stream", "timestomp"}
+    Techniques []string // ext4 today: []string{"named-stream", "slack-space", "timestomp"}
 }
 ```
 
-`features` reads `Techniques` off every registered `Detector` and prints the matrix: no image, no reflection, and no way to drift from `registry.go` because it reads the same struct detection uses. When ext4 gains slack-space support, that is a one-line change to its `Detector.Techniques`. See [Techniques](../techniques/#support-matrix-current) for the matrix as it stands.
+`features` reads `Techniques` off every registered `Detector` and prints the matrix: no image, no reflection, and no way to drift from `registry.go` because it reads the same struct detection uses. Filesystem implementations must keep their declared techniques consistent with their capabilities. See [Techniques](../techniques/#support-matrix-current) for the matrix as it stands.

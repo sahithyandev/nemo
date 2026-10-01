@@ -48,3 +48,15 @@ Version is read from `cmd/VERSION` and embedded into the binary at compile time 
 - Bandara S.A.N.K 
 - Sahithyan K.
 - Senanayake H.P.V.R
+
+## Validation and release candidate
+
+Run detection against an explicitly supplied local dataset with the
+[validation harness](docs/validation/README.md). The documented synthetic ext4
+sample runs without downloading a public corpus. Public-dataset acceptance is
+tracked separately from this sample.
+
+See the [v0.1 release candidate pack](docs/release/README.md) for cross-platform
+builds, Linux acceptance evidence, the demonstration plan, and remaining release
+gates. `make release-package OUTPUT=/tmp/nemo-new-release` creates archives in a
+new directory without tagging or publishing.

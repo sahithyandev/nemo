@@ -149,11 +149,12 @@ upper 30 bits plus a 2-bit epoch extension in the low bits that pushes the
 representable range past 2038. Without an extra field, sub-second precision
 or an out-of-32-bit-range value is rejected outright rather than truncated.
 
-`Entry` also exposes `Timestamp` (a reader) and `SupportsTimestamp`,
-implemented here for ext4's own use, but neither is part of the shared
-`filesystem.TimestompCapable` interface yet, so `internal/technique` can't
-call them. See [Timestomping](../techniques/timestomping.html#why-nemos-detect-reports-nothing-for-timestomp)
-for why that matters for `detect`.
+`Entry` implements the shared `filesystem.TimestompCapable` methods `Timestamp`
+(a reader), `SupportsTimestamp`, and `SetTimestamp`. `SupportsTimestamp` checks
+whether the inode contains the requested field. The technique layer does not yet
+compare timestamp values against a historical baseline or automatically save
+original timestamps. See [Timestomping](../techniques/timestomping.html#why-nemos-detect-reports-nothing-for-timestomp)
+for the resulting detection and restoration limits.
 
 ## Limitations
 

@@ -33,15 +33,18 @@ needs and returns `technique.ErrUnsupported` when the assertion fails
 | ------------- | ------------------------------ | -------------------------------------------- |
 | named-stream  | `filesystem.NamedStreamCapable` | `WriteStream` / `ReadStream` / `DeleteStream` |
 | slack-space   | `filesystem.SlackSpaceCapable`  | `SlackRegions`                                |
-| timestomp     | `filesystem.TimestompCapable`   | `SetTimestamp` (no reader, see below)         |
+| timestomp     | `filesystem.TimestompCapable`   | `Timestamp` / `SupportsTimestamp` / `SetTimestamp`         |
 
 ## Support matrix (current)
 
+This table covers image-mode capabilities; filesystem layout restrictions apply.
+See [Live Mode](../architecture/live-mode.html) for native-platform limits.
+
 | Filesystem | named-stream | slack-space | timestomp |
 | ---------- | ------------ | ----------- | --------- |
-| ext4       | done, `internal/filesystem/ext4/ext4.go` and `xattr.go` | not built | done, `internal/filesystem/ext4/timestomp.go` |
-| APFS       | done, `internal/filesystem/apfs/namedstream.go` (in-place B-tree leaf rewrite, no allocation) | not built | not built |
-| NTFS       | done, `internal/filesystem/ntfs/namedstream.go` (resident and non-resident, MFT-mirror aware) | not built | not built |
+| ext4       | done, `internal/filesystem/ext4/ext4.go` and `xattr.go` | implemented (bounded image layouts) | done, `internal/filesystem/ext4/timestomp.go` |
+| APFS       | done, `internal/filesystem/apfs/namedstream.go` (in-place B-tree leaf rewrite, no allocation) | implemented (bounded image layouts) | implemented |
+| NTFS       | done, `internal/filesystem/ntfs/namedstream.go` (resident and non-resident, MFT-mirror aware) | implemented (bounded image layouts) | implemented |
 | fakefs     | done | done | done (test double, `internal/filesystem/fakefs`) |
 
 `fakefs` is an in-memory filesystem that implements all three capabilities
