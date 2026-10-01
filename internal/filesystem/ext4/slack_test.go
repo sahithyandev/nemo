@@ -2,6 +2,7 @@ package ext4
 
 import (
 	"bytes"
+	"errors"
 	"strings"
 	"testing"
 
@@ -203,4 +204,51 @@ func slackTestEntry(t *testing.T, img *testImage) *Entry {
 		t.Fatal(err)
 	}
 	return entry.(*Entry)
+}
+
+func TestSlackDetectionSkipsDirectoriesAndFindsChildFrame(t *testing.T) {
+	img := syntheticImage()
+	setFileExtents(img, 3, 100, []testExtent{{logical: 0, length: 1, physical: 20}})
+	setFileExtents(img, 5, 0, nil)
+	fs, err := New(img)
+	if err != nil {
+		t.Fatal(err)
+	}
+	child, err := fs.Open("/hello.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	selected, _ := technique.Get(technique.SlackSpace)
+	if _, err := selected.Hide(child, technique.Request{Data: []byte("secret"), Image: img}); err != nil {
+		t.Fatal(err)
+	}
+	before := append([]byte(nil), img.data...)
+	var found []string
+	var visit func(filesystem.Entry)
+	visit = func(entry filesystem.Entry) {
+		findings, err := selected.Detect(entry, technique.Request{Image: img})
+		if entry.IsDir() && !errors.Is(err, filesystem.ErrUnsupported) {
+			t.Fatalf("directory %s: want ErrUnsupported, got %v", entry.Path(), err)
+		}
+		if err != nil && !errors.Is(err, filesystem.ErrUnsupported) {
+			t.Fatal(err)
+		}
+		for range findings {
+			found = append(found, entry.Path())
+		}
+		children, err := entry.Children()
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, child := range children {
+			visit(child)
+		}
+	}
+	visit(fs.Root())
+	if len(found) != 1 || found[0] != "/hello.txt" {
+		t.Fatalf("findings = %v", found)
+	}
+	if !bytes.Equal(before, img.data) {
+		t.Fatal("scan modified image")
+	}
 }

@@ -24,7 +24,7 @@ func (e *Entry) SlackRegions() ([]filesystem.SlackRegion, error) {
 		return nil, fmt.Errorf("ext4: read inode %d for slack space: %w", e.inode, err)
 	}
 	if in.mode&modeTypeMask != modeRegular {
-		return nil, fmt.Errorf("ext4: slack space requires a regular file: %q", e.path)
+		return nil, fmt.Errorf("ext4: slack space requires a regular file: %q: %w", e.path, filesystem.ErrUnsupported)
 	}
 
 	blocks, err := e.fs.extentBlocks(in)
