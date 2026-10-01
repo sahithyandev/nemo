@@ -68,12 +68,29 @@ jobs:
       created: ${{ steps.tag.outputs.created }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
       - id: tag
         shell: bash
+        env:
+          BEFORE: ${{ github.event.before }}
         run: |
           num="$(tr -d '[:space:]' < cmd/VERSION)"
           v="v$num"
           echo "version=$v" >> "$GITHUB_OUTPUT"
+
+          # only release when this push changed cmd/VERSION
+          if git diff --quiet "$BEFORE" HEAD -- cmd/VERSION 2>/dev/null; then
+            echo "cmd/VERSION unchanged, skipping release"
+            echo "created=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # require plain MAJOR.MINOR.PATCH (optional -prerelease)
+          if ! printf '%s\n' "$num" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'; then
+            echo "::error title=Invalid version::cmd/VERSION '$num' is not in MAJOR.MINOR.PATCH format"
+            exit 1
+          fi
 
           # require a non-empty CHANGELOG section for this version; no section -> skip
           if ! sh scripts/release-notes.sh "$num" > /dev/null; then
