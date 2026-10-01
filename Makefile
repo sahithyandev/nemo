@@ -1,4 +1,4 @@
-.PHONY: build run test vet fmt clean hooks
+.PHONY: build run test vet crossbuild fmt clean hooks
 
 build: hooks ## compile ./bin/nemo
 	go build -o bin/nemo .
@@ -11,6 +11,10 @@ test: hooks ## run tests
 
 vet:        ## static checks
 	go vet ./...
+
+crossbuild: ## confirm the non-darwin build-tag stubs stay clean
+	GOOS=linux GOARCH=amd64 go build ./...
+	GOOS=windows GOARCH=amd64 go build ./...
 
 fmt:        ## gofmt all files
 	gofmt -l -w .

@@ -2,8 +2,15 @@
 // checkpoint selection, object map, volume superblock, and the volume's
 // filesystem B-tree, exposed through filesystem.FileSystem / filesystem.Entry.
 //
-// Named streams, timestomp, slack space, and live mode are not implemented
-// here; see docs/work-breakdown.md items 18b/19c/20d/21e.
+// Named streams (extended attributes and the resource fork) are implemented
+// in namedstream.go, with an in-place, no-allocation write path: see that
+// file's doc comment for what it can and cannot change. Timestomp is
+// implemented in timestomp.go, patching the fixed-offset fields of the
+// INODE record in place. Slack space is implemented in slack.go: it locates
+// the unused tail bytes past a file's logical size within its data-stream
+// extents, refusing compressed or per-file-encrypted files rather than
+// reporting a meaningless region. Live mode is not implemented here; see
+// docs/work-breakdown.md item 21e.
 //
 // # Limitations
 //
@@ -29,6 +36,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/sahithyandev/nemo/internal/binutil"
@@ -38,10 +46,10 @@ import (
 
 func init() {
 	filesystem.Register(filesystem.Detector{
-		Type:  filesystem.TypeAPFS,
-		Sniff: sniff,
-		New:   New,
-		// Techniques: appended to as 18b/19c/20d land.
+		Type:       filesystem.TypeAPFS,
+		Sniff:      sniff,
+		New:        New,
+		Techniques: []string{"named-stream", "timestomp", "slack-space"},
 	})
 }
 
@@ -552,19 +560,40 @@ type FS struct {
 	volume    *volumeSB
 	volOmap   *omap
 	fsTree    *tree
+	// base is container's byte offset within the underlying image: 0 for a
+	// bare container, or the GPT Apple_APFS partition's start for a
+	// GPT-wrapped one. Everything else on FS (img, block addresses) is
+	// container-relative; base lets slack.go translate a physical block
+	// address into an absolute offset into the caller's image.Image, which
+	// is what a technique's Request.Image actually is.
+	base int64
 }
 
 var _ filesystem.FileSystem = (*FS)(nil)
 
-// New constructs an APFS FileSystem from img. It handles both a bare
-// container (nx_superblock_t at byte 0) and a GPT-wrapped one.
+// New constructs an APFS FileSystem from img, mounting the first volume in
+// the container. It handles both a bare container (nx_superblock_t at byte
+// 0) and a GPT-wrapped one.
 func New(img image.Image) (filesystem.FileSystem, error) {
+	return newFS(img, "")
+}
+
+// NewVolume is like New but mounts the named volume rather than the first
+// one in the container. Live mode uses this: a live target path names one
+// specific volume, which may not be the container's first. An empty volume
+// name behaves exactly like New.
+func NewVolume(img image.Image, volume string) (filesystem.FileSystem, error) {
+	return newFS(img, volume)
+}
+
+func newFS(img image.Image, volume string) (filesystem.FileSystem, error) {
 	prefix, err := readFull(img, 0, minInt64(4096, img.Size()))
 	if err != nil {
 		return nil, fmt.Errorf("apfs: read prefix: %w", err)
 	}
 
 	var container image.Image = img
+	var containerBase int64
 	if !hasNXMagic(prefix) {
 		first, last, ok, err := findAPFSPartitionInImage(img)
 		if err != nil {
@@ -579,6 +608,7 @@ func New(img image.Image) (filesystem.FileSystem, error) {
 			return nil, errors.New("apfs: GPT Apple_APFS partition out of range")
 		}
 		container = &section{img: img, base: base, size: size}
+		containerBase = base
 	}
 
 	sb, err := readContainerSuperblock(container)
@@ -604,6 +634,9 @@ func New(img image.Image) (filesystem.FileSystem, error) {
 		vol, err := readVolumeSuperblock(container, paddr, sb.blockSize)
 		if err != nil {
 			lastErr = err
+			continue
+		}
+		if volume != "" && vol.name != volume {
 			continue
 		}
 		volOmap, err := readOmap(container, vol.omapOid, sb.blockSize)
@@ -633,7 +666,11 @@ func New(img image.Image) (filesystem.FileSystem, error) {
 			volume:    vol,
 			volOmap:   volOmap,
 			fsTree:    fsTree,
+			base:      containerBase,
 		}, nil
+	}
+	if volume != "" {
+		return nil, fmt.Errorf("apfs: no volume named %q in this container", volume)
 	}
 	if lastErr != nil {
 		return nil, fmt.Errorf("apfs: no mountable volume found: %w", lastErr)
@@ -698,7 +735,10 @@ type Entry struct {
 	isDir bool
 }
 
-var _ filesystem.Entry = (*Entry)(nil)
+var (
+	_ filesystem.Entry              = (*Entry)(nil)
+	_ filesystem.NamedStreamCapable = (*Entry)(nil)
+)
 
 func (e *Entry) Path() string { return e.path }
 func (e *Entry) IsDir() bool  { return e.isDir }
@@ -735,9 +775,39 @@ func (e *Entry) Children() ([]filesystem.Entry, error) {
 	return out, nil
 }
 
-// NamedStreams always returns no streams for now; xattr listing lands in
-// work-breakdown item 18b.
-func (e *Entry) NamedStreams() ([]string, error) { return nil, nil }
+// NamedStreams lists the extended-attribute names on e, sorted. Directories
+// carry xattrs too, so this is not gated on IsDir.
+func (e *Entry) NamedStreams() ([]string, error) {
+	names, err := e.fs.xattrNames(e.oid)
+	if err != nil {
+		return nil, fmt.Errorf("apfs: list xattrs for %q: %w", e.path, err)
+	}
+	sort.Strings(names)
+	return names, nil
+}
+
+// ReadStream returns the value of the xattr name on e. A missing name is
+// reported as fs.ErrNotExist.
+func (e *Entry) ReadStream(name string) ([]byte, error) {
+	return e.fs.readXattr(e.oid, name)
+}
+
+// WriteStream creates or replaces the xattr name on e. See namedstream.go for
+// the size limits imposed by the in-place, no-allocation write path.
+func (e *Entry) WriteStream(name string, data []byte) error {
+	if err := e.fs.writeXattr(e.oid, name, data); err != nil {
+		return fmt.Errorf("apfs: write xattr %q on %q: %w", name, e.path, err)
+	}
+	return nil
+}
+
+// DeleteStream removes the xattr name from e.
+func (e *Entry) DeleteStream(name string) error {
+	if err := e.fs.deleteXattr(e.oid, name); err != nil {
+		return fmt.Errorf("apfs: delete xattr %q on %q: %w", name, e.path, err)
+	}
+	return nil
+}
 
 func joinPath(dir, name string) string {
 	if strings.HasSuffix(dir, "/") {

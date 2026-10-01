@@ -11,7 +11,7 @@ import (
 	"github.com/sahithyandev/nemo/internal/filesystem/fakefs"
 )
 
-var fixtures = []string{"apfs-bare", "apfs-gpt"}
+var fixtures = []string{"apfs-bare", "apfs-gpt", "apfs-casesensitive"}
 
 func TestContainerSuperblock(t *testing.T) {
 	for _, name := range fixtures {
@@ -394,6 +394,46 @@ func TestReadContainerSuperblockRejectsImplausibleMaxFS(t *testing.T) {
 	}
 }
 
+// TestNewVolume covers volume selection by name against apfs-multivol
+// (NEMO, NEMO2): an empty name matches New's own first-volume choice, a
+// named volume mounts that specific one even though it isn't first in
+// nx_fs_oid, and an unknown name fails clearly rather than falling back.
+func TestNewVolume(t *testing.T) {
+	fsDefault := openFS(t, loadImage(t, "apfs-multivol"))
+	if fsDefault.volume.name != "NEMO" {
+		t.Fatalf("New: volume name = %q, want %q", fsDefault.volume.name, "NEMO")
+	}
+
+	got, err := NewVolume(loadImage(t, "apfs-multivol"), "")
+	if err != nil {
+		t.Fatalf("NewVolume(\"\"): %v", err)
+	}
+	if got.(*FS).volume.name != "NEMO" {
+		t.Fatalf("NewVolume(\"\"): volume name = %q, want %q (should match New)", got.(*FS).volume.name, "NEMO")
+	}
+
+	second, err := NewVolume(loadImage(t, "apfs-multivol"), "NEMO2")
+	if err != nil {
+		t.Fatalf("NewVolume(%q): %v", "NEMO2", err)
+	}
+	sfs := second.(*FS)
+	if sfs.volume.name != "NEMO2" {
+		t.Fatalf("NewVolume(%q): volume name = %q", "NEMO2", sfs.volume.name)
+	}
+	if _, err := sfs.Open("/second.txt"); err != nil {
+		t.Fatalf("Open(/second.txt) on NEMO2: %v", err)
+	}
+	if _, err := sfs.Open("/hello.txt"); err == nil {
+		t.Fatalf("Open(/hello.txt) on NEMO2: expected error (that file lives on NEMO), got nil")
+	}
+
+	if _, err := NewVolume(loadImage(t, "apfs-multivol"), "does-not-exist"); err == nil {
+		t.Fatalf("NewVolume(%q): expected error, got nil", "does-not-exist")
+	} else if !strings.Contains(err.Error(), "does-not-exist") {
+		t.Fatalf("NewVolume(%q): err = %v, want it to name the requested volume", "does-not-exist", err)
+	}
+}
+
 // TestNewRejectsNoContainer covers New's top-level failure mode: an image
 // with neither an NXSB superblock at byte 0 nor a GPT header at all.
 func TestNewRejectsNoContainer(t *testing.T) {
@@ -557,14 +597,6 @@ func TestMinInt64(t *testing.T) {
 	}
 	if got := minInt64(7, 3); got != 3 {
 		t.Fatalf("minInt64(7,3) = %d, want 3", got)
-	}
-}
-
-func TestEntryNamedStreamsReturnsNil(t *testing.T) {
-	e := &Entry{path: "/f", isDir: false}
-	names, err := e.NamedStreams()
-	if names != nil || err != nil {
-		t.Fatalf("NamedStreams() = (%v, %v), want (nil, nil)", names, err)
 	}
 }
 

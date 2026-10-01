@@ -19,6 +19,11 @@ const (
 // btreeInfoSize is sizeof(btree_info_t), trailing every root node.
 const btreeInfoSize = 40
 
+// maxBtreeDepth caps a root-to-leaf descent. Real APFS trees are ~10 levels
+// deep; a corrupted omap or node pointer could otherwise form a cycle between
+// checksum-valid nodes and spin a descent loop forever.
+const maxBtreeDepth = 64
+
 // node is a decoded btree_node_phys_t: parallel slices of key/value byte
 // slices (subslices of the node's block buffer — copy before the buffer is
 // discarded).
@@ -130,9 +135,18 @@ func decodeNode(buf []byte, blockSize uint32, fixedKeySize, fixedValSize int) (*
 	return n, nil
 }
 
-// tree is a read-only handle on one APFS B-tree.
+// nodeIO is imageReader plus WriteAt, the surface the in-place leaf writer
+// (btree_write.go) needs. Any image.Image satisfies it; the read-only paths
+// never call WriteAt.
+type nodeIO interface {
+	imageReader
+	WriteAt(p []byte, off int64) (int, error)
+}
+
+// tree is a handle on one APFS B-tree. Reads go through the cursor; writes
+// (btree_write.go) rewrite a single leaf in place.
 type tree struct {
-	img                    imageReader
+	img                    nodeIO
 	blockSize              uint32
 	rootPaddr              int64
 	resolve                func(oid uint64) (int64, error)
@@ -140,7 +154,7 @@ type tree struct {
 	fixedKeySize, fixedVal int
 }
 
-func openTree(img imageReader, blockSize uint32, rootPaddr int64, resolve func(uint64) (int64, error), cmp func(a, b []byte) int, fixedKeySize, fixedValSize int) (*tree, error) {
+func openTree(img nodeIO, blockSize uint32, rootPaddr int64, resolve func(uint64) (int64, error), cmp func(a, b []byte) int, fixedKeySize, fixedValSize int) (*tree, error) {
 	if rootPaddr < 0 {
 		return nil, fmt.Errorf("apfs: invalid btree root address %d", rootPaddr)
 	}
@@ -152,11 +166,52 @@ func openTree(img imageReader, blockSize uint32, rootPaddr int64, resolve func(u
 }
 
 func (t *tree) readNode(paddr int64) (*node, error) {
+	n, _, err := t.readNodeRaw(paddr)
+	return n, err
+}
+
+// readNodeRaw is readNode but also returns the underlying block buffer, which
+// node.keys/node.vals alias. The in-place leaf writer needs it.
+func (t *tree) readNodeRaw(paddr int64) (*node, []byte, error) {
 	buf, err := readObject(t.img, paddr, t.blockSize)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return decodeNode(buf, t.blockSize, t.fixedKeySize, t.fixedVal)
+	n, err := decodeNode(buf, t.blockSize, t.fixedKeySize, t.fixedVal)
+	if err != nil {
+		return nil, nil, err
+	}
+	return n, buf, nil
+}
+
+// descendToLeaf follows the tree from the root to the single leaf where key
+// belongs, choosing children with lastLE exactly as seek does. Unlike seek it
+// never advances past that leaf, so the returned leaf is the one an insert of
+// key must land in. Returns the decoded leaf, its physical address, and its
+// block buffer (which the caller may rewrite and hand to writeNodeBlock).
+func (t *tree) descendToLeaf(key []byte) (*node, int64, []byte, error) {
+	paddr := t.rootPaddr
+	for depth := 0; ; depth++ {
+		if depth > maxBtreeDepth {
+			return nil, 0, nil, errors.New("apfs: btree descent exceeded max depth (cycle?)")
+		}
+		n, raw, err := t.readNodeRaw(paddr)
+		if err != nil {
+			return nil, 0, nil, err
+		}
+		if n.leaf {
+			return n, paddr, raw, nil
+		}
+		idx := lastLE(n.keys, key, t.cmp)
+		if idx >= len(n.vals) {
+			return nil, 0, nil, errors.New("apfs: empty non-leaf btree node")
+		}
+		childPaddr, err := t.resolve(binary.LittleEndian.Uint64(n.vals[idx]))
+		if err != nil {
+			return nil, 0, nil, err
+		}
+		paddr = childPaddr
+	}
 }
 
 // firstGE returns the index of the first key >= target (len(keys) if none).
@@ -194,7 +249,10 @@ type cursor struct {
 func (t *tree) seek(key []byte) (*cursor, error) {
 	c := &cursor{t: t}
 	paddr := t.rootPaddr
-	for {
+	for depth := 0; ; depth++ {
+		if depth > maxBtreeDepth {
+			return nil, errors.New("apfs: btree descent exceeded max depth (cycle?)")
+		}
 		n, err := t.readNode(paddr)
 		if err != nil {
 			return nil, err
@@ -362,10 +420,15 @@ func encodeJKey(oid uint64, typ uint8) []byte {
 	return buf
 }
 
-// fsKeyCompare orders fs-tree records by (object id, record type) only.
-// The per-type sub-key (drec name hash, xattr name, extent offset) is
-// deliberately not modeled: search descends to the first record of a given
-// (oid, type) and callers scan forward linearly from there.
+// fsKeyCompare orders fs-tree records by (object id, record type), then by
+// the per-type sub-key where this parser knows how to decode one (currently
+// just the xattr name — see xattrKeyAfter/isXattrNamed for the same
+// ordering). Other sub-keys (drec name hash, extent offset) are still left
+// unmodeled: descendToLeaf only needs enough ordering to route to the right
+// leaf, and ties there are resolved by callers scanning forward linearly.
+// Getting this wrong for xattr specifically previously misrouted
+// descendToLeaf whenever one file's xattr records spanned a leaf boundary,
+// since every xattr of that file compared equal regardless of name.
 func fsKeyCompare(a, b []byte) int {
 	aOid, aTyp, aErr := decodeJKey(a)
 	bOid, bTyp, bErr := decodeJKey(b)
@@ -392,6 +455,57 @@ func fsKeyCompare(a, b []byte) int {
 		}
 		return 1
 	}
+	if aTyp == objTypeXattr {
+		aName, aOk := decodeXattrName(a)
+		bName, bOk := decodeXattrName(b)
+		// encodeJKey builds a bare 8-byte search key with no name at all, to
+		// seek the first xattr of an oid; a key that short can't decode a
+		// name here, but it must still sort before every real (named) xattr
+		// of that oid rather than tie with all of them, or a multi-leaf
+		// xattr set for one file misroutes exactly like the DIR_REC case
+		// below did before this comment was added.
+		switch {
+		case !aOk && !bOk:
+		case !aOk:
+			return -1
+		case !bOk:
+			return 1
+		case aName != bName:
+			if aName < bName {
+				return -1
+			}
+			return 1
+		}
+	}
+	if aTyp == objTypeDirRec {
+		aHash, aName, aHashed, aOk := drecSortKey(a)
+		bHash, bName, _, bOk := drecSortKey(b)
+		// Same reasoning as the xattr case above: encodeJKey's bare search
+		// key has no sub-key to decode, and must sort as the smallest
+		// possible DIR_REC for its oid rather than tie with every real
+		// entry. Without this, seeking the first DIR_REC of a directory
+		// with enough entries to span multiple leaves lands on the LAST
+		// leaf that has any (since a tie-everywhere run's search boundary
+		// falls at its end, not its start), silently dropping every entry
+		// before it.
+		switch {
+		case !aOk && !bOk:
+		case !aOk:
+			return -1
+		case !bOk:
+			return 1
+		case aHashed && aHash != bHash:
+			if aHash < bHash {
+				return -1
+			}
+			return 1
+		case aName != bName:
+			if aName < bName {
+				return -1
+			}
+			return 1
+		}
+	}
 	return 0
 }
 
@@ -404,22 +518,36 @@ func fsKeyCompare(a, b []byte) int {
 // this parser needs), this tries the hashed layout first and falls back to
 // the plain layout if the result doesn't look like a valid, printable name.
 func decodeDrecKey(k []byte) (string, bool) {
+	_, name, _, ok := drecSortKey(k)
+	return name, ok
+}
+
+// drecSortKey extracts both the name and the on-disk ordering fields from a
+// DIR_REC key, using the same layout-detection trial as decodeDrecKey: try
+// the hashed layout (j_drec_hashed_key_t) first, falling back to the plain
+// layout (j_drec_key_t) if the result isn't a plausible printable name. For
+// a hashed key, hashed is true and hash is the raw length+hash u32, which is
+// the field the real on-disk tree is actually sorted by — the decoded name
+// alone is not enough to route a multi-leaf directory correctly, since
+// distinct names can decode with the same length prefix ambiguity that
+// isPrintableName's plausibility check can't resolve on its own.
+func drecSortKey(k []byte) (hash uint32, name string, hashed, ok bool) {
 	if len(k) >= 12 {
 		lh := binary.LittleEndian.Uint32(k[8:12])
 		nameLen, err := binutil.Bits(uint64(lh), 0, 10) // includes trailing NUL
 		if err == nil {
-			if name, ok := extractDrecName(k[12:], int(nameLen)); ok {
-				return name, true
+			if n, ok := extractDrecName(k[12:], int(nameLen)); ok {
+				return lh, n, true, true
 			}
 		}
 	}
 	if len(k) >= 10 {
 		nameLen := binary.LittleEndian.Uint16(k[8:10])
-		if name, ok := extractDrecName(k[10:], int(nameLen)); ok {
-			return name, true
+		if n, ok := extractDrecName(k[10:], int(nameLen)); ok {
+			return 0, n, false, true
 		}
 	}
-	return "", false
+	return 0, "", false, false
 }
 
 // extractDrecName trims a possible trailing NUL from raw[:nameLen] and

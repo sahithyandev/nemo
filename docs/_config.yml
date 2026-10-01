@@ -1,0 +1,8 @@
+title: nemo
+description: a CLI tool for hiding files
+
+defaults:
+  - scope:
+      path: ""
+    values:
+      layout: default

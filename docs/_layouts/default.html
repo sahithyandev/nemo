@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ page.title }}{% if page.title %} · {% endif %}{{ site.title }}</title>
+  <link rel="stylesheet" href="{{ '/assets/css/style.css' | relative_url }}">
+</head>
+<body>
+  <input type="checkbox" id="nav-toggle" class="nav-toggle">
+  <label for="nav-toggle" class="nav-toggle-btn" aria-label="Toggle navigation">&#9776;</label>
+  <nav class="sidebar">
+    <a class="site-title" href="{{ '/' | relative_url }}">{{ site.title }}</a>
+    <ul>
+      {% assign top_pages = site.pages | where_exp: "p", "p.title and p.parent == nil" | sort: "nav_order" %}
+      {% for p in top_pages %}
+        <li>
+          <a href="{{ p.url | relative_url }}"{% if p.url == page.url %} class="active"{% endif %}>{{ p.title }}</a>
+          {% if p.has_children %}
+            {% assign children = site.pages | where_exp: "c", "c.parent == p.title" | sort: "nav_order" %}
+            <ul>
+              {% for c in children %}
+                <li><a href="{{ c.url | relative_url }}"{% if c.url == page.url %} class="active"{% endif %}>{{ c.title }}</a></li>
+              {% endfor %}
+            </ul>
+          {% endif %}
+        </li>
+      {% endfor %}
+    </ul>
+  </nav>
+  <main>
+    {{ content }}
+  </main>
+</body>
+</html>

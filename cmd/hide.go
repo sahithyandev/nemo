@@ -9,7 +9,6 @@ import (
 
 	"github.com/sahithyandev/nemo/internal/custody"
 	"github.com/sahithyandev/nemo/internal/filesystem"
-	"github.com/sahithyandev/nemo/internal/filesystem/ext4"
 	imagepkg "github.com/sahithyandev/nemo/internal/image"
 	"github.com/sahithyandev/nemo/internal/technique"
 	"github.com/spf13/cobra"
@@ -22,6 +21,7 @@ type hideOptions struct {
 	streamName string
 	field      string
 	timestamp  string
+	manifest   string
 }
 
 type openedTarget struct {
@@ -31,31 +31,29 @@ type openedTarget struct {
 }
 
 type hideDependencies struct {
-	openImage      func(string) (openedTarget, error)
-	openLive       func(string) (openedTarget, error)
-	readFile       func(string) ([]byte, error)
-	now            func() time.Time
-	persistCustody func(custody.Record) error
-	writeCustody   func(io.Writer, custody.Record) error
+	openImage func(string) (openedTarget, error)
+	openLive  func(target, technique string, write bool) (openedTarget, error)
+	readFile  func(string) ([]byte, error)
+	now       func() time.Time
+	// logCustody appends the record to the on-disk custody log
+	// (~/.nemo/logs/custody.jsonl) — the durable audit trail.
+	logCustody func(custody.Record) error
+	// echoCustody writes the record as one JSON line to the command's
+	// output stream so the user sees what was done.
+	echoCustody  func(io.Writer, custody.Record) error
+	appendBackup func(string, technique.Backup) error
 }
 
 func defaultHideDependencies() hideDependencies {
 	return hideDependencies{
-		openImage:      openImageTarget,
-		openLive:       openLiveTarget,
-		readFile:       os.ReadFile,
-		now:            time.Now,
-		persistCustody: custody.Persist,
-		writeCustody:   custody.Write,
+		openImage:    openImageTarget,
+		openLive:     openLiveTarget,
+		readFile:     os.ReadFile,
+		now:          time.Now,
+		logCustody:   custody.Persist,
+		echoCustody:  custody.Write,
+		appendBackup: technique.AppendManifest,
 	}
-}
-
-func openLiveTarget(path string) (openedTarget, error) {
-	fs, err := ext4.OpenLive(path)
-	if err != nil {
-		return openedTarget{}, err
-	}
-	return openedTarget{filesystem: fs}, nil
 }
 
 func openImageTarget(path string) (openedTarget, error) {
@@ -95,8 +93,9 @@ func newHideCommand(dependencies hideDependencies) *cobra.Command {
 	flags.StringVarP(&options.image, "image", "i", "", "raw disk image path (selects image mode)")
 	flags.StringVarP(&options.data, "data", "d", "", "payload file path (required for named-stream and slack-space)")
 	flags.StringVar(&options.streamName, "stream-name", "", "stream name (required for named-stream)")
-	flags.StringVar(&options.field, "field", "", "timestamp field: created, modified, or accessed (required for timestomp)")
+	flags.StringVar(&options.field, "field", "", "timestamp field: created, modified, accessed, or changed (required for timestomp)")
 	flags.StringVar(&options.timestamp, "timestamp", "", "RFC 3339 timestamp value (required for timestomp)")
+	flags.StringVar(&options.manifest, "manifest", technique.ManifestName, "path to the backup manifest (records overwritten slack bytes so clear can restore them)")
 
 	return command
 }
@@ -119,10 +118,7 @@ func runHide(command *cobra.Command, target string, options hideOptions, depende
 	if command.Flags().Changed("image") {
 		opened, err = dependencies.openImage(options.image)
 	} else {
-		if options.technique == technique.SlackSpace {
-			return ext4.LiveSlackError()
-		}
-		opened, err = dependencies.openLive(target)
+		opened, err = dependencies.openLive(target, options.technique, true)
 	}
 	if err != nil {
 		return err
@@ -138,12 +134,15 @@ func runHide(command *cobra.Command, target string, options hideOptions, depende
 	if err != nil {
 		return fmt.Errorf("open target %q: %w", target, err)
 	}
-	result, err := selected.Hide(entry, technique.HideRequest{
+	result, err := selected.Hide(entry, technique.Request{
 		Data:       payload,
 		StreamName: options.streamName,
 		Field:      filesystem.TimeField(options.field),
 		Timestamp:  timestamp,
 		Image:      opened.image,
+		Backup: func(b technique.Backup) error {
+			return dependencies.appendBackup(options.manifest, b)
+		},
 	})
 	if err != nil {
 		return fmt.Errorf("hide %q with %s: %w", target, options.technique, err)
@@ -154,11 +153,11 @@ func runHide(command *cobra.Command, target string, options hideOptions, depende
 		written = []byte(result.Detail)
 	}
 	record := custody.NewRecord("hide", result.Technique, result.Target, result.Detail, result.Bytes, written, dependencies.now())
-	if err := dependencies.persistCustody(record); err != nil {
-		return fmt.Errorf("persist custody record: %w", err)
+	if err := dependencies.logCustody(record); err != nil {
+		return fmt.Errorf("append custody log: %w", err)
 	}
-	if err := dependencies.writeCustody(command.OutOrStdout(), record); err != nil {
-		return fmt.Errorf("write custody record: %w", err)
+	if err := dependencies.echoCustody(command.OutOrStdout(), record); err != nil {
+		return fmt.Errorf("echo custody record: %w", err)
 	}
 	return nil
 }
@@ -198,7 +197,7 @@ func validateHide(command *cobra.Command, options hideOptions) (technique.Techni
 			return nil, time.Time{}, errors.New("--field is required for timestomp")
 		}
 		if !validTimeField(options.field) {
-			return nil, time.Time{}, errors.New("--field must be created, modified, or accessed")
+			return nil, time.Time{}, errors.New("--field must be created, modified, accessed, or changed")
 		}
 		if options.timestamp == "" {
 			return nil, time.Time{}, errors.New("--timestamp is required for timestomp")
@@ -217,10 +216,5 @@ func validateHide(command *cobra.Command, options hideOptions) (technique.Techni
 }
 
 func validTimeField(field string) bool {
-	switch filesystem.TimeField(field) {
-	case filesystem.TimeCreated, filesystem.TimeModified, filesystem.TimeAccessed:
-		return true
-	default:
-		return false
-	}
+	return filesystem.TimeField(field).Valid()
 }

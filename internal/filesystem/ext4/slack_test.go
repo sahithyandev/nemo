@@ -45,14 +45,14 @@ func TestExt4SlackRoundTripPreservesLogicalFileAndSize(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := selected.Hide(entry, technique.HideRequest{Data: []byte("secret"), Image: recorder}); err != nil {
+	if _, err := selected.Hide(entry, technique.Request{Data: []byte("secret"), Image: recorder}); err != nil {
 		t.Fatal(err)
 	}
-	findings, err := technique.DetectSlackSpace(entry, recorder)
+	findings, err := selected.Detect(entry, technique.Request{Image: recorder})
 	if err != nil || len(findings) != 1 || findings[0].Size != int64(len("secret")) {
 		t.Fatalf("DetectSlackSpace = %+v, %v", findings, err)
 	}
-	if _, err := technique.ClearSlackSpace(entry, recorder); err != nil {
+	if _, err := selected.Clear(entry, technique.Request{Image: recorder}); err != nil {
 		t.Fatal(err)
 	}
 

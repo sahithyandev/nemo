@@ -1,6 +1,8 @@
 package image
 
 import (
+	"fmt"
+	"io"
 	"os"
 )
 
@@ -14,10 +16,19 @@ type RawImage struct {
 // Make sure RawImage implements Image.
 var _ Image = (*RawImage)(nil)
 
-// Open = Open an existing file as a RawImage.
+// Open = Open an existing file as a read+write RawImage.
 func Open(path string) (*RawImage, error) {
-	file, err := os.OpenFile(path, os.O_RDWR, 0)
-	// O_RDWR = read + write.
+	return open(path, os.O_RDWR)
+}
+
+// OpenReadOnly opens an existing file for reading only. detect uses this so it
+// never requests write access and can run against read-only forensic media.
+func OpenReadOnly(path string) (*RawImage, error) {
+	return open(path, os.O_RDONLY)
+}
+
+func open(path string, flag int) (*RawImage, error) {
+	file, err := os.OpenFile(path, flag, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -28,10 +39,25 @@ func Open(path string) (*RawImage, error) {
 		return nil, err
 	}
 
+	size := info.Size()
+	// A block device (e.g. /dev/diskN, opened for live slack-space access)
+	// reports a Stat size of 0; seeking to the end finds its real capacity.
+	if size == 0 && info.Mode()&os.ModeDevice != 0 {
+		size, err = file.Seek(0, io.SeekEnd)
+		if err != nil {
+			file.Close()
+			return nil, fmt.Errorf("size device %q: %w", path, err)
+		}
+		if size == 0 {
+			file.Close()
+			return nil, fmt.Errorf("size device %q: device reports zero size", path)
+		}
+	}
+
 	return &RawImage{
 		file: file,
 		path: path,
-		size: info.Size(),
+		size: size,
 	}, nil
 
 }

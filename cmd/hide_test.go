@@ -7,6 +7,8 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -15,6 +17,7 @@ import (
 	"github.com/sahithyandev/nemo/internal/filesystem"
 	"github.com/sahithyandev/nemo/internal/filesystem/fakefs"
 	imagepkg "github.com/sahithyandev/nemo/internal/image"
+	"github.com/sahithyandev/nemo/internal/technique"
 )
 
 func TestHideHelpListsDocumentedArgumentsAndOptions(t *testing.T) {
@@ -80,7 +83,7 @@ func TestHideRejectsMissingAndIncompatibleFlagsBeforeOpeningTarget(t *testing.T)
 		{name: "slack data", args: []string{"/target", "-t", "slack-space"}, want: "--data is required"},
 		{name: "slack incompatible", args: []string{"/target", "-t", "slack-space", "--data", "payload", "--stream-name", "secret"}, want: "incompatible"},
 		{name: "timestomp field", args: []string{"/target", "-t", "timestomp", "--timestamp", "2026-08-23T12:00:00Z"}, want: "--field is required"},
-		{name: "timestomp field value", args: []string{"/target", "-t", "timestomp", "--field", "changed", "--timestamp", "2026-08-23T12:00:00Z"}, want: "created, modified, or accessed"},
+		{name: "timestomp field value", args: []string{"/target", "-t", "timestomp", "--field", "birth", "--timestamp", "2026-08-23T12:00:00Z"}, want: "created, modified, accessed, or changed"},
 		{name: "timestomp timestamp", args: []string{"/target", "-t", "timestomp", "--field", "modified"}, want: "--timestamp is required"},
 		{name: "timestomp format", args: []string{"/target", "-t", "timestomp", "--field", "modified", "--timestamp", "yesterday"}, want: "RFC 3339"},
 		{name: "timestomp incompatible", args: []string{"/target", "-t", "timestomp", "--field", "modified", "--timestamp", "2026-08-23T12:00:00Z", "--data", "payload"}, want: "incompatible"},
@@ -95,7 +98,7 @@ func TestHideRejectsMissingAndIncompatibleFlagsBeforeOpeningTarget(t *testing.T)
 				opened = true
 				return openedTarget{}, errors.New("unexpected open")
 			}
-			dependencies.openLive = func(string) (openedTarget, error) {
+			dependencies.openLive = func(string, string, bool) (openedTarget, error) {
 				opened = true
 				return openedTarget{}, errors.New("unexpected open")
 			}
@@ -129,10 +132,13 @@ func TestHideNamedStreamLiveModeEndToEndWithCustodyRecord(t *testing.T) {
 	}
 	liveCalls := 0
 	imageCalls := 0
-	dependencies.openLive = func(target string) (openedTarget, error) {
+	dependencies.openLive = func(target, tech string, write bool) (openedTarget, error) {
 		liveCalls++
 		if target != "/target" {
 			t.Fatalf("unexpected live target %q", target)
+		}
+		if tech != "named-stream" || !write {
+			t.Fatalf("unexpected live open args tech=%q write=%v", tech, write)
 		}
 		return openedTarget{filesystem: fake}, nil
 	}
@@ -143,7 +149,7 @@ func TestHideNamedStreamLiveModeEndToEndWithCustodyRecord(t *testing.T) {
 	dependencies.now = func() time.Time { return fixedTime }
 	persistCalls := 0
 	var persisted custody.Record
-	dependencies.persistCustody = func(record custody.Record) error {
+	dependencies.logCustody = func(record custody.Record) error {
 		persistCalls++
 		persisted = record
 		return nil
@@ -194,7 +200,7 @@ func TestHideSelectsImageModeWhenImageFlagIsPresent(t *testing.T) {
 	fake := fakefs.New("/target")
 	dependencies := defaultHideDependencies()
 	dependencies.readFile = func(string) ([]byte, error) { return []byte("x"), nil }
-	dependencies.openLive = func(string) (openedTarget, error) {
+	dependencies.openLive = func(string, string, bool) (openedTarget, error) {
 		t.Fatal("live mode selected despite --image")
 		return openedTarget{}, nil
 	}
@@ -204,8 +210,8 @@ func TestHideSelectsImageModeWhenImageFlagIsPresent(t *testing.T) {
 		}
 		return openedTarget{filesystem: fake, image: fake.Img}, nil
 	}
-	dependencies.persistCustody = func(custody.Record) error { return nil }
-	dependencies.writeCustody = func(io.Writer, custody.Record) error { return nil }
+	dependencies.logCustody = func(custody.Record) error { return nil }
+	dependencies.echoCustody = func(io.Writer, custody.Record) error { return nil }
 
 	command := newHideCommand(dependencies)
 	command.SetArgs([]string{"/target", "-t", "named-stream", "-d", "payload", "--stream-name", "secret", "--image", "disk.img"})
@@ -223,27 +229,38 @@ func TestHideExecutesSlackSpaceAndTimestomp(t *testing.T) {
 		dependencies.openImage = func(string) (openedTarget, error) {
 			return openedTarget{filesystem: fake, image: fake.Img}, nil
 		}
-		dependencies.persistCustody = func(custody.Record) error { return nil }
-		dependencies.writeCustody = func(io.Writer, custody.Record) error { return nil }
+		dependencies.logCustody = func(custody.Record) error { return nil }
+		dependencies.echoCustody = func(io.Writer, custody.Record) error { return nil }
+		manifestPath := filepath.Join(t.TempDir(), technique.ManifestName)
 
 		command := newHideCommand(dependencies)
-		command.SetArgs([]string{"/target", "-t", "slack-space", "-d", "payload.bin", "--image", "disk.img"})
+		command.SetArgs([]string{"/target", "-t", "slack-space", "-d", "payload.bin", "--image", "disk.img", "--manifest", manifestPath})
 		if err := command.Execute(); err != nil {
 			t.Fatal(err)
 		}
-		if got := string(fake.Img.Data[80:87]); got != "payload" {
+		// payload is written framed: 12-byte header, then the bytes.
+		if got := string(fake.Img.Data[44:51]); got != "payload" {
 			t.Fatalf("unexpected slack payload %q", got)
+		}
+		// The overwritten bytes were recorded to the manifest before the write.
+		backups, err := technique.LoadManifest(manifestPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, ok := technique.LatestBackup(backups, technique.SlackSpace, "/target", "")
+		if !ok || len(got.Original) != 19 {
+			t.Fatalf("unexpected manifest backup: %+v (ok=%v)", got, ok)
 		}
 	})
 
 	t.Run("timestomp", func(t *testing.T) {
 		fake := fakefs.New("/target")
 		dependencies := defaultHideDependencies()
-		dependencies.openLive = func(string) (openedTarget, error) {
+		dependencies.openLive = func(string, string, bool) (openedTarget, error) {
 			return openedTarget{filesystem: fake}, nil
 		}
-		dependencies.persistCustody = func(custody.Record) error { return nil }
-		dependencies.writeCustody = func(io.Writer, custody.Record) error { return nil }
+		dependencies.logCustody = func(custody.Record) error { return nil }
+		dependencies.echoCustody = func(io.Writer, custody.Record) error { return nil }
 
 		command := newHideCommand(dependencies)
 		command.SetArgs([]string{"/target", "-t", "timestomp", "--field", "modified", "--timestamp", "2026-08-23T12:00:00Z"})
@@ -260,16 +277,16 @@ func TestHideExecutesSlackSpaceAndTimestomp(t *testing.T) {
 func TestHideDoesNotEmitCustodyRecordWhenOperationFails(t *testing.T) {
 	dependencies := defaultHideDependencies()
 	dependencies.readFile = func(string) ([]byte, error) { return []byte("x"), nil }
-	dependencies.openLive = func(string) (openedTarget, error) {
+	dependencies.openLive = func(string, string, bool) (openedTarget, error) {
 		return openedTarget{filesystem: fakefs.New()}, nil
 	}
 	recorded := false
 	persisted := false
-	dependencies.persistCustody = func(custody.Record) error {
+	dependencies.logCustody = func(custody.Record) error {
 		persisted = true
 		return nil
 	}
-	dependencies.writeCustody = func(io.Writer, custody.Record) error {
+	dependencies.echoCustody = func(io.Writer, custody.Record) error {
 		recorded = true
 		return nil
 	}
@@ -291,15 +308,15 @@ func TestHideReturnsPersistenceFailureWithoutEmittingRecord(t *testing.T) {
 	fake := fakefs.New("/target")
 	dependencies := defaultHideDependencies()
 	dependencies.readFile = func(string) ([]byte, error) { return []byte("payload"), nil }
-	dependencies.openLive = func(string) (openedTarget, error) {
+	dependencies.openLive = func(string, string, bool) (openedTarget, error) {
 		return openedTarget{filesystem: fake}, nil
 	}
 	persistCalls := 0
-	dependencies.persistCustody = func(custody.Record) error {
+	dependencies.logCustody = func(custody.Record) error {
 		persistCalls++
 		return errors.New("disk unavailable")
 	}
-	dependencies.writeCustody = func(io.Writer, custody.Record) error {
+	dependencies.echoCustody = func(io.Writer, custody.Record) error {
 		t.Fatal("custody record emitted after persistence failure")
 		return nil
 	}
@@ -307,7 +324,7 @@ func TestHideReturnsPersistenceFailureWithoutEmittingRecord(t *testing.T) {
 	command := newHideCommand(dependencies)
 	command.SetArgs([]string{"/target", "-t", "named-stream", "-d", "payload", "--stream-name", "secret"})
 	err := command.Execute()
-	if err == nil || !strings.Contains(err.Error(), "persist custody record: disk unavailable") {
+	if err == nil || !strings.Contains(err.Error(), "append custody log: disk unavailable") {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if persistCalls != 1 {
@@ -318,15 +335,15 @@ func TestHideReturnsPersistenceFailureWithoutEmittingRecord(t *testing.T) {
 func TestHidePayloadReadFailureDoesNotOpenOrWrite(t *testing.T) {
 	dependencies := defaultHideDependencies()
 	dependencies.readFile = func(string) ([]byte, error) { return nil, errors.New("read failed") }
-	dependencies.openLive = func(string) (openedTarget, error) {
+	dependencies.openLive = func(string, string, bool) (openedTarget, error) {
 		t.Fatal("target opened after payload read failure")
 		return openedTarget{}, nil
 	}
-	dependencies.persistCustody = func(custody.Record) error {
+	dependencies.logCustody = func(custody.Record) error {
 		t.Fatal("custody record persisted after payload read failure")
 		return nil
 	}
-	dependencies.writeCustody = func(io.Writer, custody.Record) error {
+	dependencies.echoCustody = func(io.Writer, custody.Record) error {
 		t.Fatal("custody record written after payload read failure")
 		return nil
 	}
@@ -339,20 +356,11 @@ func TestHidePayloadReadFailureDoesNotOpenOrWrite(t *testing.T) {
 	}
 }
 
-func TestHideLiveSlackFailsBeforeOpeningTarget(t *testing.T) {
-	dependencies := defaultHideDependencies()
-	dependencies.readFile = func(string) ([]byte, error) { return []byte("payload"), nil }
-	dependencies.openLive = func(string) (openedTarget, error) {
-		t.Fatal("live raw target opened for slack-space")
-		return openedTarget{}, nil
+func TestLinuxLiveSlackFailsBeforeOpeningTarget(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("Linux-specific live routing")
 	}
-	dependencies.persistCustody = func(custody.Record) error {
-		t.Fatal("custody record written without a mutation")
-		return nil
-	}
-	command := newHideCommand(dependencies)
-	command.SetArgs([]string{"/target", "-t", "slack-space", "-d", "payload.bin"})
-	err := command.Execute()
+	_, err := openLiveTarget("/does-not-exist", technique.SlackSpace, true)
 	if err == nil || !strings.Contains(err.Error(), "live slack-space") {
 		t.Fatalf("expected live slack-space error, got %v", err)
 	}
