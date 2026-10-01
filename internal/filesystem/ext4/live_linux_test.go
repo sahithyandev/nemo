@@ -118,3 +118,37 @@ func TestLiveRejectsSymlinksAndOtherFilesystems(t *testing.T) {
 		t.Fatalf("expected replaced target to be rejected: %v", err)
 	}
 }
+
+func TestLiveChildrenSupportsUnconditionalTraversal(t *testing.T) {
+	root := t.TempDir()
+	directory := filepath.Join(root, "nested")
+	if err := os.Mkdir(directory, 0700); err != nil {
+		t.Fatal(err)
+	}
+	file := filepath.Join(directory, "file.txt")
+	if err := os.WriteFile(file, []byte("original"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	// Bypass only the mount-type guard so this contract test also runs on tmpfs.
+	entry, err := openLiveEntry(root, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var visited []string
+	var walk func(filesystem.Entry)
+	walk = func(current filesystem.Entry) {
+		visited = append(visited, current.Path())
+		// Match cmd.walkEntries: ask every entry for children, including files.
+		children, err := current.Children()
+		if err != nil {
+			t.Fatalf("Children(%q): %v", current.Path(), err)
+		}
+		for _, child := range children {
+			walk(child)
+		}
+	}
+	walk(entry)
+	if len(visited) != 3 || visited[0] != root || visited[1] != directory || visited[2] != file {
+		t.Fatalf("visited = %v", visited)
+	}
+}

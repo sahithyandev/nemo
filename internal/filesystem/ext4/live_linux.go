@@ -96,7 +96,7 @@ func (e *LiveEntry) Path() string { return e.path }
 func (e *LiveEntry) IsDir() bool  { return e.isDir }
 func (e *LiveEntry) Children() ([]filesystem.Entry, error) {
 	if !e.isDir {
-		return nil, fmt.Errorf("ext4 live mode: %q is not a directory", e.path)
+		return nil, nil
 	}
 	items, err := os.ReadDir(e.path)
 	if err != nil {
