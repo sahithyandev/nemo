@@ -1,3 +1,8 @@
+> Integration note (2026-10-02): the candidate evidence below refers to the
+> pre-integration `0.1.0-rc.1` build. `cmd/VERSION` remains `0.0.1` until release
+> acceptance is complete, preventing main CI from publishing the candidate.
+> Packaging the integrated branch uses its current version.
+
 # v0.1 semester release candidate
 
 The prepared version is **0.1.0-rc.1**. This is a candidate, not an approved final
