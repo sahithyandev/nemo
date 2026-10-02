@@ -41,6 +41,9 @@ create-issues.sh
 # default hide/clear backup manifest, when run from the repo root
 nemo-manifest.jsonl
 
+# generated SBOM (built per release, not source)
+sbom.cdx.json
+
 # Editor/IDE
 # .idea/
 # .vscode/
