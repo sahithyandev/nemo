@@ -108,3 +108,16 @@ first.
 - [Bandara S. A. N. K.](https://github.com/NirmalKBandara)
 - [Sahithyan K.](https://github.com/sahithyandev)
 - [Senanayake H. P. V. R.](https://github.com/Viranske-1)
+
+## Validation and release candidate
+
+Run detection against an explicitly supplied local dataset with the
+[validation harness](docs/validation/README.md). The documented synthetic ext4
+sample runs without downloading a public corpus. Public-dataset acceptance is
+tracked separately from this sample.
+
+See the [v0.1 release candidate pack](docs/release/README.md) for cross-platform
+builds, Linux acceptance evidence, the demonstration plan, and remaining release
+gates. `make release-package OUTPUT=/tmp/nemo-new-release` creates archives in a
+new directory without tagging or publishing.
+

@@ -407,3 +407,8 @@ func setBirthtime(path string, t time.Time) error {
 	binary.LittleEndian.PutUint64(buf[8:16], uint64(t.Nanosecond()))
 	return unix.Setattrlist(path, &list, buf, 0)
 }
+
+// SupportsTimestamp reports whether the entry supports the requested timestamp field.
+func (e *liveEntry) SupportsTimestamp(field filesystem.TimeField) (bool, error) {
+	return field.Valid() && field != filesystem.TimeChanged, nil
+}

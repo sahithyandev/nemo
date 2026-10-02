@@ -29,8 +29,8 @@ operation reads only the fields it needs.
 
 **Slack framing.** Every slack payload is wrapped in a 12-byte frame before it is written, so a raw payload isn't indistinguishable from the filesystem's own residual noise. See [Slack-Space Hiding](../techniques/slack-space.html#nemos-payload-frame) for the exact byte layout. Frame parsing goes through `internal/binutil` so a crafted length never panics. This lives in `slackframe.go`.
 
-**Restoration and backup contract.** `Request.Backup func(Backup) error`, when
-set, is called with the pre-write state (`Backup{Technique, Target, Location,
+**Restoration and backup contract.** For slack-space operations,
+`Request.Backup func(Backup) error`, when set, is called with the pre-write state (`Backup{Technique, Target, Location,
 Original []byte, Timestamp}`) before any destructive write; returning an error
 aborts the operation. slack-space `Hide` and `Clear` emit the overwritten bytes
 this way. `clear` for slack-space writes back the caller-supplied original bytes
@@ -45,16 +45,17 @@ The persistence side lives in `manifest.go`: `AppendManifest(path, Backup)`,
 file (`nemo-manifest.jsonl` by default, `--manifest` to relocate) is JSON Lines,
 one `Backup` per line, `Original` as base64, `Timestamp` as RFC 3339. `hide`
 passes a closure calling `AppendManifest`; a write failure there aborts the hide
-before any bytes are overwritten. `clear`, once built, replays it via
+before any bytes are overwritten. `clear` replays it via
 `LoadManifest` and `LatestBackup`; later records win, so re-hiding a target then
 clearing restores the last hide's bytes. See [CLI Reference](../cli/#the-manifest) for the user-facing flag.
 
-**Timestomp limitation.** `filesystem.TimestompCapable` exposes only
-`SetTimestamp`, with no reader, so `timestomp.Detect` always returns no findings
-and `timestomp.Clear` can only restore to a timestamp the caller supplies
-explicitly (it errors on a zero value). See [Timestomping](../techniques/timestomping.html#why-nemos-detect-reports-nothing-for-timestomp) for the full reasoning. An `ext4.Entry` happens to have a
-`Timestamp` reader of its own, but the capability interface does not surface it;
-widening the interface is a follow-up.
+**Timestomp limitation.** `filesystem.TimestompCapable` exposes `Timestamp`,
+`SupportsTimestamp`, and `SetTimestamp`. Reading a current value does not establish
+whether it was altered. No historical baseline comparison or anomaly detector is
+implemented, so `timestomp.Detect` returns no findings. `timestomp.Hide` does not
+automatically save original timestamps to the manifest; `timestomp.Clear` requires
+the caller to supply the original value explicitly and rejects a zero value.
+See [Timestomping](../techniques/timestomping.html#why-nemos-detect-reports-nothing-for-timestomp).
 
 `Finding` and `Result` are shared, technique-agnostic value types:
 

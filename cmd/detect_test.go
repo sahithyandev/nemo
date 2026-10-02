@@ -193,3 +193,35 @@ func TestDetectWholeFilesystemScanRequiresImageMode(t *testing.T) {
 		t.Fatalf("want image-mode error, got %v", err)
 	}
 }
+
+// unsupportedSlackDirectory models an entry with other supported capabilities
+// whose slack-space operation is unsupported for its entry type.
+type unsupportedSlackDirectory struct{ *fakefs.Entry }
+
+func (unsupportedSlackDirectory) SlackRegions() ([]filesystem.SlackRegion, error) {
+	return nil, filesystem.ErrUnsupported
+}
+
+type directorySlackFS struct{ *fakefs.FS }
+
+func (f directorySlackFS) Root() filesystem.Entry { return unsupportedSlackDirectory{f.FS.Entry("/")} }
+
+func TestDetectDefaultContinuesPastUnsupportedDirectorySlack(t *testing.T) {
+	fs := fakefs.New("/child.bin")
+	fs.Entry("/child.bin").Slack = []filesystem.SlackRegion{{Offset: 32, Length: 64}}
+	selected, _ := technique.Get(technique.SlackSpace)
+	if _, err := selected.Hide(fs.Entry("/child.bin"), technique.Request{Data: []byte("secret"), Image: fs.Img}); err != nil {
+		t.Fatal(err)
+	}
+	deps := fakeDetectDeps(fs)
+	deps.openImage = func(string) (openedTarget, error) {
+		return openedTarget{filesystem: directorySlackFS{fs}, image: imagepkg.ReadOnly(fs.Img)}, nil
+	}
+	out, err := runDetectCmd(t, deps, "--image", "x")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !detectLineHas(out, "slack-space", "/child.bin", "32-50", "6") {
+		t.Fatalf("missing child finding: %s", out)
+	}
+}

@@ -1,0 +1,62 @@
+{
+  "version": 1,
+  "results": [
+    {
+      "id": "ext4-user-xattr",
+      "filesystem": "ext4",
+      "technique": "named-stream",
+      "status": "pass",
+      "expected": [
+        {
+          "location": "user.nemo",
+          "size": 11
+        }
+      ],
+      "actual": [
+        {
+          "location": "user.nemo",
+          "size": 11
+        }
+      ]
+    },
+    {
+      "id": "ext4-clean-xattr",
+      "filesystem": "ext4",
+      "technique": "named-stream",
+      "status": "pass",
+      "expected": [],
+      "actual": []
+    },
+    {
+      "id": "ext4-clean-slack",
+      "filesystem": "ext4",
+      "technique": "slack-space",
+      "status": "pass",
+      "expected": [],
+      "actual": []
+    }
+  ],
+  "totals": {
+    "pass": 3,
+    "fail": 0,
+    "missing": 0,
+    "unsupported": 0,
+    "error": 0
+  },
+  "groups": {
+    "ext4/named-stream": {
+      "pass": 2,
+      "fail": 0,
+      "missing": 0,
+      "unsupported": 0,
+      "error": 0
+    },
+    "ext4/slack-space": {
+      "pass": 1,
+      "fail": 0,
+      "missing": 0,
+      "unsupported": 0,
+      "error": 0
+    }
+  }
+}

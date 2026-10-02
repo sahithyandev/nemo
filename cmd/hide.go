@@ -46,21 +46,7 @@ type hideDependencies struct {
 
 func defaultHideDependencies() hideDependencies {
 	return hideDependencies{
-		openImage: func(path string) (openedTarget, error) {
-			img, err := imagepkg.Open(path)
-			if err != nil {
-				return openedTarget{}, fmt.Errorf("open image %q: %w", path, err)
-			}
-			// Every mutating write goes through the custody recorder, which
-			// hashes it for the forensic-safety audit trail.
-			recorder := custody.Wrap(img)
-			fs, err := filesystem.Open(recorder)
-			if err != nil {
-				_ = recorder.Close()
-				return openedTarget{}, err
-			}
-			return openedTarget{filesystem: fs, image: recorder, close: recorder.Close}, nil
-		},
+		openImage:    openImageTarget,
 		openLive:     openLiveTarget,
 		readFile:     os.ReadFile,
 		now:          time.Now,
@@ -68,6 +54,24 @@ func defaultHideDependencies() hideDependencies {
 		echoCustody:  custody.Write,
 		appendBackup: technique.AppendManifest,
 	}
+}
+
+func openImageTarget(path string) (openedTarget, error) {
+	img, err := imagepkg.Open(path)
+	if err != nil {
+		return openedTarget{}, fmt.Errorf("open image %q: %w", path, err)
+	}
+	return prepareImageTarget(img, img.Close, filesystem.Open)
+}
+
+func prepareImageTarget(img imagepkg.Image, closeImage func() error, openFilesystem func(imagepkg.Image) (filesystem.FileSystem, error)) (openedTarget, error) {
+	recorder := custody.Wrap(img)
+	fs, err := openFilesystem(recorder)
+	if err != nil {
+		_ = closeImage()
+		return openedTarget{}, err
+	}
+	return openedTarget{filesystem: fs, image: recorder, close: closeImage}, nil
 }
 
 func newHideCommand(dependencies hideDependencies) *cobra.Command {

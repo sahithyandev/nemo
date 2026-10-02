@@ -79,5 +79,7 @@ func (f TimeField) Valid() bool {
 
 // Entries that allow timestamp changes.
 type TimestompCapable interface {
+	Timestamp(field TimeField) (time.Time, error)
+	SupportsTimestamp(field TimeField) (bool, error)
 	SetTimestamp(field TimeField, t time.Time) error
 }

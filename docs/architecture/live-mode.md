@@ -12,7 +12,8 @@ provides read-only volume access using the existing image parser. All techniques
 use that volume reader and require administrator access; live writes are refused.
 It follows APFS's wrapping and cleanup pattern, while native path-backed NTFS
 mutation remains future work. See [NTFS](../file-systems/ntfs.html#live-mode-windows).
-Other combinations remain design intent. See
+Linux ext4 live mode supports user xattrs and accessed/modified timestamps on
+verified ext4 mounts; live slack is refused. See
 [APFS](../file-systems/apfs.html#live-mode-macos) for what it supports and its raw-device
 limitation, and [Only APFS, nothing else, even on
 macOS](../file-systems/apfs.html#only-apfs-nothing-else-even-on-macos) for what happens
@@ -30,7 +31,7 @@ Each filesystem package will ship two `Entry` implementations, not two modes bol
 - live-mode `Entry`: backed by a single OS path, implements `NamedStreamCapable` and `TimestompCapable` via direct syscalls, and implements `SlackSpaceCapable` only when constructed against an opened raw device (running elevated).
 
 `registry.go`'s signature-based detection applies to image mode. The live router
-selects NTFS on Windows and APFS on macOS, with build-tagged unsupported stubs
-elsewhere. The NTFS live opener additionally validates the volume's boot sector
-through `New`; it does not assume every Windows volume is NTFS. ext4 live mode
-remains unimplemented.
+selects NTFS on Windows, APFS on macOS, and ext4 on Linux, with build-tagged
+unsupported stubs elsewhere. The NTFS live opener additionally validates the volume's boot sector
+through `New`; it does not assume every Windows volume is NTFS. The Linux opener checks the mounted filesystem with `fstatfs`, rejects final
+symlinks, and binds metadata operations to an opened file descriptor.

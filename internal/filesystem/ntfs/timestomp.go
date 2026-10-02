@@ -100,3 +100,8 @@ func (e *Entry) Timestamp(field filesystem.TimeField) (time.Time, error) {
 	}
 	return decodeFiletime(binary.LittleEndian.Uint64(b[off : off+8])), nil
 }
+
+// SupportsTimestamp reports whether the entry supports the requested timestamp field.
+func (e *Entry) SupportsTimestamp(field filesystem.TimeField) (bool, error) {
+	return field.Valid(), nil
+}

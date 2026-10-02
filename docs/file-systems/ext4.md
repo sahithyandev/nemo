@@ -149,11 +149,12 @@ upper 30 bits plus a 2-bit epoch extension in the low bits that pushes the
 representable range past 2038. Without an extra field, sub-second precision
 or an out-of-32-bit-range value is rejected outright rather than truncated.
 
-`Entry` also exposes `Timestamp` (a reader) and `SupportsTimestamp`,
-implemented here for ext4's own use, but neither is part of the shared
-`filesystem.TimestompCapable` interface yet, so `internal/technique` can't
-call them. See [Timestomping](../techniques/timestomping.html#why-nemos-detect-reports-nothing-for-timestomp)
-for why that matters for `detect`.
+`Entry` implements the shared `filesystem.TimestompCapable` methods `Timestamp`
+(a reader), `SupportsTimestamp`, and `SetTimestamp`. `SupportsTimestamp` checks
+whether the inode contains the requested field. The technique layer does not yet
+compare timestamp values against a historical baseline or automatically save
+original timestamps. See [Timestomping](../techniques/timestomping.html#why-nemos-detect-reports-nothing-for-timestomp)
+for the resulting detection and restoration limits.
 
 ## Limitations
 
@@ -172,11 +173,24 @@ for why that matters for `detect`.
   has room for a new attribute.
 - **Mutating a shared external xattr block** (`refcount > 1`).
 - **Emptying an external xattr block via delete.**
-- **Slack-space access and live mode for ext4.** Not built yet. See
-  [Roadmap](../roadmap.html). Live mode is planned Linux-only. macOS has no native
-  ext2/3/4 support at all, so an ext4 drive there typically needs third-party
-  software (fuse-ext2, ext4fuse, Paragon extFS) just to mount; `--image` against the
-  raw device or a `.img` file works on any host OS regardless, mounted or not.
+- **Live slack space** is unsupported; use a disposable unmounted image.
+- **Live creation/change time writes** are unsupported. Linux live mode supports
+  `user.*` xattrs and accessed/modified timestamps only on verified ext4 mounts.
+  Symlink targets and other mounted filesystem types are rejected.
+
+## Slack and Linux live mode
+
+Image slack uses the unused tail of the final allocated regular-file block.
+Sparse, overallocated, encrypted, inline-data, and unwritten-extent layouts are
+refused. Hide/detect/clear use the shared CRC-checked Nemo frame and a backup
+manifest for restoring overwritten residual bytes. Frames from the earlier
+unmerged ext4 branch used a different format and must be recreated on disposable
+fixtures; they are not detected by the shared frame reader.
+
+Linux live mode uses descriptor-backed xattr and timestamp syscalls without raw
+volume access. Native operations still need ordinary file permissions. Image
+custody records contain write hashes; live operations record logical operation
+metadata, not raw image write events.
 
 ## Testing
 

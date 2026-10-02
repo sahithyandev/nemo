@@ -8,6 +8,7 @@ import (
 	"errors"
 	"io"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -15,6 +16,7 @@ import (
 	"github.com/sahithyandev/nemo/internal/custody"
 	"github.com/sahithyandev/nemo/internal/filesystem"
 	"github.com/sahithyandev/nemo/internal/filesystem/fakefs"
+	imagepkg "github.com/sahithyandev/nemo/internal/image"
 	"github.com/sahithyandev/nemo/internal/technique"
 )
 
@@ -35,6 +37,35 @@ func TestHideHelpListsDocumentedArgumentsAndOptions(t *testing.T) {
 		if !strings.Contains(help, expected) {
 			t.Errorf("help does not contain %q:\n%s", expected, help)
 		}
+	}
+}
+
+func TestPrepareImageTargetRoutesFilesystemWritesThroughCustody(t *testing.T) {
+	fake := fakefs.New("/hello.txt")
+	var received custody.Recorder
+	opened, err := prepareImageTarget(fake.Img, func() error { return nil }, func(img imagepkg.Image) (filesystem.FileSystem, error) {
+		var ok bool
+		received, ok = img.(custody.Recorder)
+		if !ok {
+			t.Fatalf("filesystem received image type %T; want custody.Recorder", img)
+		}
+		return fake, nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	recorder, ok := opened.image.(custody.Recorder)
+	if !ok {
+		t.Fatalf("opened image type = %T; want custody.Recorder", opened.image)
+	}
+	if recorder != received {
+		t.Fatal("filesystem and technique did not receive the same custody recorder")
+	}
+	if _, err := opened.image.WriteAt([]byte("inode"), 12); err != nil {
+		t.Fatal(err)
+	}
+	if got := len(recorder.EventsSnapshot()); got != 1 {
+		t.Fatalf("custody write events = %d; want 1", got)
 	}
 }
 
@@ -322,5 +353,15 @@ func TestHidePayloadReadFailureDoesNotOpenOrWrite(t *testing.T) {
 	err := command.Execute()
 	if err == nil || !strings.Contains(err.Error(), "read payload") {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestLinuxLiveSlackFailsBeforeOpeningTarget(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("Linux-specific live routing")
+	}
+	_, err := openLiveTarget("/does-not-exist", technique.SlackSpace, true)
+	if err == nil || !strings.Contains(err.Error(), "live slack-space") {
+		t.Fatalf("expected live slack-space error, got %v", err)
 	}
 }

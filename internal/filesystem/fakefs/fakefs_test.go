@@ -240,3 +240,25 @@ func TestSetTimestamp(t *testing.T) {
 		t.Fatalf("expected timestamp %v, got %v", expected, actual)
 	}
 }
+
+func TestTimestampCapabilityReadsAndReportsFields(t *testing.T) {
+	entry := &Entry{}
+	want := time.Date(2026, time.September, 14, 10, 30, 0, 123, time.UTC)
+	if err := entry.SetTimestamp(filesystem.TimeAccessed, want); err != nil {
+		t.Fatal(err)
+	}
+	got, err := entry.Timestamp(filesystem.TimeAccessed)
+	if err != nil || !got.Equal(want) {
+		t.Fatalf("Timestamp(accessed) = %v, %v; want %v", got, err, want)
+	}
+	for _, field := range []filesystem.TimeField{filesystem.TimeCreated, filesystem.TimeModified, filesystem.TimeAccessed} {
+		supported, err := entry.SupportsTimestamp(field)
+		if err != nil || !supported {
+			t.Fatalf("SupportsTimestamp(%q) = %v, %v; want true", field, supported, err)
+		}
+	}
+	supported, err := entry.SupportsTimestamp(filesystem.TimeField("changed"))
+	if err != nil || supported {
+		t.Fatalf("SupportsTimestamp(changed) = %v, %v; want false", supported, err)
+	}
+}

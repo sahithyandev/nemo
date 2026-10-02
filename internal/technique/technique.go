@@ -50,8 +50,8 @@ type Result struct {
 
 // Backup is the record a caller must persist to make a mutating operation
 // reversible. slack-space Hide/Clear emit one before overwriting bytes;
-// timestomp would emit one too once filesystem.TimestompCapable can read a
-// timestamp back (it cannot today). The on-disk manifest format is the
+// timestomp does not yet read and record the original timestamp, even though
+// filesystem.TimestompCapable exposes a reader. The on-disk manifest format is the
 // command layer's decision; this package only hands the record to
 // Request.Backup.
 type Backup struct {
@@ -336,14 +336,14 @@ func (timestompTechnique) Hide(entry filesystem.Entry, request Request) (Result,
 	return Result{
 		Technique: Timestomp,
 		Target:    entry.Path(),
-		Detail:    fmt.Sprintf("%s=%s", request.Field, request.Timestamp.Format(time.RFC3339)),
+		Detail:    fmt.Sprintf("%s=%s", request.Field, request.Timestamp.Format(time.RFC3339Nano)),
 	}, nil
 }
 
-// Detect always reports nothing for timestomp: filesystem.TimestompCapable
-// exposes only SetTimestamp, so there is no way to read a field back and
-// judge whether it was altered. Restoring a stomped timestamp likewise needs
-// the caller to supply the original value.
+// Detect reports no timestomp findings: a current timestamp alone does not
+// establish whether it was altered, and no baseline comparison or anomaly
+// detector is implemented. Hide does not automatically back up timestamps,
+// so restoring one requires the caller to supply the original value.
 func (timestompTechnique) Detect(entry filesystem.Entry, _ Request) ([]Finding, error) {
 	if _, ok := entry.(filesystem.TimestompCapable); !ok {
 		return nil, unsupported(Timestomp)

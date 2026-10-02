@@ -112,6 +112,23 @@ func (e *Entry) SetTimestamp(field filesystem.TimeField, t time.Time) error {
 	return nil
 }
 
+func (e *Entry) Timestamp(field filesystem.TimeField) (time.Time, error) {
+	t, ok := e.Times[field]
+	if !ok {
+		return time.Time{}, fs.ErrNotExist
+	}
+	return t, nil
+}
+
+func (e *Entry) SupportsTimestamp(field filesystem.TimeField) (bool, error) {
+	switch field {
+	case filesystem.TimeCreated, filesystem.TimeModified, filesystem.TimeAccessed:
+		return true, nil
+	default:
+		return false, nil
+	}
+}
+
 // --------------------
 // FS
 // --------------------

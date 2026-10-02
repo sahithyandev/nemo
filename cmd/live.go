@@ -5,20 +5,31 @@ import (
 
 	"github.com/sahithyandev/nemo/internal/custody"
 	"github.com/sahithyandev/nemo/internal/filesystem/apfs"
+	"github.com/sahithyandev/nemo/internal/filesystem/ext4"
 	"github.com/sahithyandev/nemo/internal/filesystem/ntfs"
 	imagepkg "github.com/sahithyandev/nemo/internal/image"
 	"github.com/sahithyandev/nemo/internal/technique"
 )
 
-// openLiveTarget uses read-only NTFS volume access on Windows. On macOS,
-// named-stream and
-// timestomp go through a path-backed Entry (xattr and setattrlist
+// openLiveTarget uses path-backed ext4 access on Linux and rejects live slack.
+// Windows uses NTFS volume access. On macOS, named-stream and timestomp
+// go through a path-backed Entry (xattr and setattrlist
 // syscalls, no special privilege needed). Slack-space is volume-level and
 // needs the raw device backing target's mounted volume, which is only
 // attempted when tech explicitly asks for it. An unqualified detect scan
 // should not reach for a device it may not have permission to open; see
 // docs/architecture/live-mode.md.
 func openLiveTarget(target, tech string, write bool) (openedTarget, error) {
+	if runtime.GOOS == "linux" {
+		if tech == technique.SlackSpace {
+			return openedTarget{}, ext4.LiveSlackError()
+		}
+		fs, err := ext4.OpenLive(target)
+		if err != nil {
+			return openedTarget{}, err
+		}
+		return openedTarget{filesystem: fs}, nil
+	}
 	if runtime.GOOS == "windows" {
 		fs, img, closeFn, err := ntfs.OpenLive(target, write, liveImageWrap(write))
 		if err != nil {

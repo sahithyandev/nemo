@@ -135,37 +135,28 @@ exists in more than one place:
 
 ## Why nemo's `detect` reports nothing for timestomp
 
-`filesystem.TimestompCapable` exposes only `SetTimestamp`, with no reader:
+`filesystem.TimestompCapable` exposes the current value and field support as well
+as the write operation:
 
 ```go
 type TimestompCapable interface {
+    Timestamp(field TimeField) (time.Time, error)
+    SupportsTimestamp(field TimeField) (bool, error)
     SetTimestamp(field TimeField, t time.Time) error
 }
 ```
 
-So `timestompTechnique.Detect` (`internal/technique/technique.go`) always returns
-`nil, nil`, after confirming the filesystem supports the capability at all.
+`timestompTechnique.Detect` (`internal/technique/technique.go`) still returns
+`nil, nil` after confirming that the entry implements the capability. A current
+timestamp does not establish whether it was altered. Nemo has no historical
+baseline comparison or timestamp anomaly detector, so it cannot report a
+supported finding from the current value alone. Cross-checking independent
+records, such as NTFS `$SI` against `$FN`, remains future work.
 
-This is a real limitation, not just an unfinished feature, and the reason is
-specific: reading a timestamp back tells you its current value, not whether it
-was altered. Detecting a stomp needs a second, independent source to disagree
-with, such as the `$FN` copy, the `ctime` the kernel controls, a journal entry,
-or a snapshot. nemo does not parse any of those yet, so it has nothing to compare
-against and cannot honestly report a finding. Giving `TimestompCapable` a reader
-plus a cross-check source, starting with NTFS `$SI` and `$FN`, is the follow-up
-[Technique Interfaces](../architecture/technique.html) records against CORE-04.
-
-The same gap constrains `clear`. With no way to recover a prior value, `nemo
-clear --technique timestomp` requires the original timestamp supplied explicitly
-and errors on a zero value (`timestompTechnique.Clear`). There is no manifest
-path for timestomp the way there is for slack-space, because `hide` has no
-original value to record.
-
-`internal/filesystem/ext4/timestomp.go` and `internal/filesystem/apfs/timestomp.go`
-already implement `Timestamp` (a reader), ext4 with `SupportsTimestamp` alongside it,
-for their own use. Neither is part of the shared capability interface yet, so the
-technique layer cannot call them. Wiring a reader into `TimestompCapable` is step one
-of that follow-up.
+`hide` does not automatically read and save the original timestamp to a manifest.
+Consequently, `nemo clear --technique timestomp` requires the original timestamp
+supplied explicitly and rejects a zero value. The shared reader makes an automatic
+backup possible, but the technique and manifest workflow do not implement it yet.
 
 ## How nemo implements it
 
@@ -191,7 +182,10 @@ place, through the same in-place B-tree leaf rewrite `namedstream.go` uses for
 xattrs (see `btree_write.go`): the record's size does not change, so the existing
 checksum and `btree_info_t` handling covers it without any new machinery.
 
-NTFS is pending; it needs `$SI`, and to be thorough `$FN`, in the MFT record.
+NTFS is implemented in `internal/filesystem/ntfs/timestomp.go`: it reads and
+writes the selected `$STANDARD_INFORMATION` timestamp with 100 ns precision,
+regenerates record fixups, and verifies the write. It does not update `$FILE_NAME`
+timestamps or compare the two copies for detection.
 
 A timestomp still leaves independent copies of the dates behind. On APFS
 specifically: the directory entry's own `date_added` (`j_drec_val_t`), Spotlight

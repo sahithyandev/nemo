@@ -138,3 +138,8 @@ func (e *Entry) Timestamp(field filesystem.TimeField) (time.Time, error) {
 	}
 	return t, nil
 }
+
+// SupportsTimestamp reports whether the entry supports the requested timestamp field.
+func (e *Entry) SupportsTimestamp(field filesystem.TimeField) (bool, error) {
+	return field.Valid(), nil
+}
