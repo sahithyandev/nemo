@@ -3,6 +3,7 @@ package cmd
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 
@@ -118,6 +119,9 @@ func runExtract(command *cobra.Command, target string, options extractOptions, d
 	}
 
 	if options.output == "" {
+		if looksBinary(payload) && isTerminal(command.OutOrStdout()) {
+			return errors.New("recovered payload looks binary; refusing to write it to a terminal, use -o to save it to a file")
+		}
 		if _, err := command.OutOrStdout().Write(payload); err != nil {
 			return fmt.Errorf("write payload to stdout: %w", err)
 		}
@@ -173,6 +177,34 @@ func validateExtract(command *cobra.Command, target string, options extractOptio
 	}
 
 	return selected, nil
+}
+
+// isTerminal reports whether w is a character device like a terminal, so we
+// know raw bytes written to it would actually hit a human's screen.
+func isTerminal(w io.Writer) bool {
+	f, ok := w.(*os.File)
+	if !ok {
+		return false
+	}
+	info, err := f.Stat()
+	if err != nil {
+		return false
+	}
+	return info.Mode()&os.ModeCharDevice != 0
+}
+
+// looksBinary reports whether data contains bytes that would mangle a
+// terminal (a NUL byte or other control characters besides tab/newline/CR).
+func looksBinary(data []byte) bool {
+	for _, b := range data {
+		if b == 0 {
+			return true
+		}
+		if b < 0x09 || (b > 0x0d && b < 0x20) {
+			return true
+		}
+	}
+	return false
 }
 
 // samePath reports whether a and b name the same file, comparing absolute

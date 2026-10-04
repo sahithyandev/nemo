@@ -134,6 +134,33 @@ func TestExtractOutputSameAsImageErrors(t *testing.T) {
 	}
 }
 
+func TestLooksBinary(t *testing.T) {
+	cases := []struct {
+		name string
+		data []byte
+		want bool
+	}{
+		{"empty", nil, false},
+		{"plain text", []byte("hello\nworld\n"), false},
+		{"tabs and crlf", []byte("a\tb\r\n"), false},
+		{"nul byte", []byte("hello\x00world"), true},
+		{"control byte", []byte("hello\x01world"), true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := looksBinary(c.data); got != c.want {
+				t.Errorf("looksBinary(%q) = %v, want %v", c.data, got, c.want)
+			}
+		})
+	}
+}
+
+func TestIsTerminalFalseForNonFileWriters(t *testing.T) {
+	if isTerminal(new(bytes.Buffer)) {
+		t.Fatal("a bytes.Buffer is never a terminal")
+	}
+}
+
 func TestExtractSlackSpaceRecoversPayload(t *testing.T) {
 	fs := fakefs.New("/slack.bin")
 	fs.Entry("/slack.bin").Slack = []filesystem.SlackRegion{{Offset: 0, Length: int64(len(fs.Img.Data))}}
