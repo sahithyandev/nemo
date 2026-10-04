@@ -14,6 +14,7 @@ type Technique interface {
     Hide(filesystem.Entry, Request) (Result, error)
     Detect(filesystem.Entry, Request) ([]Finding, error)
     Clear(filesystem.Entry, Request) (Result, error)
+    Extract(filesystem.Entry, Request) ([]byte, error)
 }
 ```
 
@@ -48,6 +49,13 @@ passes a closure calling `AppendManifest`; a write failure there aborts the hide
 before any bytes are overwritten. `clear` replays it via
 `LoadManifest` and `LatestBackup`; later records win, so re-hiding a target then
 clearing restores the last hide's bytes. See [CLI Reference](../cli/#the-manifest) for the user-facing flag.
+
+**Extract.** `extract` reads a hidden payload back out without mutating anything.
+named-stream delegates to `filesystem.NamedStreamCapable.ReadStream`. slack-space
+walks the entry's `SlackRegions` and returns the payload of the first valid framed
+slack payload it finds (CRC-checked via the same frame parser `Hide`/`Clear` use),
+erroring `"no framed slack payload found to extract"` if none decode. timestomp has
+no retrievable payload (see below) and always errors.
 
 **Timestomp limitation.** `filesystem.TimestompCapable` exposes `Timestamp`,
 `SupportsTimestamp`, and `SetTimestamp`. Reading a current value does not establish
