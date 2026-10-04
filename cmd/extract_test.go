@@ -298,11 +298,30 @@ func TestExtractPerformsNoWrites(t *testing.T) {
 
 	before := append([]byte(nil), fs.Img.Data...)
 	// fakeExtractDeps wraps fs.Img in image.ReadOnly, so a stray WriteAt would
-	// surface as an error rather than corrupt bytes silently.
+	// surface as an error rather than corrupt bytes silently. Prove the guard
+	// itself works, not just that this particular run happened not to write.
+	if _, err := imagepkg.ReadOnly(fs.Img).WriteAt([]byte("x"), 0); !errors.Is(err, imagepkg.ErrReadOnly) {
+		t.Fatalf("expected ErrReadOnly, got %v", err)
+	}
+
 	if _, err := runExtractCmd(t, fakeExtractDeps(fs), "/slack.bin", "-t", "slack-space", "--image", "x"); err != nil {
 		t.Fatal(err)
 	}
 	if !bytes.Equal(before, fs.Img.Data) {
 		t.Fatal("extract mutated the image")
+	}
+}
+
+func TestExtractEmptyStream(t *testing.T) {
+	fs := fakefs.New("/target")
+	if err := fs.Entry("/target").WriteStream("secret", []byte{}); err != nil {
+		t.Fatal(err)
+	}
+	out, err := runExtractCmd(t, fakeExtractDeps(fs), "/target", "-t", "named-stream", "--stream-name", "secret", "--image", "x")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out != "" {
+		t.Fatalf("unexpected stdout %q", out)
 	}
 }
