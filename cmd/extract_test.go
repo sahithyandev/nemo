@@ -90,6 +90,50 @@ func TestExtractNamedStreamToOutputFile(t *testing.T) {
 	}
 }
 
+func TestExtractOutputExistingFileErrors(t *testing.T) {
+	fs := fakefs.New("/target")
+	if err := fs.Entry("/target").WriteStream("secret", []byte("payload")); err != nil {
+		t.Fatal(err)
+	}
+	outPath := filepath.Join(t.TempDir(), "recovered.bin")
+	if err := os.WriteFile(outPath, []byte("keep me"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := runExtractCmd(t, fakeExtractDeps(fs), "/target", "-t", "named-stream", "--stream-name", "secret", "--image", "x", "-o", outPath)
+	if err == nil || !strings.Contains(err.Error(), "already exists") {
+		t.Fatalf("expected already-exists error, got %v", err)
+	}
+	if got, _ := os.ReadFile(outPath); string(got) != "keep me" {
+		t.Fatalf("existing file was modified: %q", got)
+	}
+}
+
+func TestExtractOutputSameAsTargetErrors(t *testing.T) {
+	fs := fakefs.New("/target")
+	if err := fs.Entry("/target").WriteStream("secret", []byte("payload")); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := runExtractCmd(t, fakeExtractDeps(fs), "/target", "-t", "named-stream", "--stream-name", "secret", "--image", "x", "-o", "/target")
+	if err == nil || !strings.Contains(err.Error(), "same file as the target") {
+		t.Fatalf("expected same-as-target error, got %v", err)
+	}
+}
+
+func TestExtractOutputSameAsImageErrors(t *testing.T) {
+	fs := fakefs.New("/target")
+	if err := fs.Entry("/target").WriteStream("secret", []byte("payload")); err != nil {
+		t.Fatal(err)
+	}
+	imgPath := filepath.Join(t.TempDir(), "disk.img")
+
+	_, err := runExtractCmd(t, fakeExtractDeps(fs), "/target", "-t", "named-stream", "--stream-name", "secret", "--image", imgPath, "-o", imgPath)
+	if err == nil || !strings.Contains(err.Error(), "same file as --image") {
+		t.Fatalf("expected same-as-image error, got %v", err)
+	}
+}
+
 func TestExtractSlackSpaceRecoversPayload(t *testing.T) {
 	fs := fakefs.New("/slack.bin")
 	fs.Entry("/slack.bin").Slack = []filesystem.SlackRegion{{Offset: 0, Length: int64(len(fs.Img.Data))}}

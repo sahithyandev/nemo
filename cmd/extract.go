@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/sahithyandev/nemo/internal/filesystem"
 	imagepkg "github.com/sahithyandev/nemo/internal/image"
@@ -41,8 +42,18 @@ func defaultExtractDependencies() extractDependencies {
 			}
 			return openedTarget{filesystem: fs, image: ro, close: img.Close}, nil
 		},
-		openLive:  openLiveTarget,
-		writeFile: func(path string, data []byte) error { return os.WriteFile(path, data, 0o600) },
+		openLive: openLiveTarget,
+		writeFile: func(path string, data []byte) error {
+			f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+			if err != nil {
+				return err
+			}
+			if _, err := f.Write(data); err != nil {
+				_ = f.Close()
+				return err
+			}
+			return f.Close()
+		},
 	}
 }
 
@@ -72,7 +83,7 @@ func newExtractCommand(dependencies extractDependencies) *cobra.Command {
 }
 
 func runExtract(command *cobra.Command, target string, options extractOptions, dependencies extractDependencies) error {
-	selected, err := validateExtract(command, options)
+	selected, err := validateExtract(command, target, options)
 	if err != nil {
 		return err
 	}
@@ -118,7 +129,7 @@ func runExtract(command *cobra.Command, target string, options extractOptions, d
 	return nil
 }
 
-func validateExtract(command *cobra.Command, options extractOptions) (technique.Technique, error) {
+func validateExtract(command *cobra.Command, target string, options extractOptions) (technique.Technique, error) {
 	if options.technique == "" {
 		return nil, errors.New("--technique is required")
 	}
@@ -135,6 +146,21 @@ func validateExtract(command *cobra.Command, options extractOptions) (technique.
 		return nil, errors.New("--image requires a non-empty path")
 	}
 
+	if options.output != "" {
+		if _, err := os.Stat(options.output); err == nil {
+			return nil, fmt.Errorf("output file %q already exists; refusing to overwrite", options.output)
+		}
+		// -o must never land on the target or (in image mode) the image itself;
+		// O_EXCL alone doesn't catch this if the path spelling differs (relative
+		// vs absolute, symlink, etc.) from one that happens not to exist yet.
+		if samePath(options.output, target) {
+			return nil, fmt.Errorf("--output %q must not be the same file as the target", options.output)
+		}
+		if command.Flags().Changed("image") && samePath(options.output, options.image) {
+			return nil, fmt.Errorf("--output %q must not be the same file as --image", options.output)
+		}
+	}
+
 	switch options.technique {
 	case technique.NamedStream:
 		if options.streamName == "" {
@@ -147,4 +173,19 @@ func validateExtract(command *cobra.Command, options extractOptions) (technique.
 	}
 
 	return selected, nil
+}
+
+// samePath reports whether a and b name the same file, comparing absolute
+// paths since the two flags are often spelled differently (relative vs
+// absolute) even when they point at the same place.
+func samePath(a, b string) bool {
+	if a == "" || b == "" {
+		return false
+	}
+	absA, errA := filepath.Abs(a)
+	absB, errB := filepath.Abs(b)
+	if errA != nil || errB != nil {
+		return a == b
+	}
+	return absA == absB
 }
