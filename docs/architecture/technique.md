@@ -57,6 +57,15 @@ slack payload it finds (CRC-checked via the same frame parser `Hide`/`Clear` use
 erroring `"no framed slack payload found to extract"` if none decode. timestomp has
 no retrievable payload (see below) and always errors.
 
+**First-frame limitation.** If a target's slack space holds more than one valid
+framed payload (for example, stale frames left behind by an earlier hide that
+was never cleared), `Extract` returns only the first one it finds, while
+`Detect` lists every frame it finds. The two can disagree about which payload
+is "the" payload on such a target. `Clear` makes the same first-frame
+assumption, so the behavior is at least consistent across all three. A
+`--index` flag to pick a specific frame is a reasonable future addition; none
+exists today.
+
 **Timestomp limitation.** `filesystem.TimestompCapable` exposes `Timestamp`,
 `SupportsTimestamp`, and `SetTimestamp`. Reading a current value does not establish
 whether it was altered. No historical baseline comparison or anomaly detector is

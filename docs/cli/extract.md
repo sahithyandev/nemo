@@ -27,6 +27,8 @@ Options:
 
 There is no `--manifest` flag. A slack-space payload is self-describing: nemo wraps every slack payload in a 12-byte, CRC-checked frame when hiding it, so `extract` finds and reads that frame directly off disk without needing the manifest `clear` uses for restoration. See [Slack-Space Hiding](../techniques/slack-space.html#nemos-payload-frame) for the frame layout. If a target's slack space holds no such frame, `extract` errors rather than returning residual noise as if it were a payload.
 
+For slack-space, `extract` returns only the first valid framed payload it finds, even if a target holds several (stale frames from an earlier, uncleared hide). `detect` lists all of them, so the two can disagree about which one is "the" payload on such a target. A future `--index` flag could let you pick a specific one; see [Technique Interfaces](../architecture/technique.html#first-frame-limitation).
+
 Live mode is only built for APFS on macOS today, and nothing else, even there: a
 target on a mounted NTFS, ext4, or other non-APFS volume refuses with a clear error
 naming that filesystem rather than falling through to something wrong. See [APFS live
