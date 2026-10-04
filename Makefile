@@ -1,7 +1,8 @@
-.PHONY: build run test vet crossbuild fmt sbom clean hooks release-package linux-acceptance
+.PHONY: build run test vet crossbuild fmt sbom clean hooks release-package linux-acceptance vulncheck
 
 SBOM_FILE := sbom.cdx.json
 CYCLONEDX_GOMOD := github.com/CycloneDX/cyclonedx-gomod/cmd/cyclonedx-gomod@v1.12.0
+GOVULNCHECK := golang.org/x/vuln/cmd/govulncheck@v1.8.0
 
 build: hooks ## compile ./bin/nemo
 	go build -o bin/nemo .
@@ -26,6 +27,9 @@ fmt:        ## gofmt all files
 
 sbom:       ## generate CycloneDX SBOM (sbom.cdx.json)
 	go run $(CYCLONEDX_GOMOD) mod -json -licenses -output $(SBOM_FILE) .
+
+vulncheck:  ## scan deps and Go stdlib for known vulnerabilities
+	go run $(GOVULNCHECK) -show verbose ./...
 
 clean:      ## remove build artifacts
 	rm -rf bin

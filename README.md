@@ -41,7 +41,10 @@ make run     # go run .
 make test    # run tests
 make vet     # static checks
 make fmt     # gofmt all files
+make vulncheck # scan deps and Go stdlib for known vulnerabilities
 ```
+
+CI runs `make vulncheck` (govulncheck) on pull requests and every Monday. A failing scheduled run means a new advisory affects a dependency or the Go version in `go.mod`; bump it to fix.
 
 Version is read from `cmd/VERSION` and embedded into the binary at compile time (`nemo version`).
 
