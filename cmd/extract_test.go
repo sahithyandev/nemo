@@ -190,6 +190,66 @@ func TestExtractSlackSpaceNoFrameErrors(t *testing.T) {
 	}
 }
 
+// TestExtractLiveModeCallsOpenLiveReadOnly covers the live-mode path (no
+// --image), which fakeExtractDeps otherwise never exercises: it asserts
+// extract requests openLive with write=false, for both techniques.
+func TestExtractLiveModeCallsOpenLiveReadOnly(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		args []string
+	}{
+		{"named-stream", []string{"/target", "-t", "named-stream", "--stream-name", "secret"}},
+		{"slack-space", []string{"/slack.bin", "-t", "slack-space"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			target := tc.args[0]
+			fs := fakefs.New(target)
+			if tc.name == "named-stream" {
+				if err := fs.Entry(target).WriteStream("secret", []byte("payload")); err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				fs.Entry(target).Slack = []filesystem.SlackRegion{{Offset: 0, Length: int64(len(fs.Img.Data))}}
+				slack, _ := technique.Get(technique.SlackSpace)
+				if _, err := slack.Hide(fs.Entry(target), technique.Request{Data: []byte("payload"), Image: fs.Img}); err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			var gotTarget, gotTech string
+			var gotWrite bool
+			deps := extractDependencies{
+				openImage: func(string) (openedTarget, error) {
+					t.Fatal("image mode opened despite no --image")
+					return openedTarget{}, nil
+				},
+				openLive: func(target, tech string, write bool) (openedTarget, error) {
+					gotTarget, gotTech, gotWrite = target, tech, write
+					return openedTarget{filesystem: fs, image: imagepkg.ReadOnly(fs.Img)}, nil
+				},
+			}
+
+			out, err := runExtractCmd(t, deps, tc.args...)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if out != "payload" {
+				t.Fatalf("unexpected recovered payload %q", out)
+			}
+			if gotTarget != target {
+				t.Fatalf("openLive target = %q, want %q", gotTarget, target)
+			}
+			tech := tc.args[2]
+			if gotTech != tech {
+				t.Fatalf("openLive technique = %q, want %q", gotTech, tech)
+			}
+			if gotWrite {
+				t.Fatal("extract must request openLive with write=false")
+			}
+		})
+	}
+}
+
 func TestExtractRejectsBadFlagsBeforeOpeningTarget(t *testing.T) {
 	tests := []struct {
 		name string
