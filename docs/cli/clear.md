@@ -1,7 +1,7 @@
 ---
 title: clear
 parent: CLI Reference
-nav_order: 3
+nav_order: 5
 ---
 
 # `nemo clear`

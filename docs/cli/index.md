@@ -34,13 +34,13 @@ On success, `hide` and `clear` emit their custody record as one JSON object on s
 
 | Command | Purpose | Status |
 | --- | --- | --- |
+| [`features`](features.html) | print the filesystem × technique support matrix | built |
 | [`hide`](hide.html) | write payload data into a target using one technique | built |
 | [`detect`](detect.html) | scan a target or image for hidden data | built |
-| [`clear`](clear.html) | remove previously hidden data and restore the target | built |
 | [`extract`](extract.html) | read a previously hidden payload back out | built |
-| [`features`](info.html#nemo-features) | print the filesystem × technique support matrix | built |
-| [`version`](info.html#nemo-version) | print the tool's version | built |
-| [`help`](info.html#nemo-help) | print usage information | built |
+| [`clear`](clear.html) | remove previously hidden data and restore the target | built |
+| [`version`](version.html) | print the tool's version | built |
+| [`help`](help.html) | print usage information | built |
 
 ## Out of Scope
 
