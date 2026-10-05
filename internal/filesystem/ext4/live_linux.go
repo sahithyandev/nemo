@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/sahithyandev/nemo/internal/filesystem"
+	"golang.org/x/sys/unix"
 )
 
 const linuxExt4Magic = 0xef53
@@ -217,7 +218,7 @@ func (e *LiveEntry) SupportsTimestamp(field filesystem.TimeField) (bool, error) 
 	switch field {
 	case filesystem.TimeAccessed, filesystem.TimeModified:
 		return true, nil
-	case filesystem.TimeCreated:
+	case filesystem.TimeCreated, filesystem.TimeChanged:
 		return false, nil
 	default:
 		return false, fmt.Errorf("ext4 live mode: unknown timestamp field %q", field)
@@ -225,17 +226,30 @@ func (e *LiveEntry) SupportsTimestamp(field filesystem.TimeField) (bool, error) 
 }
 
 func (e *LiveEntry) Timestamp(field filesystem.TimeField) (time.Time, error) {
-	if supported, err := e.SupportsTimestamp(field); err != nil {
-		return time.Time{}, err
-	} else if !supported {
-		return time.Time{}, errors.New("ext4 live mode: creation time cannot be read with the supported Linux file APIs")
+	if !field.Valid() {
+		return time.Time{}, fmt.Errorf("ext4 live mode: unknown timestamp field %q", field)
 	}
 	var value time.Time
-	err := e.withFD(func(_ string, stat syscall.Stat_t) error {
-		if field == filesystem.TimeAccessed {
+	err := e.withFD(func(path string, stat syscall.Stat_t) error {
+		switch field {
+		case filesystem.TimeAccessed:
 			value = time.Unix(stat.Atim.Sec, stat.Atim.Nsec).UTC()
-		} else {
+		case filesystem.TimeModified:
 			value = time.Unix(stat.Mtim.Sec, stat.Mtim.Nsec).UTC()
+		case filesystem.TimeChanged:
+			value = time.Unix(stat.Ctim.Sec, stat.Ctim.Nsec).UTC()
+		case filesystem.TimeCreated:
+			var info unix.Statx_t
+			if err := unix.Statx(unix.AT_FDCWD, path, 0, unix.STATX_BTIME, &info); err != nil {
+				if errors.Is(err, unix.ENOSYS) || errors.Is(err, unix.EOPNOTSUPP) {
+					return fmt.Errorf("ext4 live mode: creation time read is unavailable: %w", filesystem.ErrUnsupported)
+				}
+				return fmt.Errorf("ext4 live mode: read creation time: %w", err)
+			}
+			if info.Mask&unix.STATX_BTIME == 0 {
+				return fmt.Errorf("ext4 live mode: creation time read is unavailable: %w", filesystem.ErrUnsupported)
+			}
+			value = time.Unix(info.Btime.Sec, int64(info.Btime.Nsec)).UTC()
 		}
 		return nil
 	})
@@ -246,10 +260,16 @@ func (e *LiveEntry) SetTimestamp(field filesystem.TimeField, value time.Time) er
 	if supported, err := e.SupportsTimestamp(field); err != nil {
 		return err
 	} else if !supported {
-		return errors.New("ext4 live mode: creation time cannot be set with Linux file APIs")
+		label := "creation"
+		if field == filesystem.TimeChanged {
+			label = "change"
+		}
+		return fmt.Errorf("ext4 live mode: %s time cannot be set with Linux file APIs: %w", label, filesystem.ErrUnsupported)
 	}
-	return e.withFD(func(path string, stat syscall.Stat_t) error {
-		times := []syscall.Timespec{stat.Atim, stat.Mtim}
+	return e.withFD(func(path string, _ syscall.Stat_t) error {
+		// UTIME_OMIT preserves the other field atomically, including changes
+		// made by another process after this descriptor was opened.
+		times := []syscall.Timespec{{Nsec: unix.UTIME_OMIT}, {Nsec: unix.UTIME_OMIT}}
 		replacement := syscall.Timespec{Sec: value.Unix(), Nsec: int64(value.Nanosecond())}
 		if field == filesystem.TimeAccessed {
 			times[0] = replacement
