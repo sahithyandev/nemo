@@ -32,13 +32,16 @@ func (e *Entry) SlackRegions() ([]filesystem.SlackRegion, error) {
 		return nil, fmt.Errorf("ext4: inspect slack extents for %q: %w", e.path, err)
 	}
 	blockSize := uint64(e.fs.sb.blockSize)
-	requiredBlocks := (in.size + blockSize - 1) / blockSize
+	requiredBlocks := in.size / blockSize
+	if in.size%blockSize != 0 {
+		requiredBlocks++
+	}
 	if uint64(len(blocks)) != requiredBlocks {
-		return nil, fmt.Errorf("ext4: sparse or overallocated file %q maps %d blocks for %d-byte size; expected %d", e.path, len(blocks), in.size, requiredBlocks)
+		return nil, fmt.Errorf("ext4: sparse or overallocated file %q maps %d blocks for %d-byte size; expected %d: %w", e.path, len(blocks), in.size, requiredBlocks, filesystem.ErrUnsupported)
 	}
 	for i, block := range blocks {
 		if block.logical != uint32(i) {
-			return nil, fmt.Errorf("ext4: sparse file %q has a hole at logical block %d", e.path, i)
+			return nil, fmt.Errorf("ext4: sparse file %q has a hole at logical block %d: %w", e.path, i, filesystem.ErrUnsupported)
 		}
 	}
 
