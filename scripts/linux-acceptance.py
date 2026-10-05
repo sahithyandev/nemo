@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Disposable Linux CLI acceptance; Python 3.11+, mke2fs, debugfs and nemo."""
 import argparse
+import base64
 import datetime
 import hashlib
 import json
@@ -84,12 +85,24 @@ def main():
         assert not detect(target, technique, image, *imageflags).strip()
         mutate('hide', technique, target, *imageflags, *extra, '--data', payload, expected=payload.read_bytes())
         assert technique in detect(target, technique, image, *imageflags)
-        expected = b'' if technique == 'named-stream' else bytes(12 + len(payload.read_bytes()))
+        extracted = work / f'extracted-{technique}.bin'
+        extract_extra = ('--stream-name', 'user.nemo.acceptance') if technique == 'named-stream' else ()
+        before_extract = digest(image)
+        cli('extract', target, '-t', technique, *imageflags, *extract_extra, '-o', extracted)
+        assert extracted.read_bytes() == payload.read_bytes(), 'extracted image payload differs'
+        assert digest(image) == before_extract, 'extract changed source image'
+        refused = run(binary, 'extract', target, '-t', technique, *imageflags, *extract_extra, '-o', extracted, success=False)
+        assert refused.returncode and 'already exists' in refused.stderr, refused.stderr
+        assert extracted.read_bytes() == payload.read_bytes(), 'existing extract output was overwritten'
+        expected = b''
+        if technique == 'slack-space':
+            backup = json.loads((work / 'backup.jsonl').read_text().splitlines()[-1])
+            expected = base64.b64decode(backup['Original'])
         mutate('clear', technique, target, *imageflags, *extra, expected=expected)
         assert not detect(target, technique, image, *imageflags).strip()
         if technique == 'slack-space':
             assert digest(image) == baseline, 'slack restoration did not reproduce original image'
-        print(f'PASS image {technique} hide/detect/clear and SHA256 custody', flush=True)
+        print(f'PASS image {technique} hide/detect/extract/clear and SHA256 custody', flush=True)
     stat = run('debugfs', '-R', 'stat /host.txt', image).stdout
     match = re.search(r'mtime:\s+0x([0-9a-fA-F]+):', stat)
     assert match, stat
@@ -123,6 +136,9 @@ def main():
         assert os.getxattr(host, 'user.nemo.acceptance') == payload.read_bytes()
         before = (host.stat(), os.getxattr(host, 'user.nemo.acceptance'))
         assert 'user.nemo.acceptance' in detect(live, 'named-stream', host)
+        extracted = work / 'extracted-live.bin'
+        cli('extract', live, '-t', 'named-stream', *extra, '-o', extracted)
+        assert extracted.read_bytes() == payload.read_bytes(), 'extracted live payload differs'
         assert host.stat().st_mtime_ns == before[0].st_mtime_ns
         assert host.stat().st_ctime_ns == before[0].st_ctime_ns
         assert os.getxattr(host, 'user.nemo.acceptance') == before[1]
@@ -138,6 +154,18 @@ def main():
         link.symlink_to(host)
         rejected = run(binary, 'detect', link, '-t', 'named-stream', success=False)
         assert rejected.returncode and 'symlink' in rejected.stderr
+        scan = work / 'scan'
+        scan.mkdir()
+        scan_file = scan / 'host.txt'
+        scan_file.write_bytes(b'scan host')
+        os.setxattr(scan_file, 'user.nemo.scan', b'scan marker')
+        (scan / 'link').symlink_to(scan_file)
+        os.mkfifo(scan / 'pipe')
+        scanned = run(binary, 'detect', scan, '-t', 'named-stream')
+        assert 'user.nemo.scan' in scanned.stdout, scanned.stdout
+        assert 'warning: skipped child:' in scanned.stderr, scanned.stderr
+        assert str(scan / 'link') in scanned.stderr and str(scan / 'pipe') in scanned.stderr, scanned.stderr
+        print('PASS native extraction and directory scan with skipped symlink/FIFO warnings', flush=True)
         host.chmod(0)
         try:
             if os.geteuid() == 0:
