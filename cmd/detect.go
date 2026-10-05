@@ -135,7 +135,9 @@ func runDetect(command *cobra.Command, target string, options detectOptions, dep
 
 	req := technique.Request{Image: opened.image}
 	var findings []reportedFinding
-	err = walkEntries(root, func(entry filesystem.Entry) error {
+	err = walkEntriesWithWarnings(root, func(warning error) {
+		fmt.Fprintf(command.ErrOrStderr(), "warning: skipped child: %v\n", warning)
+	}, func(entry filesystem.Entry) error {
 		for i, tech := range selected {
 			got, derr := tech.Detect(entry, req)
 			if errors.Is(derr, technique.ErrUnsupported) {
@@ -170,6 +172,10 @@ type reportedFinding struct {
 // walkEntries visits entry and every descendant reachable through Children(),
 // mirroring io/fs.WalkDir's shape.
 func walkEntries(entry filesystem.Entry, visit func(filesystem.Entry) error) error {
+	return walkEntriesWithWarnings(entry, nil, visit)
+}
+
+func walkEntriesWithWarnings(entry filesystem.Entry, warn func(error), visit func(filesystem.Entry) error) error {
 	if err := visit(entry); err != nil {
 		return err
 	}
@@ -177,8 +183,13 @@ func walkEntries(entry filesystem.Entry, visit func(filesystem.Entry) error) err
 	if err != nil {
 		return fmt.Errorf("list children of %q: %w", entry.Path(), err)
 	}
+	if reporter, ok := entry.(interface{ TraversalWarnings() []error }); ok && warn != nil {
+		for _, warning := range reporter.TraversalWarnings() {
+			warn(warning)
+		}
+	}
 	for _, child := range children {
-		if err := walkEntries(child, visit); err != nil {
+		if err := walkEntriesWithWarnings(child, warn, visit); err != nil {
 			return err
 		}
 	}
