@@ -14,6 +14,7 @@ type Technique interface {
     Hide(filesystem.Entry, Request) (Result, error)
     Detect(filesystem.Entry, Request) ([]Finding, error)
     Clear(filesystem.Entry, Request) (Result, error)
+    Extract(filesystem.Entry, Request) ([]byte, error)
 }
 ```
 
@@ -48,6 +49,22 @@ passes a closure calling `AppendManifest`; a write failure there aborts the hide
 before any bytes are overwritten. `clear` replays it via
 `LoadManifest` and `LatestBackup`; later records win, so re-hiding a target then
 clearing restores the last hide's bytes. See [CLI Reference](../cli/#the-manifest) for the user-facing flag.
+
+**Extract.** `extract` reads a hidden payload back out without mutating anything.
+named-stream delegates to `filesystem.NamedStreamCapable.ReadStream`. slack-space
+walks the entry's `SlackRegions` and returns the payload of the first valid framed
+slack payload it finds (CRC-checked via the same frame parser `Hide`/`Clear` use),
+erroring `"no framed slack payload found to extract"` if none decode. timestomp has
+no retrievable payload (see below) and always errors.
+
+**First-frame limitation.** If a target's slack space holds more than one valid
+framed payload (for example, stale frames left behind by an earlier hide that
+was never cleared), `Extract` returns only the first one it finds, while
+`Detect` lists every frame it finds. The two can disagree about which payload
+is "the" payload on such a target. `Clear` makes the same first-frame
+assumption, so the behavior is at least consistent across all three. A
+`--index` flag to pick a specific frame is a reasonable future addition; none
+exists today.
 
 **Timestomp limitation.** `filesystem.TimestompCapable` exposes `Timestamp`,
 `SupportsTimestamp`, and `SetTimestamp`. Reading a current value does not establish

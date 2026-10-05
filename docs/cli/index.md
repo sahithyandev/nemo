@@ -6,7 +6,7 @@ has_children: true
 
 # CLI Reference
 
-Built today: `hide`, `detect`, `clear`, `features`, `version`, `help`.
+Built today: `hide`, `detect`, `clear`, `extract`, `features`, `version`, `help`.
 Live mode supports APFS on macOS, ext4 on Linux (user xattrs and accessed/modified
 timestamps), and read-only NTFS volume access on Windows. See
 [Live Mode](../architecture/live-mode.html) for platform restrictions.
@@ -34,12 +34,13 @@ On success, `hide` and `clear` emit their custody record as one JSON object on s
 
 | Command | Purpose | Status |
 | --- | --- | --- |
+| [`features`](features.html) | print the filesystem × technique support matrix | built |
 | [`hide`](hide.html) | write payload data into a target using one technique | built |
 | [`detect`](detect.html) | scan a target or image for hidden data | built |
+| [`extract`](extract.html) | read a previously hidden payload back out | built |
 | [`clear`](clear.html) | remove previously hidden data and restore the target | built |
-| [`features`](info.html#nemo-features) | print the filesystem × technique support matrix | built |
-| [`version`](info.html#nemo-version) | print the tool's version | built |
-| [`help`](info.html#nemo-help) | print usage information | built |
+| [`version`](version.html) | print the tool's version | built |
+| [`help`](help.html) | print usage information | built |
 
 ## Out of Scope
 

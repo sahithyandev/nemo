@@ -89,6 +89,10 @@ type Technique interface {
 	Hide(filesystem.Entry, Request) (Result, error)
 	Detect(filesystem.Entry, Request) ([]Finding, error)
 	Clear(filesystem.Entry, Request) (Result, error)
+	// Extract reads a previously hidden payload back out. It is read-only:
+	// it never writes to the entry. timestomp has no retrievable payload, so
+	// its Extract returns an error.
+	Extract(filesystem.Entry, Request) ([]byte, error)
 }
 
 // Get selects a supported technique by its command-line name. It accepts
@@ -164,6 +168,21 @@ func (namedStreamTechnique) Clear(entry filesystem.Entry, request Request) (Resu
 		return Result{}, fmt.Errorf("delete named stream: %w", err)
 	}
 	return Result{Technique: NamedStream, Target: entry.Path(), Detail: request.StreamName}, nil
+}
+
+func (namedStreamTechnique) Extract(entry filesystem.Entry, request Request) ([]byte, error) {
+	capable, ok := entry.(filesystem.NamedStreamCapable)
+	if !ok {
+		return nil, unsupported(NamedStream)
+	}
+	if request.StreamName == "" {
+		return nil, errors.New("named-stream extract requires a stream name")
+	}
+	data, err := capable.ReadStream(request.StreamName)
+	if err != nil {
+		return nil, fmt.Errorf("read named stream: %w", err)
+	}
+	return data, nil
 }
 
 // -------------------------------------------------------------------------
@@ -311,6 +330,32 @@ func (slackSpaceTechnique) Clear(entry filesystem.Entry, request Request) (Resul
 	return Result{}, errors.New("no framed slack payload found to clear")
 }
 
+func (slackSpaceTechnique) Extract(entry filesystem.Entry, request Request) ([]byte, error) {
+	capable, ok := entry.(filesystem.SlackSpaceCapable)
+	if !ok {
+		return nil, unsupported(SlackSpace)
+	}
+	if request.Image == nil {
+		return nil, errors.New("slack-space requires image-backed storage")
+	}
+	regions, err := capable.SlackRegions()
+	if err != nil {
+		return nil, fmt.Errorf("inspect slack regions: %w", err)
+	}
+	// Hide writes a single self-describing frame, so the first framed region
+	// holds the payload; its CRC in readFrame guards against residual noise.
+	for _, region := range regions {
+		_, payload, ok, err := readFrame(request.Image, region)
+		if err != nil {
+			return nil, err
+		}
+		if ok {
+			return payload, nil
+		}
+	}
+	return nil, errors.New("no framed slack payload found to extract")
+}
+
 // -------------------------------------------------------------------------
 // timestomp
 // -------------------------------------------------------------------------
@@ -370,6 +415,15 @@ func (timestompTechnique) Clear(entry filesystem.Entry, request Request) (Result
 		Target:    entry.Path(),
 		Detail:    fmt.Sprintf("%s=%s", request.Field, request.Timestamp.Format(time.RFC3339)),
 	}, nil
+}
+
+// Extract has no payload to return: a timestomp overwrites a timestamp field in
+// place rather than storing retrievable data (see docs/techniques/timestomping.md).
+func (timestompTechnique) Extract(entry filesystem.Entry, _ Request) ([]byte, error) {
+	if _, ok := entry.(filesystem.TimestompCapable); !ok {
+		return nil, unsupported(Timestomp)
+	}
+	return nil, errors.New("timestomp stores no retrievable payload")
 }
 
 // readRegion reads up to n bytes at off, tolerating a short read at the end

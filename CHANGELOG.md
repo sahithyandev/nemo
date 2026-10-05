@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Adds `extract`: reads a named-stream or slack-space payload back out to a file
+  or stdout. Read-only, no custody log entry, no manifest needed (slack payloads
+  are self-describing via the existing frame). `timestomp` has no payload to
+  extract.
 - Integrates latest main with ext4 timestamp, bounded slack-space and Linux live
   operations; shared detect/clear APIs and slack backup format are retained.
 - Adds a deterministic local-dataset validation harness, explicit missing and

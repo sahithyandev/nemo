@@ -40,6 +40,7 @@ func init() {
 		newHideCommand(defaultHideDependencies()),
 		newClearCommand(defaultClearDependencies()),
 		newDetectCommand(defaultDetectDependencies()),
+		newExtractCommand(defaultExtractDependencies()),
 		newFeaturesCommand(filesystem.Detectors),
 	)
 }
