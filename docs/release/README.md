@@ -33,8 +33,9 @@ For a clean-clone rehearsal, clone the work branch into a new temporary director
 run the commands above there, and retain the commit ID, `go version`, test output,
 and SHA256SUMS. Repeat packaging to another new directory and compare SHA256SUMS.
 See [rehearsal evidence](rehearsal.md), [Linux acceptance](linux-acceptance.md), and
-[macOS acceptance](macos-acceptance.md). Windows acceptance needs a native run and
-is not yet recorded. A libtsk cross-check (INT-01) is deferred out of scope for this
+[macOS acceptance](macos-acceptance.md). [Windows acceptance](windows-acceptance.md)
+is a draft script written without Windows access; it has not been run and records
+no evidence yet. A libtsk cross-check (INT-01) is deferred out of scope for this
 release, so no third-party parser corroborates these results.
 
 ## Implemented scope and limitations
