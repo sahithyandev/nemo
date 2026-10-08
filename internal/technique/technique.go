@@ -41,7 +41,7 @@ type Result struct {
 	Target    string
 	Detail    string
 	// Bytes is the payload size the operation dealt with, not the number
-	// of bytes touched on disk (a slack write also lays down a 12-byte
+	// of bytes touched on disk (a slack write also lays down a versioned
 	// frame header).
 	Bytes int64
 	// Restored is set by slack-space Clear: true when the caller supplied
@@ -213,7 +213,10 @@ func (slackSpaceTechnique) Hide(entry filesystem.Entry, request Request) (Result
 	if err != nil {
 		return Result{}, fmt.Errorf("inspect slack regions: %w", err)
 	}
-	frame := encodeFrame(request.Data)
+	frame, err := encodeFrame(request.Data)
+	if err != nil {
+		return Result{}, fmt.Errorf("generate slack frame nonce: %w", err)
+	}
 	for _, region := range regions {
 		if region.Length < int64(len(frame)) {
 			continue
@@ -265,14 +268,14 @@ func (slackSpaceTechnique) Detect(entry filesystem.Entry, request Request) ([]Fi
 	}
 	var findings []Finding
 	for _, region := range regions {
-		_, payload, ok, err := readFrame(request.Image, region)
+		frame, payload, ok, err := readFrame(request.Image, region)
 		if err != nil {
 			return nil, err
 		}
 		if !ok {
 			continue
 		}
-		end := region.Offset + int64(frameHeaderSize) + int64(len(payload))
+		end := region.Offset + int64(len(frame))
 		findings = append(findings, Finding{
 			Technique: SlackSpace,
 			Location:  fmt.Sprintf("%d-%d", region.Offset, end),
@@ -305,7 +308,7 @@ func (slackSpaceTechnique) Clear(entry filesystem.Entry, request Request) (Resul
 		if !ok {
 			continue
 		}
-		frameLen := frameHeaderSize + len(payload)
+		frameLen := len(frame)
 		detail := fmt.Sprintf("%d-%d", region.Offset, region.Offset+int64(frameLen))
 
 		// Restore the original residual bytes if the caller kept them
@@ -451,26 +454,30 @@ func readRegion(img image.Image, n int64, off int64) ([]byte, error) {
 }
 
 // readFrame reads a slack frame at the start of region, fetching only the
-// 12-byte header first and then exactly frameHeaderSize+payloadLen bytes when
+// common 12-byte header first and then the versioned header and payload when
 // the magic matches. This avoids pulling a whole large region into memory just
 // to check for a frame. frame is the raw on-disk frame bytes; ok is false for
 // an unframed or malformed region.
 func readFrame(img image.Image, region filesystem.SlackRegion) (frame, payload []byte, ok bool, err error) {
-	if region.Length < frameHeaderSize {
+	if region.Length < legacyFrameHeaderSize {
 		return nil, nil, false, nil
 	}
-	head, err := readRegion(img, frameHeaderSize, region.Offset)
+	head, err := readRegion(img, legacyFrameHeaderSize, region.Offset)
 	if err != nil {
 		return nil, nil, false, err
 	}
-	if len(head) < frameHeaderSize || string(head[:4]) != frameMagic {
+	if len(head) < legacyFrameHeaderSize {
+		return nil, nil, false, nil
+	}
+	header := int64(frameHeaderLength(string(head[:4])))
+	if header == 0 {
 		return nil, nil, false, nil
 	}
 	length := int64(binary.LittleEndian.Uint32(head[4:8]))
-	if frameHeaderSize+length > region.Length {
+	if header+length > region.Length {
 		return nil, nil, false, nil
 	}
-	frame, err = readRegion(img, frameHeaderSize+length, region.Offset)
+	frame, err = readRegion(img, header+length, region.Offset)
 	if err != nil {
 		return nil, nil, false, err
 	}

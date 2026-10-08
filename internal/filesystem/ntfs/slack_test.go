@@ -84,8 +84,9 @@ func TestSlackOperationsAndCustody(t *testing.T) {
 				if fragmented {
 					offset = 44 * 512
 				}
-				frameLen := 12 + len(payload)
-				if result.Bytes != int64(len(payload)) || !bytes.Equal(img.data[int(offset)+12:int(offset)+frameLen], payload) {
+				frameLen := len(backup.Original)
+				got, extractErr := tech.Extract(e, technique.Request{Image: wrapped})
+				if result.Bytes != int64(len(payload)) || extractErr != nil || !bytes.Equal(got, payload) {
 					t.Fatal("payload mismatch")
 				}
 				findings, err := tech.Detect(e, technique.Request{Image: wrapped})

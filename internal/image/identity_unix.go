@@ -22,5 +22,9 @@ func (r *RawImage) BackupIdentity() (string, error) {
 	if info.Mode().IsRegular() == false {
 		size = r.size
 	}
-	return fmt.Sprintf("file-unix-v1:%d:%d:%d", stat.Dev, stat.Ino, size), nil
+	filesystem, err := r.filesystemIdentity()
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("file-unix-v1:%d:%d:%d", stat.Dev, stat.Ino, size) + filesystem, nil
 }

@@ -3,6 +3,7 @@ package technique
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"io/fs"
 	"strings"
 	"testing"
@@ -115,10 +116,10 @@ func TestSlackSpaceHideDetectClearRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.Detail != "40-59" || result.Bytes != 7 {
+	if result.Detail != fmt.Sprintf("40-%d", 40+frameHeaderSize+7) || result.Bytes != 7 {
 		t.Fatalf("unexpected result: %+v", result)
 	}
-	if len(backups) != 1 || len(backups[0].Original) != 19 || backups[0].Original[0] != 0xAB {
+	if len(backups) != 1 || len(backups[0].Original) != frameHeaderSize+7 || backups[0].Original[0] != 0xAB {
 		t.Fatalf("backup not recorded before write: %+v", backups)
 	}
 
@@ -126,7 +127,7 @@ func TestSlackSpaceHideDetectClearRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(findings) != 1 || findings[0].Location != "40-59" || findings[0].Size != 7 {
+	if len(findings) != 1 || findings[0].Location != fmt.Sprintf("40-%d", 40+frameHeaderSize+7) || findings[0].Size != 7 {
 		t.Fatalf("unexpected findings: %+v", findings)
 	}
 
@@ -150,7 +151,7 @@ func TestSlackSpaceHideDetectClearRoundTrip(t *testing.T) {
 	if len(findings) != 0 {
 		t.Fatalf("payload still detected after clear: %+v", findings)
 	}
-	for _, b := range fake.Img.Data[40:59] {
+	for _, b := range fake.Img.Data[40 : 40+frameHeaderSize+7] {
 		if b != 0xAB {
 			t.Fatalf("original residual bytes not restored")
 		}
