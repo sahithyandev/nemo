@@ -124,7 +124,7 @@ func TestDetectDefaultScansAllTechniques(t *testing.T) {
 		t.Errorf("default scan missed a technique:\n%s", out)
 	}
 	// technique, path, location and size all present on one line
-	if !detectLineHas(out, "slack-space", "/slack.bin", "0-19", "7") {
+	if !detectLineHas(out, "slack-space", "/slack.bin", "0-35", "7") {
 		t.Errorf("slack finding missing a column:\n%s", out)
 	}
 	if !detectLineHas(out, "named-stream", "/stream.txt", "secret", "4") {
@@ -221,7 +221,7 @@ func TestDetectDefaultContinuesPastUnsupportedDirectorySlack(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !detectLineHas(out, "slack-space", "/child.bin", "32-50", "6") {
+	if !detectLineHas(out, "slack-space", "/child.bin", "32-66", "6") {
 		t.Fatalf("missing child finding: %s", out)
 	}
 }

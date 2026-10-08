@@ -81,3 +81,44 @@ func TestBackupIdentityHardlinkAlias(t *testing.T) {
 		t.Fatalf("hardlink = %q, %v; want %q", got, err, want)
 	}
 }
+
+func TestBackupIdentityExt4GenerationAndTruncation(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "ext4.img")
+	data := make([]byte, 4096)
+	// Minimal identity metadata, with two distinct immutable UUIDs.
+	data[1024] = 1
+	data[1028] = 1
+	data[1080] = 0x53
+	data[1081] = 0xef
+	data[1128] = 1
+	if err := os.WriteFile(path, data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	img, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer img.Close()
+	first, err := img.BackupIdentity()
+	if err != nil {
+		t.Fatal(err)
+	}
+	data[1128] = 2
+	// Truncate/rewrite preserves the file object, as cp over an existing image does.
+	if err := os.WriteFile(path, data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	second, err := img.BackupIdentity()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first == second {
+		t.Fatal("foreign ext4 generation reused backup identity")
+	}
+	if err := os.Truncate(path, 1144); err != nil {
+		t.Fatal(err)
+	}
+	if identity, err := img.BackupIdentity(); err == nil || identity != "" {
+		t.Fatalf("truncated known ext4 identity = %q, %v", identity, err)
+	}
+}

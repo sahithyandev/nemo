@@ -16,5 +16,9 @@ func (r *RawImage) BackupIdentity() (string, error) {
 	if size == 0 {
 		size = uint64(r.size)
 	}
-	return fmt.Sprintf("file-windows-v1:%d:%d:%d:%d", info.VolumeSerialNumber, info.FileIndexHigh, info.FileIndexLow, size), nil
+	filesystem, err := r.filesystemIdentity()
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("file-windows-v1:%d:%d:%d:%d", info.VolumeSerialNumber, info.FileIndexHigh, info.FileIndexLow, size) + filesystem, nil
 }
