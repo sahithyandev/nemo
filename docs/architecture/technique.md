@@ -28,7 +28,7 @@ the concrete technique. `Request` is the shared, mostly-optional input bag
 (`Data`, `StreamName`, `Field`, `Timestamp`, `Image`, `Restore`, `Backup`); an
 operation reads only the fields it needs.
 
-**Slack framing.** Every slack payload is wrapped in a 12-byte frame before it is written, so a raw payload isn't indistinguishable from the filesystem's own residual noise. See [Slack-Space Hiding](../techniques/slack-space.html#nemos-payload-frame) for the exact byte layout. Frame parsing goes through `internal/binutil` so a crafted length never panics. This lives in `slackframe.go`.
+**Slack framing.** New payloads use a 28-byte `NEM2` header with a random per-hide nonce; historical 12-byte `NEMO` frames remain readable. The header distinguishes payloads from residual noise and prevents identical payloads from reusing stale backup digests. See [Slack-Space Hiding](../techniques/slack-space.html#nemos-payload-frame) for the exact byte layout. Frame parsing checks the versioned header and payload bounds before slicing. This lives in `slackframe.go`.
 
 **Restoration and backup contract.** For slack-space operations,
 `Request.Backup func(Backup) error`, when set, is called with the pre-write state (`Backup{Technique, Target, Location,
@@ -42,12 +42,12 @@ rather than zero-filled. A nil `Backup` means the caller opted out of
 reversibility.
 
 The persistence side lives in `manifest.go`: `AppendManifest(path, Backup)`,
-`LoadManifest(path)`, `LatestBackup(records, technique, target, location)`. The
+`LoadManifest(path)`, `LatestImageBackup(records, technique, target, location, identity)`. The
 file (`nemo-manifest.jsonl` by default, `--manifest` to relocate) is JSON Lines,
 one `Backup` per line, `Original` as base64, `Timestamp` as RFC 3339. `hide`
 passes a closure calling `AppendManifest`; a write failure there aborts the hide
 before any bytes are overwritten. `clear` replays it via
-`LoadManifest` and `LatestBackup`; later records win, so re-hiding a target then
+`LoadManifest` and `LatestImageBackup`; image identity and exact frame digest are checked before mutation, and later matching records win, so re-hiding a target then
 clearing restores the last hide's bytes. See [CLI Reference](../cli/#the-manifest) for the user-facing flag.
 
 **Extract.** `extract` reads a hidden payload back out without mutating anything.

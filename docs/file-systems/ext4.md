@@ -80,12 +80,12 @@ guessing at its content. Visited internal-node block numbers are tracked so
 a cyclic or duplicated child pointer can't loop the walk forever. The
 resulting blocks are sorted by logical number and checked for overlap.
 
-Directory traversal (`Children` in `ext4.go`) requires a non-indexed
-directory (`inodeFlagIndex` clear); an indexed (`htree`) directory is
-refused rather than parsed as if it were linear. For a plain directory it
-walks the inode's extent-mapped blocks as a flat, logically-contiguous
-sequence (a hole at any logical block number is an error) and parses each
-block's linear directory-record list.
+Directory traversal (`Children` in `ext4.go`) reads linear and extent-backed
+HTree directories. Indexed traversal follows validated root/index pointers,
+checks count/limit fields, block bounds, hash ordering and unique references,
+then parses only leaf blocks as directory records. Holes, unreferenced blocks
+and duplicate names are rejected. Hash versions 0–5 and up to two index levels
+are supported; incompatible feature flags remain subject to the mount allowlist.
 
 ## Extended attributes (`xattr.go`)
 
@@ -171,29 +171,51 @@ for the resulting detection and restoration limits.
 - **Inline-data inodes**, for extent/content access; a tiny file whose
   content lives entirely in the inode has no blocks to walk.
 - **Encrypted inodes.**
-- **Indexed (`htree`) directories.** Only linear directories are read.
 - **Unwritten (preallocated) extents.**
 - **ea-inode xattr values** (`e_value_inum != 0`).
 - **A new external xattr block**, when none exists and no existing region
   has room for a new attribute.
 - **Mutating a shared external xattr block** (`refcount > 1`).
 - **Emptying an external xattr block via delete.**
-- **Live slack space** is unsupported; use a disposable unmounted image.
+- **Live slack writes** are unsupported; use a disposable unmounted image.
+  Explicit detection/extraction supports read-only access to a verified ext4
+  block device, subject to device permissions and kernel mount-ID support.
 - **Live creation/change time writes** are unsupported. Linux live mode supports
   `user.*` xattrs and accessed/modified timestamps only on verified ext4 mounts.
-  Symlink targets and other mounted filesystem types are rejected.
+  Explicit symlink targets and other mounted filesystem types are rejected.
+  Recursive scans skip unsupported children with stderr warnings; permission
+  and I/O errors remain fatal.
 
 ## Slack and Linux live mode
 
 Image slack uses the unused tail of the final allocated regular-file block.
 Sparse, overallocated, encrypted, inline-data, and unwritten-extent layouts are
-refused. Hide/detect/clear use the shared CRC-checked Nemo frame and a backup
+refused with `filesystem.ErrUnsupported`, allowing automatic detection to
+continue. Corrupt extent metadata remains fatal. Hide/detect/clear use the shared
+CRC-checked Nemo frame and a backup
 manifest for restoring overwritten residual bytes. Frames from the earlier
 unmerged ext4 branch used a different format and must be recreated on disposable
 fixtures; they are not detected by the shared frame reader.
 
-Linux live mode uses descriptor-backed xattr and timestamp syscalls without raw
-volume access. Native operations still need ordinary file permissions. Image
+Linux live mode uses descriptor-backed xattr and timestamp syscalls. Native
+operations need ordinary file permissions. Live timestamp reads expose ctime
+from the opened descriptor and birth time through `statx` when supplied by the
+kernel/filesystem. Creation/change time writes return `filesystem.ErrUnsupported`;
+access/modify writes use `UTIME_OMIT` to preserve the other field atomically.
+
+Explicit live slack detection/extraction opens the backing block device read-only.
+The target descriptor's mount ID and device number are checked against
+`/proc/self/mountinfo`; the opened device must be a block device with matching
+major/minor numbers. Bind mounts map through their filesystem root, escaped
+mount paths are decoded, and sibling prefixes cannot escape the selected mount.
+Read-only wrappers protect the parser and caller; the raw target inode must match
+the mounted descriptor.
+
+Raw reads need device read permission, often elevated privileges, a visible device
+node and kernel `STATX_MNT_ID` support. Unflushed changes or concurrent activity
+can make the mounted view stale: these reads are discovery, not a consistent
+snapshot. Use a stable offline image for repeatable forensic results. Mounted
+raw writes remain refused. Image
 custody records contain write hashes; live operations record logical operation
 metadata, not raw image write events.
 
@@ -211,3 +233,13 @@ an external block, shared external-block rejection, and external capacity
 failure. It checks existing values after external fallback and deletion,
 and compares the whole image before and after rejected additions and
 replacements to ensure no unrelated bytes change.
+
+`indexed_test.go` generates disposable 1 KiB and 4 KiB ext4 images with
+`mke2fs`, `debugfs` and `e2fsck -D`, and enumerates 700 indexed files with metadata
+checksums enabled. Synthetic cases cover index levels and malformed metadata.
+The e2fsprogs cases skip when those tools are unavailable.
+
+`python3 scripts/linux-acceptance.py --work-parent <ext4-directory> --require-live`
+requires native xattr/timestamp/extraction and skipped-child checks in addition
+to image round trips. The dedicated Linux CI job uses this mode so missing native
+coverage fails instead of silently skipping.
