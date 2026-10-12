@@ -9,6 +9,7 @@ mounted volume's buffered device for writing); see
 internal/filesystem/apfs/live_darwin.go's doc comment.
 """
 import argparse
+import base64
 import datetime
 import hashlib
 import json
@@ -107,7 +108,10 @@ def main():
         assert marker not in detect(target, technique, image, *imageflags)
         mutate('hide', technique, target, *imageflags, *extra, '--data', payload, expected=payload.read_bytes())
         assert marker in detect(target, technique, image, *imageflags)
-        expected = b'' if technique == 'named-stream' else bytes(12 + len(payload.read_bytes()))
+        expected = b''
+        if technique == 'slack-space':
+            backup = json.loads((work / 'backup.jsonl').read_text().splitlines()[-1])
+            expected = base64.b64decode(backup['Original'])
         mutate('clear', technique, target, *imageflags, *extra, expected=expected)
         assert marker not in detect(target, technique, image, *imageflags)
         if technique == 'slack-space':
