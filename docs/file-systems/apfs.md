@@ -421,11 +421,12 @@ means APFS, regardless of what's actually mounted at the target path:
   no native ext2/3/4 support at all, so it typically won't mount without third-party
   software (fuse-ext2, ext4fuse via macFUSE, Paragon extFS). With nothing installed,
   there's no live path to point nemo at in the first place.
-- NTFS and ext4 live mode aren't built for any OS yet (`internal/filesystem/ntfs` and
-  `internal/filesystem/ext4` have no live file at all; see the "Not built yet" note on
-  each's own page). That's also not a gap macOS closes once those land elsewhere: live
-  mode's design ties a filesystem's live implementation to running on that
-  filesystem's native OS, NTFS live is planned Windows-only, ext4 live Linux-only.
+- NTFS and ext4 do have their own live implementations (`internal/filesystem/ntfs/live_windows.go`,
+  Windows-only and read-only; `internal/filesystem/ext4/live_linux.go`, Linux-only), but
+  they are reached only on their native OS, never from macOS. That's not a gap macOS
+  closes once those land elsewhere: live mode's design ties a filesystem's live
+  implementation to running on that filesystem's native OS. See
+  [NTFS](ntfs.html#live-mode-windows) and [ext4](ext4.html#slack-and-linux-live-mode).
 
 The workaround is the same regardless of which foreign filesystem it is: unmount the
 drive (or don't mount it, for ext4) and use `--image /dev/diskN` against the raw
