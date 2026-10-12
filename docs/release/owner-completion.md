@@ -39,10 +39,54 @@ release as a prerelease, and attaches SBOM, checksum files and standalone demo p
 
 ## Clean-clone and package rehearsal
 
-Fresh immutable source, archive hashes, native demo timing and source cleanliness
-are recorded here after the final functional source commit is rehearsed. Historical
-reports in `rehearsal.md` retain their original source IDs; their hashes are not
-asserted to match this candidate.
+Recorded source: `026a30583cd5aee85f8ffae9395088879f5297b1`. Toolchain: `go version go1.26.9 linux/amd64`.
+This was a fresh local clone with cached toolchain/dependencies, not a cold-cache
+or offline-install test. All checks below succeeded; the clone remained free of
+tracked modifications and untracked files afterward.
+
+| Check | Result | Seconds |
+| --- | --- | ---: |
+| source | pass | 0.004 |
+| clean-before | pass | 0.023 |
+| toolchain | pass | 0.015 |
+| go-test | pass | 11.075 |
+| go-vet | pass | 0.228 |
+| release-format | pass | 0.022 |
+| release-notes-tests | pass | 0.066 |
+| prepare-tests | pass | 0.148 |
+| pack-1 | pass | 2.345 |
+| pack-2 | pass | 2.354 |
+| packaged-version | pass | 0.004 |
+| demo | pass | 1.168 |
+| clean-after | pass | 0.004 |
+
+Two complete packaging runs produced byte-identical archives and checksum
+manifests. Each archive hash was independently recomputed with Python SHA-256:
+
+```text
+7bb5cf8ea546fdbd5726759410adb52f9ca0d8bca0e3a7c75acc9652ada411b8  nemo-0.1.0-rc.1-linux-amd64.tar
+cc79c717b9cfafecc180518dbbc9fa1969b37e2e2ffefad001a55d5c6566d314  nemo-0.1.0-rc.1-darwin-amd64.tar
+d9746372d6862117685f8ffaff75b8c8f92b1e3597d66d00acd25f5d6673fe49  nemo-0.1.0-rc.1-darwin-arm64.tar
+6e0fe6b20793ecec296db8b392b9b555bc25bc3ab412a11f9853a89a7581aa1b  nemo-0.1.0-rc.1-windows-amd64.zip
+```
+
+The unpacked Linux binary reported `0.1.0-rc.1`. Its archived demo completed in
+**0.999 seconds** under the 180-second command budget on
+an ext4 temporary parent. Native xattrs/timestamps/extraction, skipped symlink/FIFO
+warnings, permission denial, source immutability, exact restoration and **10
+independently checked custody records** passed. The generated sample passed all
+three validation cases with identical before/after image hashes.
+
+The source-preparation safety suite passed five offline tests. Go tests/vet,
+release-format/release-note tests, reached-vulnerability scan and SBOM generation
+passed. The public corpus results are tracked separately as three genuine
+metadata mismatches, not three successful detections.
+
+These hashes belong to the named immutable rehearsal commit. The final evidence
+commit changes documentation only; packages include documentation and commit
+provenance, so archives built from later commits need their own `SHA256SUMS`.
+Historical reports in `rehearsal.md` retain their original source IDs. GitHub CI
+will test the final PR/main source and publish that source's own archive checksums.
 
 The automatic demonstration has a 180-second command budget and records its
 actual elapsed time in JSON. The eight-minute speaker plan allocates the remaining
