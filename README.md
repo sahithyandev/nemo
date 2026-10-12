@@ -1,6 +1,7 @@
 # nemo
 
-a CLI tool for hiding files.
+a filesystem forensics CLI: hides, detects, extracts, and clears data hidden with
+anti-forensic techniques (NTFS ADS, APFS/ext4 xattrs, slack space, timestomping).
 
 ## Install
 

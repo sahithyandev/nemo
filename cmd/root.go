@@ -17,7 +17,7 @@ var version = strings.TrimSpace(versionRaw)
 
 var rootCmd = &cobra.Command{
 	Use:   "nemo",
-	Short: "nemo is a CLI tool for hiding files",
+	Short: "nemo is a filesystem forensics CLI for hiding, detecting, and clearing hidden data",
 }
 
 var versionCmd = &cobra.Command{

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- `nemo --help`: describes nemo as a forensics CLI (hide, detect, extract, clear)
+  instead of only a file-hiding tool, matching what it actually does.
 - Adds `extract`: reads a named-stream or slack-space payload back out to a file
   or stdout. Read-only, no custody log entry, no manifest needed (slack payloads
   are self-describing via the existing frame). `timestomp` has no payload to
