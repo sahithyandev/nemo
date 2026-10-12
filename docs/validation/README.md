@@ -37,8 +37,10 @@ The script creates a real ext4 image containing a positive `user.nemo` xattr and
 
 [Recorded sample output](synthetic-result-v1.json): 3 pass, 0 fail/missing/unsupported/error. Executed on Linux with e2fsprogs 1.47.4. The particular run's before/after image SHA-256 both equal `05a7acc6e1053ef959645498a0a84264c93b61d6ec66d5da37319a4f1774954b`. This hash identifies that disposable run, not every generated fixture.
 
-## Public corpus acceptance remains pending
+## Public corpus benchmark
 
-The assignment names `fkie-cad/hide-and-seek`. On 2026-10-01 its GitHub page could not be retrieved. The primary [DFRWS presentation, page 43](https://dfrws.org/wp-content/uploads/2025/10/data-hiding-in-file-systems-Jan.pdf) instead references `https://github.com/fkie-cad/hide-and-seek-dataset`; that GitHub URL returned 404 during verification. No locally supplied public images or independently verified ground truth were available.
+The primary [fkie-cad/hide-and-seek-dataset repository](https://github.com/fkie-cad/hide-and-seek-dataset) is accessible as of 2026-10-12. The assignment's shorter `fkie-cad/hide-and-seek` URL is not the verified source. The pinned NTFS ADS subset has now been downloaded explicitly and evaluated against independently specified upstream expectations.
 
-Consequently, no public case labels or successful public-corpus results are claimed. The synthetic manifest is version controlled and exercises the complete harness, but does not satisfy public-dataset acceptance. Once an accessible corpus revision and local subset are supplied, independently verify image paths, target paths, expected locations and sizes, add a separately versioned public manifest with revision provenance, and record the harness result. Do not derive expected findings from the same detector being evaluated. NTFS and APFS public-corpus coverage also remains pending.
+The recorded result is **0 pass, 3 fail**: independent ntfs-3g tools show that the advertised streams are separate POSIX files with literal colon characters in their names, rather than NTFS named DATA attributes. The metadata also disagrees with the first payload's observed contents. These are reported as corpus discrepancies, not converted to successful detection or attributed to a Nemo parser bug.
+
+See [public benchmark evidence and reproduction](public-ntfs-ads.md), [versioned expectations](public-ntfs-ads-v1.json), and [recorded output](public-ntfs-ads-result-v1.json). This establishes a reproducible public benchmark, not successful detection of positive ADS cases. APFS/ext4 public corpus coverage remains unmeasured. The synthetic sample above remains the successful harness demonstration.
