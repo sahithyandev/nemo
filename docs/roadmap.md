@@ -15,7 +15,7 @@ Numbered so each item maps 1:1 to a GitHub issue. Three owners, one per filesyst
 
 ## Phase 0: Shared core
 
-Mostly done. Only item 9 (`nemo clear`) is outstanding.
+Done.
 
 ### 1. `internal/image`: `Image` interface + raw file backend (done)
 **Owner:** core · **Depends on:** none
@@ -57,7 +57,7 @@ Mostly done. Only item 9 (`nemo clear`) is outstanding.
 **Scope:** target-or-whole-image scanning; the no-target case walks `Root()` and `Children()` recursively; `--technique` restricts to one technique, default scans all three; one output line per finding.
 **Acceptance:** `nemo detect --help` correct; against item 11's fake filesystem, the no-target scan visits every entry.
 
-### 9. `cmd/clear.go`
+### 9. `cmd/clear.go` (done)
 **Owner:** core · **Depends on:** 5, 6
 **Scope:** flags per [`clear`](cli/clear.html) (`--technique` default all, `--stream-name`), custody recording as in `hide`, manifest replay via `LoadManifest` and `LatestBackup`.
 **Acceptance:** `nemo clear --help` correct; exercises the clear path against item 11's fake filesystem.
@@ -78,13 +78,13 @@ Each track is the same five items. Land them in order a to e; b, c, and d can sh
 
 ### NTFS (owner: NTFS dev)
 
-12a and 13b done. Rest not started.
+All five done.
 
 **12a. NTFS core parser (done)**: `internal/filesystem/ntfs/ntfs.go`, `mft.go`, `attribute.go`, `bootsector.go`, `directory.go`; satisfies `FileSystem`/`Entry` (`Open`, `Children`); registers a `Detector`. Depends on: 5.
 **13b. NTFS named streams (ADS) (done)**: `namedstream.go`, image-mode `NamedStreamCapable`. Depends on: 12a, 6.
-**14c. NTFS timestomp**: `timestomp.go`, image-mode `TimestompCapable`. Depends on: 12a, 6.
-**15d. NTFS slack space**: `slack.go`, image-mode `SlackSpaceCapable`. Depends on: 12a, 6.
-**16e. NTFS live mode**: `live_windows.go` (syscalls for named-stream and timestomp; slack only when opened against a raw device), `live_stub.go` (non-Windows build tag, clean "unsupported" error). Depends on: 13b, 14c.
+**14c. NTFS timestomp (done)**: `timestomp.go`, image-mode `TimestompCapable`. Depends on: 12a, 6.
+**15d. NTFS slack space (done)**: `slack.go`, image-mode `SlackSpaceCapable`. Depends on: 12a, 6.
+**16e. NTFS live mode (done, read-only)**: `live_windows.go` (read-only volume access reusing the image parser; writes return `filesystem.ErrUnsupported`), `live_unsupported.go` (non-Windows build tag, clean "unsupported" error). Depends on: 13b, 14c.
 
 Acceptance for each: `nemo hide`/`detect`/`clear` with `--technique <x>` succeed against a real or synthetic NTFS test image (or, for 16e, against a live path on Windows and a stub error elsewhere).
 
@@ -107,19 +107,19 @@ See [APFS live mode](../file-systems/apfs.html#live-mode-macos).
 
 ### ext4 (owner: ext4 dev)
 
-22a, 23b, 24c done. See [Techniques](techniques/#support-matrix-current) for the current support matrix.
+All five done. See [Techniques](techniques/#support-matrix-current) for the current support matrix.
 
 **22a. ext4 core parser (done)**: `ext4.go`, `inode.go`; registers `Detector`. Depends on: 5.
 **23b. ext4 named streams (xattr) (done)**: `xattr.go`. Depends on: 22a, 6.
 **24c. ext4 timestomp (done)**: `timestomp.go`. Depends on: 22a, 6.
-**25d. ext4 slack space**: `slack.go`. Depends on: 22a, 6.
-**26e. ext4 live mode**: `live_linux.go`, `live_stub.go`. Depends on: 23b, 24c.
+**25d. ext4 slack space (done)**: `slack.go`. Depends on: 22a, 6.
+**26e. ext4 live mode (done, no live slack)**: `live_linux.go` (user xattrs and accessed/modified timestamps on verified ext4 mounts; live slack refused), `live_stub.go` (non-Linux build tag). Depends on: 23b, 24c.
 
 Acceptance: same shape as NTFS, against an ext4 test image or Linux live path.
 
 ## Phase 2: Validation and polish
 
-Not started.
+Items 29 through 31 done. `internal/tskcheck` (27, 28) not started.
 
 ### 27. `internal/tskcheck`: libtsk cgo adapter
 **Owner:** TBD · **Depends on:** 1
@@ -131,17 +131,17 @@ Not started.
 **Scope:** optional flag or behavior in `cmd/detect.go` (image mode only) to run the cross-check and merge its findings.
 **Acceptance:** `detect` still works with `tskcheck` unavailable; produces cross-check output when available.
 
-### 29. `internal/validate`: dataset harness
-**Owner:** TBD · **Depends on:** 8, at least one of 12 to 26 fully done
-**Scope:** `harness.go` runs `detect` against `fkie-cad/hide-and-seek-dataset` images, reports pass/fail per known-hidden item.
-**Acceptance:** the harness runs against a downloaded sample of the dataset and reports a score.
+### 29. `internal/validation`/`tools/validate`: dataset harness (done, local dataset only)
+**Owner:** core · **Depends on:** 8, at least one of 12 to 26 fully done
+**Scope:** `tools/validate` runs `detect` against an explicitly supplied local dataset directory, scored by a version-controlled manifest. Built differently from the original plan: it never downloads `fkie-cad/hide-and-seek-dataset`, since that corpus wasn't locally retrievable; see [Validation](validation/README.md).
+**Acceptance:** the harness runs against the committed synthetic ext4 sample and reports a score. Public-dataset acceptance is tracked separately and remains pending.
 
-### 30. CI: build, vet, test, cross-compile
-**Owner:** TBD · **Depends on:** 7, 8, 9, 16e/21e/26e (at least the stub files)
-**Scope:** CI config running `make vet`, `make test`, and `GOOS`-matrixed builds (windows, darwin, linux) to catch a missing `live_stub.go` on any platform.
+### 30. CI: build, vet, test, cross-compile (done)
+**Owner:** core · **Depends on:** 7, 8, 9, 16e/21e/26e (at least the stub files)
+**Scope:** CI config running `go vet`, `go test`, and a `ubuntu-latest`/`windows-latest`/`macos-latest` build matrix (`.github/workflows/ci.yml`) to catch a missing live-mode stub on any platform.
 **Acceptance:** CI green on a clean clone; deliberately breaking one platform's stub fails the matrix build.
 
-### 31. README and docs refresh
-**Owner:** TBD · **Depends on:** most of Phase 1
+### 31. README and docs refresh (done)
+**Owner:** core · **Depends on:** most of Phase 1
 **Scope:** update anything stale in README and in [Architecture](architecture/)'s file tree to match the real, built-out tree instead of the planned one.
 **Acceptance:** the architecture page's file tree matches `find . -name '*.go'` output.

@@ -12,7 +12,7 @@ Adding a filesystem (FAT32 later, say) or a technique should mean writing a new 
 
 ## File structure
 
-What exists today is marked "built"; the rest is the planned layout. `nemo clear`, live mode, `internal/tskcheck`, and `internal/validate` are not written yet.
+What exists today is marked "built". `internal/tskcheck` is the only planned piece left.
 
 ```
 nemo/
@@ -22,14 +22,17 @@ nemo/
     VERSION                // built
     hide.go                // built
     detect.go              // built
+    clear.go               // built
+    extract.go             // built: reads a hidden payload back out
     features.go            // built: "nemo features" support matrix
     filesystems.go         // built: blank-imports the filesystem packages so they register
-    clear.go               // planned
+    live.go                // built: live-mode target router (ext4 on Linux, NTFS on Windows, APFS on macOS)
   internal/
     image/
       image.go             // built: Image interface (ReadAt, WriteAt, Size, Path)
       rawimage.go          // built: os.File backend, Open + OpenReadOnly
       readonly.go          // built: ReadOnly wrapper, fails every write (detect's guard)
+      aligned.go           // built: sector-aligned wrapper for raw character devices
     binutil/
       binutil.go           // built: Uint/Int, Bits, String/UTF16String
       reader.go            // built: sequential cursor with a sticky first-error
@@ -47,27 +50,27 @@ nemo/
         bootsector.go       // built
         directory.go        // built
         namedstream.go     // built: ADS, resident and non-resident, MFT-mirror aware
-        slack.go            // planned
-        timestomp.go        // planned
-        live_windows.go    // planned: live-mode Entry, direct syscalls, no MFT parsing
-        live_stub.go        // planned: "unsupported on this OS" on non-Windows builds
+        slack.go            // built: cluster-slack regions, fragmented-run aware
+        timestomp.go        // built: $STANDARD_INFORMATION field writes
+        live_windows.go    // built: read-only volume access reusing the image parser
+        live_unsupported.go // built: "unsupported on this OS" on non-Windows builds
       apfs/
         apfs.go            // built: parser + Detector
         namedstream.go     // built: xattr + resource fork (in-place B-tree leaf rewrite)
         btree_write.go     // built: single-leaf in-place rewrite helpers
         btree.go           // built
-        slack.go            // planned
-        timestomp.go        // planned
-        live_darwin.go      // planned
-        live_stub.go        // planned
+        slack.go            // built: per-extent dstream slack regions
+        timestomp.go        // built: j_inode_val_t field writes
+        live_darwin.go      // built: path-backed liveEntry (xattr/setattrlist) plus raw-device slack
+        live_unsupported.go // built: "unsupported on this OS" on non-darwin builds
       ext4/
         ext4.go            // built: parser + Detector (named-stream, timestomp)
         inode.go           // built
         xattr.go           // built: named streams via xattr
         timestomp.go       // built
-        slack.go            // planned
-        live_linux.go       // planned
-        live_stub.go        // planned
+        slack.go            // built: final-block slack regions
+        live_linux.go       // built: user.* xattrs and accessed/modified timestamps on verified mounts
+        live_stub.go        // built: "unsupported on this OS" on non-Linux builds
     technique/
       technique.go         // built: Technique interface, Finding/Result/Backup/Request, Get, ErrUnsupported
       slackframe.go        // built: slack frame encode/decode
@@ -75,17 +78,20 @@ nemo/
     custody/
       custody.go           // built: Wrap decorator, SHA-256 + record per WriteAt
       log.go                // built: Record type, append to the custody log
+    validation/            // built: local-dataset scoring used by tools/validate
+      validation.go
     tskcheck/              // planned
       tskcheck.go           // cgo adapter over libtsk, isolated so only this package needs cgo
-    validate/             // planned
-      harness.go            // runs against fkie-cad/hide-and-seek-dataset
+  tools/
+    validate/              // built: CLI entry point for internal/validation
+      main.go
   go.mod
 ```
 
 ## Layers
 
 ```
-cmd/ (hide.go, detect.go, features.go, clear.go)   Cobra commands
+cmd/ (hide.go, detect.go, clear.go, extract.go, features.go, live.go)   Cobra commands
             |
       internal/technique                     Finding/Result, the Technique interface
             |
@@ -104,7 +110,7 @@ The contracts for each layer are split into their own pages:
 - [Image and Custody](image.html): the `Image` interface and the `internal/custody` write decorator.
 - [Filesystem Interfaces](filesystem.html): `FileSystem`/`Entry`, the registry, and the three capability interfaces.
 - [Technique Interfaces](technique.html): the `Technique` interface, `Request`/`Finding`/`Result`, and the backup/manifest contract.
-- [Live Mode](live-mode.html): the planned split between image mode and live mode.
+- [Live Mode](live-mode.html): how image mode and live mode split, and what each platform supports.
 
 `internal/tskcheck` is planned and isolated in its own package, since it is the only place cgo is required (a libtsk binding). Nothing else in the tree may import it, so the rest of the codebase stays buildable with `CGO_ENABLED=0`.
 
