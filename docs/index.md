@@ -5,7 +5,13 @@ nav_order: 1
 
 # nemo
 
-Nemo is a cross-platform CLI tool, written in Go, for hiding, detecting, and clearing hidden data on NTFS, APFS, and ext4. It's a forensic utility, an offensive/CTF tool for anti-forensic technique practice, and, through its planned live mode, something you can point at your own machine.
+Nemo is a cross-platform CLI tool, written in Go, for hiding, detecting, and clearing hidden data on NTFS, APFS, and ext4. It's a forensic utility, an offensive/CTF tool for anti-forensic technique practice, and, through live mode, something you can point at your own machine.
+
+`hide` and `clear` mutate the target. Practice against disposable image copies or
+disposable files, not production data or evidence: a bug or a missing backup
+manifest can destroy data with no way back. `detect` and `extract` are read-only.
+Live-mode slack-space access needs admin/root on the platforms that support it at
+all; see [Live Mode](architecture/live-mode.html) for exactly what each OS allows.
 
 ## A quick example
 
