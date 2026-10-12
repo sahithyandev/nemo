@@ -1,3 +1,9 @@
+> Historical evidence below refers to the recorded 2026-10-01 source/toolchain.
+> Current candidate preparation, clean-clone checks and bounded demo evidence
+> are recorded in [owner-completion.md](owner-completion.md). Native QA/DOC issues
+> are closed; the newly pinned public benchmark is recorded with its three
+> metadata mismatches. Historical archive hashes are not current RC hashes.
+
 # Clean-clone release rehearsal
 
 Recorded 2026-10-01 at source commit
@@ -46,7 +52,7 @@ The two package directories above are session-local artifacts. Recreate them wit
 the checked-in packaging script; a different Go toolchain may change the hashes.
 No release tag, remote publication or final acceptance is implied.
 
-## Remaining gates
+## Historical remaining gates at that rehearsal
 
 A verified public-dataset subset and ground truth are needed to finish VAL-02's
 public acceptance. Teammate reviews (both teammates for shared contract

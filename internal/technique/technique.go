@@ -2,7 +2,9 @@
 package technique
 
 import (
+	"crypto/sha256"
 	"encoding/binary"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -39,7 +41,7 @@ type Result struct {
 	Target    string
 	Detail    string
 	// Bytes is the payload size the operation dealt with, not the number
-	// of bytes touched on disk (a slack write also lays down a 12-byte
+	// of bytes touched on disk (a slack write also lays down a versioned
 	// frame header).
 	Bytes int64
 	// Restored is set by slack-space Clear: true when the caller supplied
@@ -55,11 +57,13 @@ type Result struct {
 // command layer's decision; this package only hands the record to
 // Request.Backup.
 type Backup struct {
-	Technique string
-	Target    string
-	Location  string    // stream name or slack offset range
-	Original  []byte    // bytes overwritten in place; nil for timestomp
-	Timestamp time.Time // timestamp overwritten; zero unless known
+	Technique     string
+	Target        string
+	ImageIdentity string    `json:",omitempty"` // identity of the backing object, stable across writes
+	FrameSHA256   string    `json:",omitempty"` // frame written by this hide
+	Location      string    // stream name or slack offset range
+	Original      []byte    // bytes overwritten in place; nil for timestomp
+	Timestamp     time.Time // timestamp overwritten; zero unless known
 }
 
 // Request carries the technique-specific inputs for a Hide, Detect or Clear
@@ -74,7 +78,8 @@ type Request struct {
 	// back over the frame (from a manifest Backup.Original). Nil means
 	// "zero-fill the frame instead". A non-nil slice whose length does not
 	// match the frame is rejected rather than silently zero-filled.
-	Restore []byte
+	Restore            []byte
+	RestoreFrameSHA256 string // optional expected frame digest; checked before restoring
 	// Backup, if set, is called with the pre-write state before any
 	// destructive write. Returning an error aborts the operation. A nil
 	// Backup means the caller has opted out of reversibility.
@@ -208,7 +213,10 @@ func (slackSpaceTechnique) Hide(entry filesystem.Entry, request Request) (Result
 	if err != nil {
 		return Result{}, fmt.Errorf("inspect slack regions: %w", err)
 	}
-	frame := encodeFrame(request.Data)
+	frame, err := encodeFrame(request.Data)
+	if err != nil {
+		return Result{}, fmt.Errorf("generate slack frame nonce: %w", err)
+	}
 	for _, region := range regions {
 		if region.Length < int64(len(frame)) {
 			continue
@@ -223,10 +231,12 @@ func (slackSpaceTechnique) Hide(entry filesystem.Entry, request Request) (Result
 		detail := fmt.Sprintf("%d-%d", region.Offset, region.Offset+int64(len(frame)))
 		if request.Backup != nil {
 			if err := request.Backup(Backup{
-				Technique: SlackSpace,
-				Target:    entry.Path(),
-				Location:  detail,
-				Original:  original,
+				Technique:     SlackSpace,
+				Target:        entry.Path(),
+				Location:      detail,
+				Original:      original,
+				ImageIdentity: BackupImageIdentity(request.Image),
+				FrameSHA256:   frameDigest(frame),
 			}); err != nil {
 				return Result{}, fmt.Errorf("record backup: %w", err)
 			}
@@ -258,14 +268,14 @@ func (slackSpaceTechnique) Detect(entry filesystem.Entry, request Request) ([]Fi
 	}
 	var findings []Finding
 	for _, region := range regions {
-		_, payload, ok, err := readFrame(request.Image, region)
+		frame, payload, ok, err := readFrame(request.Image, region)
 		if err != nil {
 			return nil, err
 		}
 		if !ok {
 			continue
 		}
-		end := region.Offset + int64(frameHeaderSize) + int64(len(payload))
+		end := region.Offset + int64(len(frame))
 		findings = append(findings, Finding{
 			Technique: SlackSpace,
 			Location:  fmt.Sprintf("%d-%d", region.Offset, end),
@@ -298,7 +308,7 @@ func (slackSpaceTechnique) Clear(entry filesystem.Entry, request Request) (Resul
 		if !ok {
 			continue
 		}
-		frameLen := frameHeaderSize + len(payload)
+		frameLen := len(frame)
 		detail := fmt.Sprintf("%d-%d", region.Offset, region.Offset+int64(frameLen))
 
 		// Restore the original residual bytes if the caller kept them
@@ -306,6 +316,9 @@ func (slackSpaceTechnique) Clear(entry filesystem.Entry, request Request) (Resul
 		// of the wrong length is a mistake, not a reason to zero-fill.
 		restore := request.Restore
 		restored := restore != nil
+		if restored && request.RestoreFrameSHA256 != "" && request.RestoreFrameSHA256 != frameDigest(frame) {
+			return Result{}, errors.New("slack backup frame does not match current payload; refusing restoration")
+		}
 		if restored && len(restore) != frameLen {
 			return Result{}, fmt.Errorf("restore data is %d bytes, need %d for the frame at %s", len(restore), frameLen, detail)
 		}
@@ -441,26 +454,30 @@ func readRegion(img image.Image, n int64, off int64) ([]byte, error) {
 }
 
 // readFrame reads a slack frame at the start of region, fetching only the
-// 12-byte header first and then exactly frameHeaderSize+payloadLen bytes when
+// common 12-byte header first and then the versioned header and payload when
 // the magic matches. This avoids pulling a whole large region into memory just
 // to check for a frame. frame is the raw on-disk frame bytes; ok is false for
 // an unframed or malformed region.
 func readFrame(img image.Image, region filesystem.SlackRegion) (frame, payload []byte, ok bool, err error) {
-	if region.Length < frameHeaderSize {
+	if region.Length < legacyFrameHeaderSize {
 		return nil, nil, false, nil
 	}
-	head, err := readRegion(img, frameHeaderSize, region.Offset)
+	head, err := readRegion(img, legacyFrameHeaderSize, region.Offset)
 	if err != nil {
 		return nil, nil, false, err
 	}
-	if len(head) < frameHeaderSize || string(head[:4]) != frameMagic {
+	if len(head) < legacyFrameHeaderSize {
+		return nil, nil, false, nil
+	}
+	header := int64(frameHeaderLength(string(head[:4])))
+	if header == 0 {
 		return nil, nil, false, nil
 	}
 	length := int64(binary.LittleEndian.Uint32(head[4:8]))
-	if frameHeaderSize+length > region.Length {
+	if header+length > region.Length {
 		return nil, nil, false, nil
 	}
-	frame, err = readRegion(img, frameHeaderSize+length, region.Offset)
+	frame, err = readRegion(img, header+length, region.Offset)
 	if err != nil {
 		return nil, nil, false, err
 	}
@@ -480,4 +497,9 @@ func writeAll(img image.Image, p []byte, off int64) error {
 		return fmt.Errorf("write slack space: short write (%d of %d bytes)", n, len(p))
 	}
 	return nil
+}
+
+func frameDigest(frame []byte) string {
+	sum := sha256.Sum256(frame)
+	return hex.EncodeToString(sum[:])
 }

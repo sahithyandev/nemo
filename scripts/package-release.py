@@ -3,6 +3,7 @@
 import argparse
 import hashlib
 import io
+import json
 import os
 from pathlib import Path
 import subprocess
@@ -29,8 +30,18 @@ def main():
             binary = Path(temp) / name
             env = dict(os.environ, GOOS=system, GOARCH=arch, CGO_ENABLED="0")
             subprocess.run(["go", "build", "-trimpath", "-buildvcs=false", "-ldflags=-buildid=", "-o", str(binary), "."], cwd=ROOT, env=env, check=True)
-            files = {name: binary.read_bytes()}
-            for doc in ("LICENSE", "CHANGELOG.md", "docs/release/README.md", "docs/release/demo.md"):
+            validator_name = "validate.exe" if system == "windows" else "validate"
+            validator = Path(temp) / validator_name
+            subprocess.run(["go", "build", "-trimpath", "-buildvcs=false", "-ldflags=-buildid=", "-o", str(validator), "./tools/validate"], cwd=ROOT, env=env, check=True)
+            files = {name: binary.read_bytes(), validator_name: validator.read_bytes()}
+            for asset in ("scripts/demo-release.py", "scripts/linux-acceptance.py", "scripts/macos-acceptance.py", "scripts/windows-acceptance.py", "docs/validation/create-sample.sh", "docs/validation/synthetic-ext4-v1.json"):
+                files[asset] = (ROOT / asset).read_bytes()
+            files["BUILD.json"] = json.dumps({"version": version, "goos": system, "goarch": arch,
+                "toolchain": subprocess.check_output(["go", "version"], text=True).strip(),
+                "source_commit": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
+                "tracked_source_dirty": bool(subprocess.check_output(["git", "status", "--porcelain", "--untracked-files=no"], cwd=ROOT, text=True)),
+                "build_flags": ["-trimpath", "-buildvcs=false", "-ldflags=-buildid=", "CGO_ENABLED=0"]}, sort_keys=True, indent=2).encode() + b"\n"
+            for doc in ("LICENSE", "CHANGELOG.md", *[str(path.relative_to(ROOT)) for path in sorted((ROOT / "docs/release").glob("*.md"))]):
                 files[Path(doc).name if doc != "docs/release/README.md" else "RELEASE.md"] = (ROOT / doc).read_bytes()
             stem = f"nemo-{version}-{system}-{arch}"
             if system == "windows":
@@ -40,7 +51,7 @@ def main():
                         info = zipfile.ZipInfo(stem + "/" + filename, (1980, 1, 1, 0, 0, 0))
                         info.compress_type = zipfile.ZIP_DEFLATED
                         info.create_system = 3
-                        info.external_attr = (0o100755 if filename == name else 0o100644) << 16
+                        info.external_attr = (0o100755 if filename in (name, validator_name) else 0o100644) << 16
                         out.writestr(info, data)
             else:
                 archive = args.output / (stem + ".tar")
@@ -48,7 +59,7 @@ def main():
                     for filename, data in sorted(files.items()):
                         info = tarfile.TarInfo(stem + "/" + filename)
                         info.size = len(data)
-                        info.mode = 0o755 if filename == name else 0o644
+                        info.mode = 0o755 if filename in (name, validator_name) else 0o644
                         info.mtime = 0
                         out.addfile(info, io.BytesIO(data))
             checksums.append(f"{hashlib.sha256(archive.read_bytes()).hexdigest()}  {archive.name}")

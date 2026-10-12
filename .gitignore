@@ -44,6 +44,9 @@ nemo-manifest.jsonl
 # generated SBOM (built per release, not source)
 sbom.cdx.json
 
+# generated standalone packs attached by the release workflow
+/semester-demo/
+
 # Editor/IDE
 # .idea/
 # .vscode/

@@ -9,6 +9,7 @@ mounted volume's buffered device for writing); see
 internal/filesystem/apfs/live_darwin.go's doc comment.
 """
 import argparse
+import base64
 import datetime
 import hashlib
 import json
@@ -89,6 +90,10 @@ def main():
     run('hdiutil', 'create', '-size', '64m', '-fs', 'APFS', '-volname', 'NemoAcceptance', image)
     dev, mount = attach(image)
     shutil.copy(host, Path(mount) / 'host.txt')
+    # The image writer replaces values in existing B-tree slots, but cannot
+    # grow a full TOC or split a leaf. Have the native kernel allocate the
+    # exact attribute/value space before exercising the supported image edit.
+    run('xattr', '-wx', 'user.nemo.acceptance', bytes(len(payload.read_bytes())).hex(), Path(mount) / 'host.txt')
     detach(dev)
     print('PASS APFS disk image created and populated', flush=True)
 
@@ -104,10 +109,17 @@ def main():
         # named-stream: macOS itself tags copied files with com.apple.provenance, so scope the
         # before/after check to our own stream name rather than asserting detect is empty.
         marker = 'user.nemo.acceptance' if technique == 'named-stream' else technique
-        assert marker not in detect(target, technique, image, *imageflags)
+        initial = detect(target, technique, image, *imageflags)
+        if technique == 'named-stream':
+            assert marker in initial, 'kernel-preallocated xattr is absent'
+        else:
+            assert marker not in initial
         mutate('hide', technique, target, *imageflags, *extra, '--data', payload, expected=payload.read_bytes())
         assert marker in detect(target, technique, image, *imageflags)
-        expected = b'' if technique == 'named-stream' else bytes(12 + len(payload.read_bytes()))
+        expected = b''
+        if technique == 'slack-space':
+            backup = json.loads((work / 'backup.jsonl').read_text().splitlines()[-1])
+            expected = base64.b64decode(backup['Original'])
         mutate('clear', technique, target, *imageflags, *extra, expected=expected)
         assert marker not in detect(target, technique, image, *imageflags)
         if technique == 'slack-space':

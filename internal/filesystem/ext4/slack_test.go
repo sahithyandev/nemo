@@ -122,6 +122,9 @@ func TestSlackRegionsRejectsUnsafeLayoutsExplicitly(t *testing.T) {
 			if err == nil || !strings.Contains(err.Error(), test.want) {
 				t.Fatalf("SlackRegions error = %v; want containing %q", err, test.want)
 			}
+			if !errors.Is(err, filesystem.ErrUnsupported) {
+				t.Fatalf("valid unsupported layout must wrap ErrUnsupported: %v", err)
+			}
 		})
 	}
 }
@@ -250,5 +253,24 @@ func TestSlackDetectionSkipsDirectoriesAndFindsChildFrame(t *testing.T) {
 	}
 	if !bytes.Equal(before, img.data) {
 		t.Fatal("scan modified image")
+	}
+}
+
+func TestSlackCorruptExtentsAreNotUnsupported(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		extent testExtent
+	}{
+		{"empty", testExtent{logical: 0, length: 0, physical: 20}},
+		{"unwritten out of bounds", testExtent{logical: 0, length: 0x8001, physical: 32}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			img := syntheticImage()
+			setFileExtents(img, 3, 100, []testExtent{tc.extent})
+			_, err := slackTestEntry(t, img).SlackRegions()
+			if err == nil || errors.Is(err, filesystem.ErrUnsupported) {
+				t.Fatalf("corruption must remain fatal: %v", err)
+			}
+		})
 	}
 }

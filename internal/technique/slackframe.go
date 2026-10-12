@@ -1,47 +1,57 @@
 package technique
 
 import (
+	"crypto/rand"
 	"encoding/binary"
 	"hash/crc32"
-
-	"github.com/sahithyandev/nemo/internal/binutil"
 )
 
-// Slack regions normally hold whatever residual bytes the filesystem left
-// behind, so a raw payload is indistinguishable from noise. Nemo wraps every
-// slack payload in a small framed header: detect only reports a finding when
-// the magic and CRC both validate, and clear knows exactly which bytes it put
-// there.
 const (
-	frameMagic      = "NEMO"
-	frameHeaderSize = 12 // magic[4] + length[4] + crc32[4]
+	legacyFrameMagic      = "NEMO"
+	legacyFrameHeaderSize = 12
+	frameMagic            = "NEM2"
+	frameHeaderSize       = 28 // common header[12] + per-hide nonce[16]
 )
 
-// encodeFrame wraps payload in a slack frame.
-func encodeFrame(payload []byte) []byte {
+// encodeFrame gives each hide a fresh identity, including repeated payloads.
+func encodeFrame(payload []byte) ([]byte, error) {
 	out := make([]byte, frameHeaderSize+len(payload))
 	copy(out, frameMagic)
 	binary.LittleEndian.PutUint32(out[4:8], uint32(len(payload)))
 	binary.LittleEndian.PutUint32(out[8:12], crc32.ChecksumIEEE(payload))
+	if _, err := rand.Read(out[12:frameHeaderSize]); err != nil {
+		return nil, err
+	}
 	copy(out[frameHeaderSize:], payload)
-	return out
+	return out, nil
 }
 
-// decodeFrame extracts the payload from a slack frame. ok is false when buf
-// does not begin with a valid, CRC-checked Nemo frame (i.e. it is ordinary
-// residual data).
+func frameHeaderLength(magic string) int {
+	switch magic {
+	case frameMagic:
+		return frameHeaderSize
+	case legacyFrameMagic:
+		return legacyFrameHeaderSize
+	default:
+		return 0
+	}
+}
+
+// decodeFrame retains compatibility with historical NEMO frames.
 func decodeFrame(buf []byte) (payload []byte, ok bool) {
-	r := binutil.New(buf, binary.LittleEndian)
-	if r.String(4) != frameMagic {
+	if len(buf) < legacyFrameHeaderSize {
 		return nil, false
 	}
-	length := int(r.Uint(4))
-	want := uint32(r.Uint(4))
-	payload = r.Bytes(length)
-	if r.Err() != nil {
+	header := frameHeaderLength(string(buf[:4]))
+	if header == 0 || len(buf) < header {
 		return nil, false
 	}
-	if crc32.ChecksumIEEE(payload) != want {
+	length := uint64(binary.LittleEndian.Uint32(buf[4:8]))
+	if length > uint64(len(buf)-header) {
+		return nil, false
+	}
+	payload = buf[header : header+int(length)]
+	if crc32.ChecksumIEEE(payload) != binary.LittleEndian.Uint32(buf[8:12]) {
 		return nil, false
 	}
 	return payload, true

@@ -152,3 +152,64 @@ func TestLiveChildrenSupportsUnconditionalTraversal(t *testing.T) {
 		t.Fatalf("visited = %v", visited)
 	}
 }
+
+func TestLiveChildrenSkipUnsupportedEntriesWithWarnings(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "regular"), nil, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("regular", filepath.Join(dir, "link")); err != nil {
+		t.Fatal(err)
+	}
+	if err := syscall.Mkfifo(filepath.Join(dir, "pipe"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	fd, err := syscall.Socket(syscall.AF_UNIX, syscall.SOCK_STREAM, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer syscall.Close(fd)
+	names := []string{"link", "pipe"}
+	if err := syscall.Bind(fd, &syscall.SockaddrUnix{Name: filepath.Join(dir, "socket")}); err != nil {
+		if !errors.Is(err, syscall.EPERM) {
+			t.Fatal(err)
+		}
+		t.Log("socket bind forbidden in sandbox; testing symlink and FIFO")
+	} else {
+		names = append(names, "socket")
+	}
+	entry, err := openLiveEntry(dir, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for attempt := 0; attempt < 2; attempt++ {
+		children, err := entry.Children()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(children) != 1 || filepath.Base(children[0].Path()) != "regular" {
+			t.Fatalf("children: %v", children)
+		}
+		warnings := entry.TraversalWarnings()
+		if len(warnings) != len(names) {
+			t.Fatalf("warnings: %v", warnings)
+		}
+		for _, err := range warnings {
+			if !errors.Is(err, filesystem.ErrUnsupported) {
+				t.Fatalf("warning does not identify unsupported child: %v", err)
+			}
+		}
+	}
+	for _, name := range names {
+		if _, err := openLiveEntry(filepath.Join(dir, name), false); !errors.Is(err, filesystem.ErrUnsupported) {
+			t.Fatalf("explicit %s target: %v", name, err)
+		}
+	}
+}
+
+func TestLiveChildrenKeepOrdinaryErrorsFatal(t *testing.T) {
+	entry := &LiveEntry{path: filepath.Join(t.TempDir(), "missing"), isDir: true}
+	if _, err := entry.Children(); err == nil || errors.Is(err, filesystem.ErrUnsupported) {
+		t.Fatalf("missing directory should fail: %v", err)
+	}
+}

@@ -31,6 +31,8 @@ jobs:
         run: sh scripts/check-release-files.sh
       - name: Test release notes script
         run: sh scripts/release-notes_test.sh
+      - name: Test explicit corpus preparation safeguards
+        run: PYTHONDONTWRITEBYTECODE=1 python3 scripts/prepare-public-validation_test.py
       - name: Check formatting
         shell: bash
         run: |
@@ -41,6 +43,8 @@ jobs:
           fi
       - name: Static analysis
         run: go vet ./...
+      - name: Check reached vulnerabilities before release
+        run: make vulncheck
 
   build:
     needs: checks
@@ -63,9 +67,36 @@ jobs:
         run: go test ./...
       - name: Build
         run: go build ./...
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        if: runner.os != 'Linux'
+        with:
+          python-version: '3.11'
+      - name: Native macOS APFS acceptance
+        if: runner.os == 'macOS'
+        run: python scripts/macos-acceptance.py --work-parent .
+      - name: Native Windows NTFS acceptance
+        if: runner.os == 'Windows'
+        run: python scripts/windows-acceptance.py --work-parent .
+
+  linux-acceptance:
+    needs: checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Install disposable ext4 fixture tools
+        run: sudo apt-get update && sudo apt-get install -y e2fsprogs
+      - name: Require native ext4 acceptance before release
+        run: python3 scripts/linux-acceptance.py --work-parent "$GITHUB_WORKSPACE" --require-live
 
   tag:
-    needs: [checks, build]
+    needs: [checks, build, linux-acceptance]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -153,6 +184,8 @@ jobs:
       - name: Extract changelog notes
         shell: bash
         run: sh scripts/release-notes.sh > "$RUNNER_TEMP/notes.md"
+      - name: Build reproducible semester demo packs
+        run: python3 scripts/package-release.py --output semester-demo
       - uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
         with:
           version: '~> v2'

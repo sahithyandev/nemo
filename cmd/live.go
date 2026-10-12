@@ -11,7 +11,8 @@ import (
 	"github.com/sahithyandev/nemo/internal/technique"
 )
 
-// openLiveTarget uses path-backed ext4 access on Linux and rejects live slack.
+// openLiveTarget uses path-backed ext4 access on Linux and read-only raw
+// device access for explicitly requested ext4 slack detection/extraction.
 // Windows uses NTFS volume access. On macOS, named-stream and timestomp
 // go through a path-backed Entry (xattr and setattrlist
 // syscalls, no special privilege needed). Slack-space is volume-level and
@@ -22,7 +23,11 @@ import (
 func openLiveTarget(target, tech string, write bool) (openedTarget, error) {
 	if runtime.GOOS == "linux" {
 		if tech == technique.SlackSpace {
-			return openedTarget{}, ext4.LiveSlackError()
+			fs, img, closeFn, err := ext4.OpenLiveSlack(target, write, liveImageWrap(false))
+			if err != nil {
+				return openedTarget{}, err
+			}
+			return openedTarget{filesystem: fs, image: img, close: closeFn}, nil
 		}
 		fs, err := ext4.OpenLive(target)
 		if err != nil {

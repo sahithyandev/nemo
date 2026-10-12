@@ -81,3 +81,6 @@ func (w *wrappedImage) EventsSnapshot() []WriteEvent {
 func (w *wrappedImage) Path() string {
 	return w.underlying.Path()
 }
+
+// UnderlyingImage allows backup identity to follow the opened backing object.
+func (w *wrappedImage) UnderlyingImage() image.Image { return w.underlying }

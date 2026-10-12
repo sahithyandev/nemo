@@ -1,0 +1,63 @@
+{
+  "version": 1,
+  "results": [
+    {
+      "id": "public-ntfs-ads-011",
+      "filesystem": "ntfs",
+      "technique": "named-stream",
+      "status": "fail",
+      "detail": "actual findings differ from expected (exact location and size multiset)",
+      "expected": [
+        {
+          "location": "secret.txt",
+          "size": 11
+        }
+      ],
+      "actual": []
+    },
+    {
+      "id": "public-ntfs-ads-052",
+      "filesystem": "ntfs",
+      "technique": "named-stream",
+      "status": "fail",
+      "detail": "actual findings differ from expected (exact location and size multiset)",
+      "expected": [
+        {
+          "location": "secret2.txt",
+          "size": 19
+        }
+      ],
+      "actual": []
+    },
+    {
+      "id": "public-ntfs-ads-099",
+      "filesystem": "ntfs",
+      "technique": "named-stream",
+      "status": "fail",
+      "detail": "actual findings differ from expected (exact location and size multiset)",
+      "expected": [
+        {
+          "location": "secret3.txt",
+          "size": 15
+        }
+      ],
+      "actual": []
+    }
+  ],
+  "totals": {
+    "pass": 0,
+    "fail": 3,
+    "missing": 0,
+    "unsupported": 0,
+    "error": 0
+  },
+  "groups": {
+    "ntfs/named-stream": {
+      "pass": 0,
+      "fail": 3,
+      "missing": 0,
+      "unsupported": 0,
+      "error": 0
+    }
+  }
+}

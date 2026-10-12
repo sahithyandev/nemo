@@ -13,7 +13,8 @@ use that volume reader and require administrator access; live writes are refused
 It follows APFS's wrapping and cleanup pattern, while native path-backed NTFS
 mutation remains future work. See [NTFS](../file-systems/ntfs.html#live-mode-windows).
 Linux ext4 live mode supports user xattrs and accessed/modified timestamps on
-verified ext4 mounts; live slack is refused. See
+verified ext4 mounts; explicit live slack detection/extraction uses verified
+read-only block-device access. Mounted slack writes remain refused. See
 [APFS](../file-systems/apfs.html#live-mode-macos) for what it supports and its raw-device
 limitation, and [Only APFS, nothing else, even on
 macOS](../file-systems/apfs.html#only-apfs-nothing-else-even-on-macos) for what happens

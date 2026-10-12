@@ -238,8 +238,13 @@ func TestHideExecutesSlackSpaceAndTimestomp(t *testing.T) {
 		if err := command.Execute(); err != nil {
 			t.Fatal(err)
 		}
-		// payload is written framed: 12-byte header, then the bytes.
-		if got := string(fake.Img.Data[44:51]); got != "payload" {
+		// Decode through the public technique to avoid depending on frame layout.
+		selected, _ := technique.Get(technique.SlackSpace)
+		data, err := selected.Extract(fake.Entry("/target"), technique.Request{Image: fake.Img})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := string(data); got != "payload" {
 			t.Fatalf("unexpected slack payload %q", got)
 		}
 		// The overwritten bytes were recorded to the manifest before the write.
@@ -248,7 +253,7 @@ func TestHideExecutesSlackSpaceAndTimestomp(t *testing.T) {
 			t.Fatal(err)
 		}
 		got, ok := technique.LatestBackup(backups, technique.SlackSpace, "/target", "")
-		if !ok || len(got.Original) != 19 {
+		if !ok || len(got.Original) != 35 {
 			t.Fatalf("unexpected manifest backup: %+v (ok=%v)", got, ok)
 		}
 	})

@@ -3,8 +3,10 @@ package technique
 import (
 	"bufio"
 	"bytes"
+	"crypto/rand"
 	"encoding/json"
 	"fmt"
+	"github.com/sahithyandev/nemo/internal/image"
 	"os"
 )
 
@@ -88,6 +90,48 @@ func LatestBackup(backups []Backup, technique, target, location string) (Backup,
 			continue
 		}
 		found, ok = b, true
+	}
+	return found, ok
+}
+
+var memoryIdentitySession = rand.Text()
+
+// BackupImageIdentity binds backups to the backing object rather than only the
+// target path inside it. File identities use the opened file's device/inode
+// (or Windows volume/file index) and size; path aliases identify the same object. In-memory images have process-local identities and
+// cannot accidentally match persisted file records. An unavailable identity
+// never qualifies a record for restoration.
+func BackupImageIdentity(img image.Image) string {
+	if img == nil {
+		return ""
+	}
+	if wrapped, ok := img.(interface{ UnderlyingImage() image.Image }); ok {
+		return BackupImageIdentity(wrapped.UnderlyingImage())
+	}
+	if backing, ok := img.(interface{ BackupIdentity() (string, error) }); ok {
+		identity, err := backing.BackupIdentity()
+		if err != nil {
+			return ""
+		}
+		return identity
+	}
+
+	return fmt.Sprintf("memory-v1:%s:%T:%p:%d", memoryIdentitySession, img, img, img.Size())
+}
+
+// LatestImageBackup excludes legacy and foreign-image records. Frame digest
+// validation remains in Clear so a stale same-location backup cannot restore
+// bytes over a different payload.
+func LatestImageBackup(backups []Backup, technique, target, location, identity string) (Backup, bool) {
+	if identity == "" {
+		return Backup{}, false
+	}
+	var found Backup
+	var ok bool
+	for _, b := range backups {
+		if b.Technique == technique && b.Target == target && b.Location == location && b.ImageIdentity == identity && b.FrameSHA256 != "" {
+			found, ok = b, true
+		}
 	}
 	return found, ok
 }

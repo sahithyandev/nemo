@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+
+	"github.com/sahithyandev/nemo/internal/filesystem"
 )
 
 const extentMagic = 0xf30a
@@ -73,13 +75,13 @@ func (f *FS) readRawInode(number uint32) ([]byte, int64, error) {
 
 func (f *FS) extentBlocks(in inode) ([]extentBlock, error) {
 	if in.flags&inodeFlagInlineData != 0 {
-		return nil, errors.New("inline inode data is unsupported")
+		return nil, fmt.Errorf("inline inode data: %w", filesystem.ErrUnsupported)
 	}
 	if in.flags&inodeFlagEncrypted != 0 {
-		return nil, errors.New("encrypted inode data is unsupported")
+		return nil, fmt.Errorf("encrypted inode data: %w", filesystem.ErrUnsupported)
 	}
 	if in.flags&inodeFlagExtents == 0 {
-		return nil, errors.New("non-extent inode data is unsupported")
+		return nil, fmt.Errorf("non-extent inode data: %w", filesystem.ErrUnsupported)
 	}
 	blocks, err := f.walkExtentNode(in.blocks[:], -1, make(map[uint64]struct{}))
 	if err != nil {
@@ -122,12 +124,15 @@ func (f *FS) walkExtentNode(node []byte, expectedDepth int, visited map[uint64]s
 			if lengthRaw > 0x8000 {
 				length -= 0x8000
 			}
-			if length == 0 || lengthRaw > 0x8000 {
-				return nil, fmt.Errorf("unsupported empty or unwritten extent at logical block %d", logical)
+			if length == 0 {
+				return nil, fmt.Errorf("empty extent at logical block %d", logical)
 			}
 			physical := uint64(binary.LittleEndian.Uint16(record[6:]))<<32 | uint64(binary.LittleEndian.Uint32(record[8:]))
 			if physical >= f.sb.blocksCount || uint64(length) > f.sb.blocksCount-physical || uint64(logical)+uint64(length) > uint64(^uint32(0))+1 {
 				return nil, fmt.Errorf("extent at logical block %d exceeds filesystem bounds", logical)
+			}
+			if lengthRaw > 0x8000 {
+				return nil, fmt.Errorf("unwritten extent at logical block %d: %w", logical, filesystem.ErrUnsupported)
 			}
 			for j := uint32(0); j < length; j++ {
 				blocks = append(blocks, extentBlock{logical: logical + j, physical: physical + uint64(j)})

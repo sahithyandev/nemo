@@ -1,0 +1,45 @@
+{
+  "version": 1,
+  "provenance": "fkie-cad/hide-and-seek-dataset commit decd14bd9cb39a978a3a2ce0d2a0d472ac88b703 scenario_4_additional_data_units/ntfs_ads/metadata.json. Expectations reflect declared ADS names and UTF-8 payload lengths, independently specified by the upstream metadata; observed corpus discrepancy documented in public-ntfs-ads.md.",
+  "cases": [
+    {
+      "id": "public-ntfs-ads-011",
+      "image": "ntfs_ads/image.img",
+      "filesystem": "ntfs",
+      "target": "/Documents/TextFiles/file_011.txt",
+      "technique": "named-stream",
+      "expected": [
+        {
+          "location": "secret.txt",
+          "size": 11
+        }
+      ]
+    },
+    {
+      "id": "public-ntfs-ads-052",
+      "image": "ntfs_ads/image.img",
+      "filesystem": "ntfs",
+      "target": "/Documents/TextFiles/file_052.txt",
+      "technique": "named-stream",
+      "expected": [
+        {
+          "location": "secret2.txt",
+          "size": 19
+        }
+      ]
+    },
+    {
+      "id": "public-ntfs-ads-099",
+      "image": "ntfs_ads/image.img",
+      "filesystem": "ntfs",
+      "target": "/Documents/TextFiles/file_099.txt",
+      "technique": "named-stream",
+      "expected": [
+        {
+          "location": "secret3.txt",
+          "size": 15
+        }
+      ]
+    }
+  ]
+}

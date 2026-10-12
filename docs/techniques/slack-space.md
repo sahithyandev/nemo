@@ -145,26 +145,33 @@ disk image you attached yourself, usually not; your boot volume's device, yes). 
 permission failure either way names the device and suggests `sudo`. See [APFS live
 mode](../file-systems/apfs.html#live-mode-macos).
 
+Linux ext4 supports explicit read-only live slack detection/extraction through
+verified mount/device discovery. Device read permission and kernel mount-ID
+support are required. Mounted `hide`/`clear` slack writes remain refused. Raw reads
+can see unflushed or concurrent changes; use an offline image for a consistent
+view. Native xattrs and timestamps still use ordinary file permissions.
+
 ## nemo's payload frame
 
 Raw slack normally holds whatever residual bytes the last file to own that block
 left behind, so an arbitrary payload cannot be told apart from that noise.
 `detect` would have nothing to key on, and `clear` would not know how many bytes
-it wrote. nemo therefore wraps every slack payload in a 12-byte frame
+it wrote. nemo therefore writes each new slack payload with a 28-byte versioned header
 (`internal/technique/slackframe.go`):
 
 ```
 offset  size  field
-  0      4    magic    ASCII "NEMO"
+  0      4    magic    ASCII "NEM2"
   4      4    length   payload length, uint32 little-endian
   8      4    crc32    CRC-32 (IEEE polynomial) of the payload
- 12    length payload  the hidden bytes
+ 12     16    nonce    random identity for this hide operation
+ 28    length payload  the hidden bytes
 ```
 
 `detect` reports a slack finding only when the magic matches and the CRC
 validates (`decodeFrame` and `readFrame` in `technique.go`). This is a deliberate
 trade-off. It makes nemo's own payloads easy to spot, since the literal string
-`NEMO` at a block boundary followed by a valid CRC is not subtle, and in exchange
+`NEM2` (or historical `NEMO`) followed by a valid CRC is not subtle, and in exchange
 `hide`, `detect`, and `clear` stay reliable and reversible. nemo is a forensic
 and CTF tool, not a stealth implant. Hiding from a determined examiner is a
 non-goal.
@@ -178,8 +185,27 @@ Before overwriting slack bytes, `slackSpaceTechnique.Hide` calls `Request.Backup
 with the original residual bytes. The command layer persists that as one JSON
 Lines record per line in `nemo-manifest.jsonl` (`--manifest` to relocate), with
 `Original` base64-encoded. See `internal/technique/manifest.go` (`AppendManifest`,
-`LoadManifest`, `LatestBackup`). A `hide` aborts before touching disk if the
+`LoadManifest`, `LatestImageBackup`). A `hide` aborts before touching disk if the
 manifest write fails.
+
+The historical `NEMO` format has a 12-byte header and remains readable by
+`detect`, `extract` and `clear`. New frames have a random nonce so repeated hides
+of identical payloads cannot reuse a stale frame digest.
+
+New records include `ImageIdentity` (opened file device/inode on Unix, or volume
+serial and file index on Windows, plus size and the ext4 UUID when recognized)
+and `FrameSHA256` (the exact frame written by hide). Symlink and hardlink aliases
+resolve to the same identity, as do moves on the same filesystem. Copied, resized
+or replaced images cannot automatically reuse these backups. An in-place ext4
+replacement with a different UUID also fails matching; an identical-payload
+re-hide produces a different nonce and fails stale-frame validation. Non-file images have process-local identities.
+
+`clear` checks the image identity, target and offset range, then verifies the
+current frame digest before restoring. A stale frame is an error before any
+write. Legacy records without identity/digest are never restored automatically:
+the default manifest emits a diagnostic and zero-fills; an explicit `--manifest`
+requires a matching image-bound record and otherwise fails without mutation.
+Retain the original image and manifest for manual recovery of legacy backups.
 
 `clear` replays it. With a matching manifest record it writes the original
 residual bytes back over the frame and reports `Result.Restored = true`. Without
@@ -196,7 +222,7 @@ clearing a target restores the most recent hide's bytes.
   recognisable headers. The Sleuth Kit exposes slack via `blkls -s`.
 - For MFT-record and inode slack, compare used attribute length against record
   size.
-- For nemo specifically, grep the raw device for `NEMO` at 512-byte or 4096-byte
+- For nemo specifically, scan raw slack for `NEM2` or historical `NEMO` at 512-byte or 4096-byte
   alignment.
 
 ## Traces left behind
@@ -222,9 +248,8 @@ SlackRegions() ([]filesystem.SlackRegion, error)  // {Offset, Length} into the i
 `Request.Image` (image-backed storage), frames the payload, and writes into the
 first region that fits.
 
-- APFS implements it (`internal/filesystem/apfs/slack.go`); ext4 and NTFS still
-  need `SlackRegions` added, computing the region from the last extent or
-  data-run.
+- APFS, ext4 and NTFS implement `SlackRegions`, subject to each backend
+  layout restrictions. Ext4 uses the final allocated regular-file block.
 - `fakefs.Entry.SlackRegions` (`internal/filesystem/fakefs/fakefs.go`) is the
   reference. It returns regions pointing into its backing byte-slice image, and
   it is what the technique's tests run against.
