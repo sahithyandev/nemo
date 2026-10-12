@@ -60,6 +60,15 @@ func TestSlackCalculation(t *testing.T) {
 	}
 }
 
+func TestSlackSkipsMetadataRecords(t *testing.T) {
+	e, _ := adsFixture(t, slackAttribute(400, false))
+	e.path = "/$Boot"
+	got, err := e.SlackRegions()
+	if err != nil || len(got) != 0 {
+		t.Fatalf("metadata slack = %v, %v; want no regions", got, err)
+	}
+}
+
 func TestSlackOperationsAndCustody(t *testing.T) {
 	for _, fragmented := range []bool{false, true} {
 		for _, restore := range []bool{false, true} {

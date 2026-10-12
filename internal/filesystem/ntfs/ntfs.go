@@ -100,6 +100,16 @@ var _ filesystem.Entry = (*Entry)(nil)
 
 func (e *Entry) Path() string { return e.path }
 func (e *Entry) IsDir() bool  { return e.isDir }
+
+// isMetadata reports entries in NTFS's reserved root-level $ namespace.
+// Descendants of entries such as $Extend are metadata too. These files can
+// use allocation layouts that are intentionally invalid for user-file
+// mutation and should not be treated as hiding candidates during scans.
+func (e *Entry) isMetadata() bool {
+	first, _, _ := strings.Cut(strings.TrimPrefix(e.path, "/"), "/")
+	return strings.HasPrefix(first, "$")
+}
+
 func (e *Entry) Children() ([]filesystem.Entry, error) {
 	if !e.isDir {
 		return nil, nil

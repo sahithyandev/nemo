@@ -83,8 +83,8 @@ historical tampering. Custody hashes describe logical mutation data (payload,
 restored frame bytes, or timestamp detail), not a complete independently
 persisted audit of every low-level filesystem write.
 
-This evidence does not certify native Windows behavior, public-dataset
-coverage, or a privileged root live-slack attempt. Live slack-space hiding is
+This run alone does not certify native Windows behavior, public-dataset
+coverage, or a privileged root live-slack attempt. Separate native Linux and
+Windows evidence is recorded in this directory. Live slack-space hiding is
 expected to refuse on macOS (see the table above), not a gap in this
-rehearsal. Teammate review and cross-platform acceptance remain separate
-release gates.
+rehearsal. Teammate review remains a separate release gate.

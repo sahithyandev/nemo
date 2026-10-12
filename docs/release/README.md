@@ -6,8 +6,9 @@
 # v0.1 semester release candidate
 
 The prepared version is **0.1.0-rc.1**. This is a candidate, not an approved final
-release. Public-dataset scoring, teammate review, DOC-01 and QA-01 sign-off remain
-release gates. No final tag should be published until those gates are complete.
+release. Native cross-platform acceptance and DOC-01 are complete; teammate review,
+public-dataset evidence, and final release approval remain gates. No final tag should
+be published until those gates are complete.
 
 ## Build and package
 
@@ -32,11 +33,12 @@ and source. Cross-compilation proves buildability, not native runtime acceptance
 For a clean-clone rehearsal, clone the work branch into a new temporary directory,
 run the commands above there, and retain the commit ID, `go version`, test output,
 and SHA256SUMS. Repeat packaging to another new directory and compare SHA256SUMS.
-See [rehearsal evidence](rehearsal.md), [Linux acceptance](linux-acceptance.md), and
-[macOS acceptance](macos-acceptance.md). [Windows acceptance](windows-acceptance.md)
-is a draft script written without Windows access; it has not been run and records
-no evidence yet. A libtsk cross-check (INT-01) is deferred out of scope for this
-release, so no third-party parser corroborates these results.
+See [rehearsal evidence](rehearsal.md), [Linux acceptance](linux-acceptance.md),
+[macOS acceptance](macos-acceptance.md), and
+[Windows acceptance](windows-acceptance.md). Native acceptance evidence is now
+recorded for all three supported operating systems. A libtsk cross-check
+(INT-01) is deferred out of scope for this release, so no third-party parser
+corroborates these results.
 
 ## Implemented scope and limitations
 

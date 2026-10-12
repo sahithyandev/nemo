@@ -79,8 +79,8 @@ persisted audit of every low-level filesystem write. The script verifies that
 contract explicitly; image immutability/restoration checks cover entire image
 bytes separately.
 
-This evidence does not certify native Windows/macOS behavior, public-dataset
-coverage, or a privileged root live-slack attempt. Created/changed live
-timestamps have platform limitations; this CLI rehearsal exercises modified
-timestamps. Teammate review and cross-platform acceptance remain separate
-release gates.
+This run alone does not certify native Windows/macOS behavior, public-dataset
+coverage, or a privileged root live-slack attempt. Separate native macOS and
+Windows evidence is recorded in this directory. Created/changed live timestamps
+have platform limitations; this CLI rehearsal exercises modified timestamps.
+Teammate review remains a separate release gate.

@@ -128,6 +128,15 @@ func TestNamedStreamsEnumeration(t *testing.T) {
 	}
 }
 
+func TestNamedStreamsSkipsMetadata(t *testing.T) {
+	e, _ := adsFixture(t, residentTestAttribute(attributeTypeData, []byte("payload"), "secret"))
+	e.path = "/$Extend/$RmMetadata/$Repair"
+	got, err := e.NamedStreams()
+	if err != nil || len(got) != 0 {
+		t.Fatalf("metadata streams = %v, %v; want none", got, err)
+	}
+}
+
 func TestReadNamedStreams(t *testing.T) {
 	e, _ := adsFixture(t, residentTestAttribute(attributeTypeData, []byte("payload"), "秘密😀"), residentTestAttribute(attributeTypeData, nil, "empty"))
 	requireStream(t, e, "秘密😀", []byte("payload"))
