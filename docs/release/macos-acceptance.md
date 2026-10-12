@@ -1,3 +1,12 @@
+> Current runner note: image-mode xattr capacity is kernel-preallocated before
+> detaching the disposable fixture. The APFS writer can replace an existing
+> value but does not grow a full leaf TOC or split B-tree nodes. This tests the
+> documented in-place workflow rather than assuming every new image has spare
+> insertion slots. Native path-backed xattr creation is tested separately.
+>
+> The historical measurements below retain their recorded platform/source;
+> current candidate CI reruns the updated runner.
+
 # macOS/APFS acceptance evidence
 
 Recorded 2026-10-05 on macOS 26.5.1 arm64 (go1.26.6), using the integrated

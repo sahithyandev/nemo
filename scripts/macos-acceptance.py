@@ -90,6 +90,10 @@ def main():
     run('hdiutil', 'create', '-size', '64m', '-fs', 'APFS', '-volname', 'NemoAcceptance', image)
     dev, mount = attach(image)
     shutil.copy(host, Path(mount) / 'host.txt')
+    # The image writer replaces values in existing B-tree slots, but cannot
+    # grow a full TOC or split a leaf. Have the native kernel allocate the
+    # exact attribute/value space before exercising the supported image edit.
+    run('xattr', '-wx', 'user.nemo.acceptance', bytes(len(payload.read_bytes())).hex(), Path(mount) / 'host.txt')
     detach(dev)
     print('PASS APFS disk image created and populated', flush=True)
 
@@ -105,7 +109,11 @@ def main():
         # named-stream: macOS itself tags copied files with com.apple.provenance, so scope the
         # before/after check to our own stream name rather than asserting detect is empty.
         marker = 'user.nemo.acceptance' if technique == 'named-stream' else technique
-        assert marker not in detect(target, technique, image, *imageflags)
+        initial = detect(target, technique, image, *imageflags)
+        if technique == 'named-stream':
+            assert marker in initial, 'kernel-preallocated xattr is absent'
+        else:
+            assert marker not in initial
         mutate('hide', technique, target, *imageflags, *extra, '--data', payload, expected=payload.read_bytes())
         assert marker in detect(target, technique, image, *imageflags)
         expected = b''
