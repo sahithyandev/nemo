@@ -31,6 +31,8 @@ jobs:
         run: sh scripts/check-release-files.sh
       - name: Test release notes script
         run: sh scripts/release-notes_test.sh
+      - name: Test explicit corpus preparation safeguards
+        run: PYTHONDONTWRITEBYTECODE=1 python3 scripts/prepare-public-validation_test.py
       - name: Check formatting
         shell: bash
         run: |
