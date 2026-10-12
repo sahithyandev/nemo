@@ -2,13 +2,24 @@
 
 a CLI tool for hiding files.
 
+## Install
+
+Download the archive for your OS and architecture from the
+[releases page](https://github.com/sahithyandev/nemo/releases), extract it, and run
+the `nemo` binary inside. No Go installation needed.
+
+`hide` and `clear` mutate the target; `detect` and `extract` are read-only. Run `nemo features`
+to see which filesystem/technique pairs are supported, and practice against disposable image
+copies or files, not real data. See [the docs site](https://sahithyandev.github.io/nemo/) for
+the full CLI reference, platform/privilege requirements for live mode, and known limitations.
+
 ## Docs
 
-- [docs/overall-plan.md](docs/overall-plan.md) - goals, scope, targeted filesystems
-- [docs/user-interface.md](docs/user-interface.md) - modes and commands
-- [docs/architecture.md](docs/architecture.md) - package layout, interfaces
-- [docs/techniques/](docs/techniques/overview.md) - how the hiding techniques work on disk, for contributors
-- [docs/work-breakdown.md](docs/work-breakdown.md)
+- [docs/overview.md](docs/overview.md) - goals, scope, targeted filesystems
+- [docs/cli/](docs/cli/index.md) - modes and commands
+- [docs/architecture/](docs/architecture/index.md) - package layout, interfaces
+- [docs/techniques/](docs/techniques/index.md) - how the hiding techniques work on disk, for contributors
+- [docs/roadmap.md](docs/roadmap.md)
 
 ## Development
 
