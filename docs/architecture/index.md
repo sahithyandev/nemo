@@ -33,6 +33,9 @@ nemo/
       rawimage.go          // built: os.File backend, Open + OpenReadOnly
       readonly.go          // built: ReadOnly wrapper, fails every write (detect's guard)
       aligned.go           // built: sector-aligned wrapper for raw character devices
+      identity_unix.go     // built: opened device/inode identity
+      identity_windows.go  // built: opened volume/file identity
+      identity_filesystem.go // built: ext4 UUID binding for backups
     binutil/
       binutil.go           // built: Uint/Int, Bits, String/UTF16String
       reader.go            // built: sequential cursor with a sticky first-error
@@ -64,19 +67,22 @@ nemo/
         live_darwin.go      // built: path-backed liveEntry (xattr/setattrlist) plus raw-device slack
         live_unsupported.go // built: "unsupported on this OS" on non-darwin builds
       ext4/
-        ext4.go            // built: parser + Detector (named-stream, timestomp)
+        ext4.go            // built: parser + Detector
+        indexed.go         // built: validated HTree directory traversal
         inode.go           // built
         xattr.go           // built: named streams via xattr
         timestomp.go       // built
         slack.go            // built: final-block slack regions
-        live_linux.go       // built: user.* xattrs and accessed/modified timestamps on verified mounts
+        live_linux.go       // built: native xattrs/timestamps and skipped-child warnings
+        live_slack_linux.go // built: verified read-only backing-device discovery
+        live_slack_stub.go  // built: unsupported non-Linux live slack entry point
         live_stub.go        // built: "unsupported on this OS" on non-Linux builds
     technique/
       technique.go         // built: Technique interface, Finding/Result/Backup/Request, Get, ErrUnsupported
       slackframe.go        // built: slack frame encode/decode
       manifest.go          // built: JSON Lines backup manifest for clear
     custody/
-      custody.go           // built: Wrap decorator, SHA-256 + record per WriteAt
+      custody.go           // built: Wrap decorator, SHA-256 + in-memory write events
       log.go                // built: Record type, append to the custody log
     validation/            // built: local-dataset scoring used by tools/validate
       validation.go
@@ -111,8 +117,9 @@ The contracts for each layer are split into their own pages:
 - [Filesystem Interfaces](filesystem.html): `FileSystem`/`Entry`, the registry, and the three capability interfaces.
 - [Technique Interfaces](technique.html): the `Technique` interface, `Request`/`Finding`/`Result`, and the backup/manifest contract.
 - [Live Mode](live-mode.html): how image mode and live mode split, and what each platform supports.
+- [Architecture Decisions](decisions.html): the custody, framing, backup, and capability contracts.
 
-`internal/tskcheck` is planned and isolated in its own package, since it is the only place cgo is required (a libtsk binding). Nothing else in the tree may import it, so the rest of the codebase stays buildable with `CGO_ENABLED=0`.
+`internal/tskcheck` remains planned and isolated in its own package, since it is the only place cgo would be required (a libtsk binding). Nothing else in the tree may import it, so the rest of the codebase stays buildable with `CGO_ENABLED=0`.
 
 ## Why this shape
 
