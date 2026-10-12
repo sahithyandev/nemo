@@ -2,35 +2,61 @@
 
 ## Unreleased
 
-- `nemo --help`: describes nemo as a forensics CLI (hide, detect, extract, clear)
-  instead of only a file-hiding tool, matching what it actually does.
-- Adds `extract`: reads a named-stream or slack-space payload back out to a file
-  or stdout. Read-only, no custody log entry, no manifest needed (slack payloads
-  are self-describing via the existing frame). `timestomp` has no payload to
-  extract.
-- Integrates latest main with ext4 timestamp, bounded slack-space and Linux live
-  operations; shared detect/clear APIs and slack backup format are retained.
-- Adds a deterministic local-dataset validation harness, explicit missing and
-  unsupported outcomes, and a reproducible synthetic ext4 sample.
-- Adds Linux/ext4, macOS/APFS, and Windows/NTFS acceptance automation with
-  independent custody-hash checks.
-- Adds reproducible Linux, macOS and Windows packaging and a semester demo plan.
+## 0.1.0-rc.1
 
-Validation evidence and release gates are recorded in `docs/release/`. The public
-hide-and-seek subset is not bundled; public-dataset acceptance is pending a locally
-supplied, verified corpus. Native runtime acceptance is recorded for Linux, macOS,
-and Windows; teammate sign-off remains pending. Cross-builds alone do not establish
-runtime compatibility.
+Semester release candidate: a reproducible demo/review build, published as a
+prerelease. The stable installer continues to select the latest stable release.
 
-Known limitations: no reliable timestomp detection, Nemo-frame-only slack detection,
-no Linux live slack or creation/change-time writes, read-only Windows NTFS live
-mode, and filesystem-specific parser restrictions. The former unmerged ext4 slack
-frame format is not compatible with the shared frame format. Native live custody
-records do not include raw image write hashes.
+Features:
 
-Use disposable unmounted image copies and disposable live files only. Mutations
-can destroy data. Preserve backups and manifests; clearing without the matching
-slack backup zero-fills bytes. No final v0.1 tag has been approved or published.
+- Forensics CLI with image/live mode, hide, detect, selected payload extraction,
+  clear, feature matrices, version and help.
+- Ext4 image xattrs, four inode timestamps, safe allocated-file slack and validated
+  HTree directory walking. Capacity failures preserve unrelated xattrs.
+- Linux live user xattrs and access/modify timestamps, optional birth-time/ctime
+  reads, skipped-child diagnostics and verified read-only raw slack discovery.
+- New nonce-bound `NEM2` frames; historical `NEMO` frames remain readable. Slack
+  backups bind to opened-file identity, ext4 UUID and exact frame digest.
+- APFS/NTFS image support and native APFS operations; Windows live NTFS is read-only.
+- Local validation with versioned manifests and explicit pass/fail/missing/
+  unsupported/error totals. Downloads only occur in the separately invoked,
+  checksum-pinned public preparation script.
+- Four-target demo packs include Nemo/validator binaries, runners, disposable
+  fixture generation, release notes, build provenance and checksums.
+
+Validation and safeguards:
+
+- Go unit tests, vet, native Linux acceptance, exact restoration/extraction,
+  independently checked custody hashes and read-only-source checks.
+- Clean-clone packaging/rehearsal evidence and the timed command-segment report
+  are recorded in `docs/release/`; the eight-minute speaker plan does not claim
+  a measured human presentation.
+- Native macOS/Windows acceptance evidence was contributed in PR #78. Updated
+  native runners account for versioned frame sizes; native jobs gate publication.
+- Go 1.26.9 fixes the reached `os.Root` Windows-junction vulnerability
+  GO-2026-6604. Vulnerability and native acceptance checks run before tag creation.
+- The pinned public NTFS ADS subset reports 0 pass / 3 fail. Independent ntfs-3g
+  inspection found separate colon-named files instead of the metadata's advertised
+  streams, including a payload discrepancy. This is recorded evidence, not a
+  passing ADS accuracy claim. The generated ext4 sample reports three passes.
+
+Known limitations and safety:
+
+- Timestomp anomaly detection has no historical baseline; timestamp restoration
+  requires the supplied original. Arbitrary non-Nemo slack is not detected.
+- Linux creation/change-time and mounted raw slack writes are unavailable; raw
+  reads require suitable device access and may see stale/concurrent mounted data.
+- Ext4 external-xattr allocation, shared-block CoW/freeing and unsupported inode
+  layouts remain conservative errors. Windows live writes are refused.
+- APFS mutation is in-place, not a transactional CoW editor. Clone/snapshot
+  sharing is not verified; use only new, unshared disposable image fixtures.
+- Legacy/foreign manifests are not silently restored. Explicit mismatches and
+  stale frames fail; default unmatched backups warn and zero-fill.
+- Custody-log/echo errors after mutation do not imply rollback; native syscall
+  records do not include the raw image wrapper's offset events.
+- Mutations can destroy data. Use disposable files and unmounted image copies,
+  preserve original images and manifests, and never demonstrate on valuable data.
+  Optional libtsk cross-checking remains deferred.
 
 ## 0.0.1
 

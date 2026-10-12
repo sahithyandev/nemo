@@ -30,11 +30,20 @@ the full CLI reference, platform/privilege requirements for live mode, and known
 
 ## Docs
 
-- [docs/overview.md](docs/overview.md) - goals, scope, targeted filesystems
+- [docs/overview.md](docs/overview.md) - goals, scope, and targeted filesystems
 - [docs/cli/](docs/cli/index.md) - modes and commands
-- [docs/architecture/](docs/architecture/index.md) - package layout, interfaces
-- [docs/techniques/](docs/techniques/index.md) - how the hiding techniques work on disk, for contributors
+- [docs/architecture/](docs/architecture/index.md) - package layout and interfaces
+- [docs/techniques/](docs/techniques/index.md) - how the hiding techniques work on disk
+- [docs/architecture/decisions.md](docs/architecture/decisions.md) - shared contract decisions
 - [docs/roadmap.md](docs/roadmap.md)
+
+## Semester release candidate
+
+The `0.1.0-rc.1` demo/review build is a prerelease. See the
+[release and demo instructions](docs/release/README.md) for reproducible
+four-target packages, checksums, disposable demos and validation limitations.
+The one-line installers above select the latest stable release; download the
+candidate explicitly from its GitHub prerelease page when reviewing it.
 
 ## Development
 
