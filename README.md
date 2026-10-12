@@ -4,9 +4,23 @@ a CLI tool for hiding files.
 
 ## Install
 
-Download the archive for your OS and architecture from the
-[releases page](https://github.com/sahithyandev/nemo/releases), extract it, and run
-the `nemo` binary inside. No Go installation needed.
+No Go installation needed. On Linux or macOS:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/sahithyandev/nemo/main/scripts/install.sh | sh
+```
+
+On Windows (PowerShell):
+
+```powershell
+powershell -c "irm https://raw.githubusercontent.com/sahithyandev/nemo/main/scripts/install.ps1 | iex"
+```
+
+Each script downloads the latest release for your OS/architecture from the
+[releases page](https://github.com/sahithyandev/nemo/releases) and installs the `nemo`
+binary. Read a script before piping it into a shell if you'd rather not take that on
+faith; you can also download the archive for your platform from the releases page and
+extract it by hand.
 
 `hide` and `clear` mutate the target; `detect` and `extract` are read-only. Run `nemo features`
 to see which filesystem/technique pairs are supported, and practice against disposable image
