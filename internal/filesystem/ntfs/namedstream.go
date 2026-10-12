@@ -72,6 +72,9 @@ func (e *Entry) streamRecord() ([]byte, mftRecord, error) {
 }
 
 func (e *Entry) NamedStreams() ([]string, error) {
+	if e.isMetadata() {
+		return nil, nil
+	}
 	e.fs.mftMu.Lock()
 	defer e.fs.mftMu.Unlock()
 	_, r, err := e.streamRecord()

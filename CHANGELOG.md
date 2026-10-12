@@ -12,13 +12,15 @@
   operations; shared detect/clear APIs and slack backup format are retained.
 - Adds a deterministic local-dataset validation harness, explicit missing and
   unsupported outcomes, and a reproducible synthetic ext4 sample.
-- Adds Linux/ext4 acceptance automation and independent custody-hash checks.
+- Adds Linux/ext4, macOS/APFS, and Windows/NTFS acceptance automation with
+  independent custody-hash checks.
 - Adds reproducible Linux, macOS and Windows packaging and a semester demo plan.
 
 Validation evidence and release gates are recorded in `docs/release/`. The public
 hide-and-seek subset is not bundled; public-dataset acceptance is pending a locally
-supplied, verified corpus. Native Windows/macOS runtime acceptance and teammate
-sign-off remain pending. Cross-builds do not establish runtime compatibility.
+supplied, verified corpus. Native runtime acceptance is recorded for Linux, macOS,
+and Windows; teammate sign-off remains pending. Cross-builds alone do not establish
+runtime compatibility.
 
 Known limitations: no reliable timestomp detection, Nemo-frame-only slack detection,
 no Linux live slack or creation/change-time writes, read-only Windows NTFS live

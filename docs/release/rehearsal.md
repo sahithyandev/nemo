@@ -49,9 +49,13 @@ No release tag, remote publication or final acceptance is implied.
 ## Remaining gates
 
 A verified public-dataset subset and ground truth are needed to finish VAL-02's
-public acceptance. DOC-01/QA-01 completion, teammate reviews (both teammates for
-shared contract changes), native macOS/Windows runtime evidence, and an actual
-timed spoken demo remain external requirements. The automated demo workflows
-were rehearsed; the eight-minute presentation schedule is a plan, not a recorded
-speaker rehearsal. Only then should `cmd/VERSION` become `0.1.0` and a final tag
-and release be published.
+public acceptance. Teammate reviews (both teammates for shared contract
+changes) and an actual timed spoken demo remain external requirements. Native
+Linux, macOS, and Windows acceptance is recorded; see
+[Linux acceptance](linux-acceptance.md), [macOS acceptance](macos-acceptance.md),
+and [Windows acceptance](windows-acceptance.md). The automated demo workflows
+were rehearsed; the
+eight-minute presentation schedule is a plan, not a recorded speaker
+rehearsal. A libtsk cross-check (INT-01) is deferred out of scope for this
+release. Only then should `cmd/VERSION` become `0.1.0` and a final tag and
+release be published.

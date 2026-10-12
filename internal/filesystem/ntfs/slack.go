@@ -22,6 +22,12 @@ func (e *Entry) SlackRegions() ([]filesystem.SlackRegion, error) {
 	if e.isDir {
 		return nil, nil
 	}
+	// NTFS metadata files can intentionally overlap structures such as the boot
+	// sector, MFT, and MFT mirror, so they are never safe user-file slack
+	// candidates. Skip them during scans instead of reporting false corruption.
+	if e.isMetadata() {
+		return nil, nil
+	}
 	b, r, err := e.streamRecord()
 	if err != nil {
 		return nil, err
