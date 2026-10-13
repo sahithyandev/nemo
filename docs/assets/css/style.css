@@ -2,7 +2,10 @@
 
 body {
   margin: 0;
-  display: flex;
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr);
+  height: 100vh;
+  overflow: hidden;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   color: #1a1a1a;
   line-height: 1.65;
@@ -14,11 +17,10 @@ body {
 
 .sidebar {
   width: 240px;
-  flex-shrink: 0;
   padding: 1.5rem 1.25rem;
   background: #f6f6f6;
   border-right: 1px solid #e0e0e0;
-  min-height: 100vh;
+  overflow-y: auto;
 }
 
 .sidebar .site-title {
@@ -55,11 +57,12 @@ body {
 .sidebar a.active { color: #0969da; font-weight: 600; }
 
 main {
-  flex: 1;
-  min-width: 0;
-  max-width: min(65rem, 92vw);
-  padding: 2.5rem 3rem;
+  overflow-y: auto;
+  scrollbar-width: none;
+  padding: 2.5rem max(3rem, calc(100% - 65rem)) 2.5rem 3rem;
 }
+
+main::-webkit-scrollbar { display: none; }
 
 main h1, main h2, main h3 {
   line-height: 1.3;
@@ -224,7 +227,7 @@ main pre code {
 main img { max-width: 100%; }
 
 @media (max-width: 800px) {
-  body { display: block; }
+  body { display: block; height: auto; overflow: visible; }
 
   .nav-toggle-btn {
     display: block;
@@ -260,7 +263,7 @@ main img { max-width: 100%; }
   }
 
   main {
-    max-width: 100%;
+    overflow-y: visible;
     padding: 4rem 1.25rem 2rem;
   }
 }

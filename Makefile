@@ -1,4 +1,4 @@
-.PHONY: build run test vet crossbuild fmt sbom clean hooks release-package linux-acceptance vulncheck
+.PHONY: build run test vet crossbuild fmt sbom clean hooks release-package linux-acceptance vulncheck docs
 
 SBOM_FILE := sbom.cdx.json
 CYCLONEDX_GOMOD := github.com/CycloneDX/cyclonedx-gomod/cmd/cyclonedx-gomod@v1.12.0
@@ -43,3 +43,6 @@ release-package: ## package release candidates into a new OUTPUT directory
 
 linux-acceptance: ## exercise only disposable Linux fixtures
 	python3 scripts/linux-acceptance.py
+
+docs:       ## serve the docs site locally with livereload
+	cd docs && bundle install && bundle exec jekyll serve --livereload
