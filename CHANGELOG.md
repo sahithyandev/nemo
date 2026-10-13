@@ -2,61 +2,58 @@
 
 ## Unreleased
 
-## 0.1.0-rc.1
+Added:
 
-Semester release candidate: a reproducible demo/review build, published as a
-prerelease. The stable installer continues to select the latest stable release.
+- `nemo extract` reads a hidden payload back out of named streams and slack
+  space.
+- `nemo features --mode live` prints what live mode supports on the current
+  operating system.
+- ext4 slack-space hiding in image mode, using safe slack in allocated files.
+- ext4 directories that use HTree indexes can now be walked.
+- Linux live mode for ext4: user xattrs, access and modify timestamps, optional
+  birth-time and ctime reads, diagnostics for skipped children, and verified
+  read-only raw slack discovery.
+- New `NEM2` slack frames, bound to a nonce. Old `NEMO` frames can still be
+  read. Slack backups are tied to the opened file, the ext4 UUID and the exact
+  frame digest.
+- Local validation with versioned manifests and clear totals for pass, fail,
+  missing, unsupported and error. Downloads only happen in the separate public
+  preparation script, which pins checksums.
+- Demo packs for four targets, with Nemo and validator binaries, runners,
+  disposable fixture generation, release notes, build provenance and checksums.
+  GoReleaser attaches them to the GitHub release.
+- One-line install scripts for Linux, macOS (`scripts/install.sh`) and Windows
+  (`scripts/install.ps1`).
 
-Features:
+Fixed:
 
-- Forensics CLI with image/live mode, hide, detect, selected payload extraction,
-  clear, feature matrices, version and help.
-- Ext4 image xattrs, four inode timestamps, safe allocated-file slack and validated
-  HTree directory walking. Capacity failures preserve unrelated xattrs.
-- Linux live user xattrs and access/modify timestamps, optional birth-time/ctime
-  reads, skipped-child diagnostics and verified read-only raw slack discovery.
-- New nonce-bound `NEM2` frames; historical `NEMO` frames remain readable. Slack
-  backups bind to opened-file identity, ext4 UUID and exact frame digest.
-- APFS/NTFS image support and native APFS operations; Windows live NTFS is read-only.
-- Local validation with versioned manifests and explicit pass/fail/missing/
-  unsupported/error totals. Downloads only occur in the separately invoked,
-  checksum-pinned public preparation script.
-- Four-target demo packs include Nemo/validator binaries, runners, disposable
-  fixture generation, release notes, build provenance and checksums.
+- ext4 xattr writes that don't fit now fail without touching the other xattrs.
+- ext4 directory records are read correctly on 64 KiB block sizes.
+- ext4 inode layouts that Nemo can't handle (inline, encrypted, non-extent,
+  unwritten extents) now report an "unsupported" error.
+- Windows and macOS acceptance runners now account for the versioned frame
+  sizes.
 
-Validation and safeguards:
+Changed:
 
-- Go unit tests, vet, native Linux acceptance, exact restoration/extraction,
-  independently checked custody hashes and read-only-source checks.
-- Clean-clone packaging/rehearsal evidence and the timed command-segment report
-  are recorded in `docs/release/`; the eight-minute speaker plan does not claim
-  a measured human presentation.
-- Native macOS/Windows acceptance evidence was contributed in PR #78. Updated
-  native runners account for versioned frame sizes; native jobs gate publication.
-- Go 1.26.9 fixes the reached `os.Root` Windows-junction vulnerability
-  GO-2026-6604. Vulnerability and native acceptance checks run before tag creation.
-- The pinned public NTFS ADS subset reports 0 pass / 3 fail. Independent ntfs-3g
-  inspection found separate colon-named files instead of the metadata's advertised
-  streams, including a payload discrepancy. This is recorded evidence, not a
-  passing ADS accuracy claim. The generated ext4 sample reports three passes.
+- Go is now 1.26.9, which fixes the `os.Root` Windows-junction vulnerability
+  GO-2026-6604 that Nemo reaches.
+- CI runs govulncheck and native Linux, macOS and Windows acceptance checks
+  before the release tag is created.
+- Mismatched slack backups now fail. Legacy or foreign manifests aren't restored
+  silently, and by default unmatched backups warn and zero-fill.
 
-Known limitations and safety:
+Known limitations:
 
-- Timestomp anomaly detection has no historical baseline; timestamp restoration
-  requires the supplied original. Arbitrary non-Nemo slack is not detected.
-- Linux creation/change-time and mounted raw slack writes are unavailable; raw
-  reads require suitable device access and may see stale/concurrent mounted data.
-- Ext4 external-xattr allocation, shared-block CoW/freeing and unsupported inode
-  layouts remain conservative errors. Windows live writes are refused.
-- APFS mutation is in-place, not a transactional CoW editor. Clone/snapshot
-  sharing is not verified; use only new, unshared disposable image fixtures.
-- Legacy/foreign manifests are not silently restored. Explicit mismatches and
-  stale frames fail; default unmatched backups warn and zero-fill.
-- Custody-log/echo errors after mutation do not imply rollback; native syscall
-  records do not include the raw image wrapper's offset events.
-- Mutations can destroy data. Use disposable files and unmounted image copies,
-  preserve original images and manifests, and never demonstrate on valuable data.
-  Optional libtsk cross-checking remains deferred.
+- The pinned public NTFS ADS subset reports 0 pass and 3 fail. Checking with
+  ntfs-3g showed separate colon-named files instead of the streams the metadata
+  lists, and one payload differs. This is recorded as evidence, not as a passing
+  ADS accuracy claim. The generated ext4 sample passes all three.
+- Linux can't write creation or change times, or raw slack on mounted
+  filesystems. Raw reads need suitable device access and may see stale or
+  concurrently changing data on a mounted filesystem.
+- ext4 external-xattr allocation and shared-block copy-on-write and freeing
+  still fail with an error on purpose.
 
 ## 0.0.1
 
