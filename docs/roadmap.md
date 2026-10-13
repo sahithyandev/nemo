@@ -13,6 +13,8 @@ Numbered so each item maps 1:1 to a GitHub issue. Three owners, one per filesyst
 
 `Depends on` refers to item numbers in this doc. Status: (done), (partial), or unmarked for not started.
 
+**Current status:** version 0.1.0 is released. Phases 0 and 1 are done on all three filesystems, and `nemo extract` and `nemo features --mode live` shipped alongside them. In Phase 2 only the libtsk cross-check (items 27 and 28) is not started, and public-corpus validation is only partly measured.
+
 ## Phase 0: Shared core
 
 Done.
@@ -67,6 +69,11 @@ Done.
 **Scope:** Cobra command reading `Techniques` off every registered `Detector`, printing the filesystem by technique matrix.
 **Acceptance:** with only fake or no detectors registered, prints an empty or fake matrix with no image and no error.
 
+### 10a. `cmd/extract.go` (done)
+**Owner:** core · **Depends on:** 5, 6
+**Scope:** read-only `nemo extract`, which reads a hidden payload back out of named streams and slack space. Added after the original plan.
+**Acceptance:** extracting a payload hidden by `hide` returns the original bytes.
+
 ### 11. In-memory fake `FileSystem`/`Entry` for testing (done)
 **Owner:** core · **Depends on:** 4
 **Scope:** `internal/filesystem/fakefs`, an implementation of `FileSystem`/`Entry` plus all three capability interfaces and an in-memory `Image`, backed by an in-memory map. Lets items 6 to 10 be tested before any real filesystem parser exists.
@@ -119,7 +126,7 @@ Acceptance: same shape as NTFS, against an ext4 test image or Linux live path.
 
 ## Phase 2: Validation and polish
 
-Items 29 through 31 done. `internal/tskcheck` (27, 28) not started.
+Items 29 through 31 and 32 done. `internal/tskcheck` (27, 28) not started: there is no `internal/tskcheck` package yet.
 
 ### 27. `internal/tskcheck`: libtsk cgo adapter
 **Owner:** TBD · **Depends on:** 1
@@ -134,7 +141,7 @@ Items 29 through 31 done. `internal/tskcheck` (27, 28) not started.
 ### 29. `internal/validation`/`tools/validate`: dataset harness (done, local dataset only)
 **Owner:** core · **Depends on:** 8, at least one of 12 to 26 fully done
 **Scope:** `tools/validate` runs `detect` against an explicitly supplied local dataset directory, scored by a version-controlled manifest. Built differently from the original plan: it never downloads `fkie-cad/hide-and-seek-dataset`, since that corpus wasn't locally retrievable; see [Validation](validation/README.md).
-**Acceptance:** the harness runs against the committed synthetic ext4 sample and reports a score. Public-dataset acceptance is tracked separately and remains pending.
+**Acceptance:** the harness runs against the committed synthetic ext4 sample and reports a score. A pinned public NTFS ADS benchmark is recorded in [Validation](validation/README.md#public-corpus-benchmark) as a reproducible benchmark, not as successful detection of positive cases. APFS and ext4 public-corpus coverage is unmeasured.
 
 ### 30. CI: build, vet, test, cross-compile (done)
 **Owner:** core · **Depends on:** 7, 8, 9, 16e/21e/26e (at least the stub files)
@@ -145,3 +152,8 @@ Items 29 through 31 done. `internal/tskcheck` (27, 28) not started.
 **Owner:** core · **Depends on:** most of Phase 1
 **Scope:** update anything stale in README and in [Architecture](architecture/)'s file tree to match the real, built-out tree instead of the planned one.
 **Acceptance:** the architecture page's file tree matches `find . -name '*.go'` output.
+
+### 32. Release 0.1.0 (done)
+**Owner:** core · **Depends on:** 29, 30, 31
+**Scope:** four-target demo packs with checksums and build provenance attached to the GitHub release by GoReleaser, one-line install scripts (`scripts/install.sh`, `scripts/install.ps1`), and per-platform acceptance runners. See [Release](release/README.html).
+**Acceptance:** the install scripts fetch the latest release; acceptance evidence is recorded under `docs/release`.
