@@ -5,7 +5,7 @@
 > insertion slots. Native path-backed xattr creation is tested separately.
 >
 > The historical measurements below retain their recorded platform/source;
-> current CI reruns the updated runner.
+> current candidate CI reruns the updated runner.
 
 # macOS/APFS acceptance evidence
 

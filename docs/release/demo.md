@@ -49,7 +49,7 @@ spoken timing is not measured by the runner.
 
 | Time | Action and speaking points |
 | --- | --- |
-| 0:00–0:45 | Explain Nemo's forensic purpose, disposable-only demonstration, and version. |
+| 0:00–0:45 | Explain Nemo's forensic purpose, disposable-only demonstration, and candidate version. |
 | 0:45–1:30 | Show `BUILD.json`, supported features and the release notes. Explain image versus live support and native OS limits. |
 | 1:30–4:30 | Run `python3 scripts/demo-release.py --max-seconds 180`. Wait for the bounded command segment; do not add unbounded commands. If it finishes early, inspect the printed report within this slot. |
 | 4:30–5:30 | Open the printed `demo-result.json` and acceptance log. Show image named-stream/slack extraction, source immutability, exact slack restoration and independently checked custody hashes. Explain skipped live checks explicitly. |

@@ -38,7 +38,7 @@ clean:      ## remove build artifacts
 hooks:      ## install versioned git hooks (gofmt on pre-commit)
 	git config core.hooksPath .githooks
 
-release-package: ## package release archives into a new OUTPUT directory
+release-package: ## package release candidates into a new OUTPUT directory
 	python3 scripts/package-release.py --output "$(OUTPUT)"
 
 linux-acceptance: ## exercise only disposable Linux fixtures

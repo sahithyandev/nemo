@@ -23,6 +23,7 @@ checksum:
   name_template: checksums.txt
 
 release:
+  prerelease: auto
   extra_files:
     - glob: sbom.cdx.json
     - glob: semester-demo/*

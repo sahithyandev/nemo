@@ -18,8 +18,8 @@ Acceptance artifacts are session-local at `/tmp/nemo-integration-native-acceptan
 A tmpfs run separately passed image checks and explicitly skipped native checks.
 
 `cmd/VERSION` remains `0.0.1`, already released on main. New changelog entries
-are under `Unreleased`, so integration does not trigger a publication.
-Historical evidence remains tied to its recorded source commit.
+are under `Unreleased`, so integration does not trigger a candidate publication.
+Historical `0.1.0-rc.1` evidence remains tied to its recorded source commit.
 
 Issues #22, #23, and #26 have implementation and focused acceptance evidence;
 close them through the integration PR after required teammate review and merge.
