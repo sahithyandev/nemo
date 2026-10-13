@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.1.0
+
 Added:
 
 - `nemo extract` reads a hidden payload back out of named streams and slack
