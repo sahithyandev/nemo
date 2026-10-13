@@ -10,7 +10,7 @@ Removes previously hidden data and restores the target to its original state.
 
 Usage:
 
-```
+```sh
 nemo clear <target> --technique <technique> [--image <path>] [options]
 ```
 

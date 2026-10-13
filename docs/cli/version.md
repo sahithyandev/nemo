@@ -8,7 +8,7 @@ nav_order: 6
 
 Prints the tool's version and exits. Takes no arguments or options.
 
-```
+```sh
 nemo version
 ```
 

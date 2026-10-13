@@ -8,7 +8,7 @@ nav_order: 7
 
 Prints usage information for the tool or for a specific command: the command's description, arguments, and options.
 
-```
+```sh
 nemo help
 nemo help <command>
 ```

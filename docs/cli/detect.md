@@ -10,7 +10,7 @@ Scans a target, or an entire image, for hidden data and reports what it finds. `
 
 Usage:
 
-```
+```sh
 nemo detect [target] [--technique <technique>] [--image <path>]
 ```
 

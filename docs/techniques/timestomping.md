@@ -83,7 +83,7 @@ and `accessed` to offsets 144, 16, and 8, and reports whether the inode is large
 enough to carry the `_extra` field, and whether it carries `i_crtime` at all.
 Offsets from the code:
 
-```
+```text
 i_atime            8
 i_mtime           16
 i_extra_isize    128   (16-bit; xattr magic 0xEA020000 may follow)

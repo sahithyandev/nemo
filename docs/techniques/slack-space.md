@@ -18,7 +18,7 @@ write a payload there.
 Walk the arithmetic. Take a 10,000-byte file on a filesystem with 4096-byte
 blocks:
 
-```
+```text
 ceil(10000 / 4096) = 3 blocks allocated  = 12288 bytes reserved
 file content                             = 10000 bytes used
 slack                                    =  2288 bytes  <-- hiding spot
@@ -31,7 +31,7 @@ written.
 
 ## Kinds of slack
 
-```
+```text
 one 4096-byte block:
 +-----------------------------+---------------------+
 |   file's last 10000-9*4096  |       slack         |
@@ -159,7 +159,7 @@ left behind, so an arbitrary payload cannot be told apart from that noise.
 it wrote. nemo therefore writes each new slack payload with a 28-byte versioned header
 (`internal/technique/slackframe.go`):
 
-```
+```text
 offset  size  field
   0      4    magic    ASCII "NEM2"
   4      4    length   payload length, uint32 little-endian

@@ -94,7 +94,7 @@ ext4 stores xattrs in up to two places, and nemo reads and writes both
 
 Each attribute is an `ext4_xattr_entry`:
 
-```
+```text
 offset  size  field
   0      1    e_name_len       length of the name (without namespace prefix)
   1      1    e_name_index     namespace, see table below

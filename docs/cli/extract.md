@@ -10,7 +10,7 @@ Reads a previously hidden payload back out of a target and writes it to a file o
 
 Usage:
 
-```
+```sh
 nemo extract <target> --technique <technique> [--image <path>] [options]
 ```
 

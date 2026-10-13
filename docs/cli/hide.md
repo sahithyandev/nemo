@@ -10,7 +10,7 @@ Writes payload data into a target, using one of the three supported techniques.
 
 Usage:
 
-```
+```sh
 nemo hide <target> --technique <technique> [--image <path>] [options]
 ```
 

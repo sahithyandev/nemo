@@ -8,7 +8,7 @@ nav_order: 1
 
 Prints the feature-set matrix: which filesystems (`ntfs`, `apfs`, `ext4`) support which techniques (`named-stream`, `slack-space`, `timestomp`). One row per filesystem/technique pair, with a supported/unsupported indicator.
 
-```
+```sh
 nemo features
 nemo features --mode image
 nemo features --mode live

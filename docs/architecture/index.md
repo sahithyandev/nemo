@@ -14,7 +14,7 @@ Adding a filesystem (FAT32 later, say) or a technique should mean writing a new 
 
 What exists today is marked "built". `internal/tskcheck` is the only planned piece left.
 
-```
+```text
 nemo/
   main.go                  // built: calls cmd.Execute
   cmd/                      // package cmd, one file per command
@@ -96,7 +96,7 @@ nemo/
 
 ## Layers
 
-```
+```text
 cmd/ (hide.go, detect.go, clear.go, extract.go, features.go, live.go)   Cobra commands
             |
       internal/technique                     Finding/Result, the Technique interface

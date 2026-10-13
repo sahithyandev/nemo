@@ -41,7 +41,7 @@ git status --porcelain
 
 ## Recorded archive hashes
 
-```
+```text
 e312a665fc40b723e539731cda1431fd8bd38c597c1ce45d36755171858f6ae4  nemo-0.1.0-rc.1-linux-amd64.tar
 691ec3504870abaae445a0b865cfab2ef631de3b4d5a1e2776cd46caed729d85  nemo-0.1.0-rc.1-darwin-amd64.tar
 83acf5abb7c7e9ca18c293cb5a9978dc94ad34b8705a5d0b35300281a7f17dd3  nemo-0.1.0-rc.1-darwin-arm64.tar
