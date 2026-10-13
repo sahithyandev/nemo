@@ -74,4 +74,4 @@ type Detector struct {
 }
 ```
 
-`features` reads `Techniques` off every registered [`Detector`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/registry.go#L14) and prints the matrix: no image, no reflection, and no way to drift from [`registry.go`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/registry.go) because it reads the same struct detection uses. Filesystem implementations must keep their declared techniques consistent with their capabilities. See [Techniques](../techniques/#support-matrix) for the matrix.
+`features` reads `Techniques` off every registered [`Detector`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/registry.go#L14) and prints the matrix: no image, no reflection, and no way to drift from [`registry.go`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/registry.go) because it reads the same struct detection uses. Filesystem implementations must keep their declared techniques consistent with their capabilities. See [features](../cli/features.html#support-matrix) for the matrix.
