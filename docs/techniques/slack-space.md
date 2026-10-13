@@ -56,7 +56,7 @@ one 4096-byte block:
 ## On-disk mechanics
 
 nemo's slack write is filesystem-agnostic at the technique layer. A filesystem's
-[`Entry`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/filesystem.go#L31) implements [`filesystem.SlackSpaceCapable`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/filesystem.go#L52) and returns
+[`Entry`]({{ site.src }}/internal/filesystem/filesystem.go#L31) implements [`filesystem.SlackSpaceCapable`]({{ site.src }}/internal/filesystem/filesystem.go#L52) and returns
 `[]filesystem.SlackRegion{ {Offset, Length} }`, giving absolute byte offsets into
 the image. The technique picks the first region big enough, reads the bytes it is
 about to overwrite so it can back them up, and writes the frame. What differs per
@@ -169,7 +169,7 @@ offset  size  field
 ```
 
 `detect` reports a slack finding only when the magic matches and the CRC
-validates ([`decodeFrame`](https://github.com/sahithyandev/nemo/blob/main/internal/technique/slackframe.go#L41) and [`readFrame`](https://github.com/sahithyandev/nemo/blob/main/internal/technique/technique.go#L461) in [`technique.go`](https://github.com/sahithyandev/nemo/blob/main/internal/technique/technique.go)). This is a deliberate
+validates ([`decodeFrame`]({{ site.src }}/internal/technique/slackframe.go#L41) and [`readFrame`]({{ site.src }}/internal/technique/technique.go#L461) in [`technique.go`]({{ site.src }}/internal/technique/technique.go)). This is a deliberate
 trade-off. It makes nemo's own payloads easy to spot, since the literal string
 `NEM2` (or historical `NEMO`) followed by a valid CRC is not subtle, and in exchange
 `hide`, `detect`, and `clear` stay reliable and reversible. nemo is a forensic
@@ -181,11 +181,11 @@ The payload length is capped at `math.MaxUint32`, about 4 GiB, by the frame's
 
 ## Reversibility: the manifest
 
-Before overwriting slack bytes, [`slackSpaceTechnique.Hide`](https://github.com/sahithyandev/nemo/blob/main/internal/technique/technique.go#L201) calls [`Request.Backup`](https://github.com/sahithyandev/nemo/blob/main/internal/technique/technique.go#L86)
+Before overwriting slack bytes, [`slackSpaceTechnique.Hide`]({{ site.src }}/internal/technique/technique.go#L201) calls [`Request.Backup`]({{ site.src }}/internal/technique/technique.go#L86)
 with the original residual bytes. The command layer persists that as one JSON
 Lines record per line in `nemo-manifest.jsonl` (`--manifest` to relocate), with
-`Original` base64-encoded. See `internal/technique/manifest.go` ([`AppendManifest`](https://github.com/sahithyandev/nemo/blob/main/internal/technique/manifest.go#L24),
-[`LoadManifest`](https://github.com/sahithyandev/nemo/blob/main/internal/technique/manifest.go#L41), [`LatestImageBackup`](https://github.com/sahithyandev/nemo/blob/main/internal/technique/manifest.go#L125)). A `hide` aborts before touching disk if the
+`Original` base64-encoded. See `internal/technique/manifest.go` ([`AppendManifest`]({{ site.src }}/internal/technique/manifest.go#L24),
+[`LoadManifest`]({{ site.src }}/internal/technique/manifest.go#L41), [`LatestImageBackup`]({{ site.src }}/internal/technique/manifest.go#L125)). A `hide` aborts before touching disk if the
 manifest write fails.
 
 The historical `NEMO` format has a 12-byte header and remains readable by
@@ -209,9 +209,9 @@ Retain the original image and manifest for manual recovery of legacy backups.
 
 `clear` replays it. With a matching manifest record it writes the original
 residual bytes back over the frame and reports `Result.Restored = true`. Without
-one it zero-fills the frame and reports `Restored = false`. A [`Request.Restore`](https://github.com/sahithyandev/nemo/blob/main/internal/technique/technique.go#L81)
+one it zero-fills the frame and reports `Restored = false`. A [`Request.Restore`]({{ site.src }}/internal/technique/technique.go#L81)
 slice whose length does not match the frame is rejected, not zero-filled
-([`slackSpaceTechnique.Clear`](https://github.com/sahithyandev/nemo/blob/main/internal/technique/technique.go#L288)). Later manifest records win, so re-hiding then
+([`slackSpaceTechnique.Clear`]({{ site.src }}/internal/technique/technique.go#L288)). Later manifest records win, so re-hiding then
 clearing a target restores the most recent hide's bytes.
 
 ## Detection by a third party
@@ -238,17 +238,17 @@ clearing a target restores the most recent hide's bytes.
 
 ## How nemo implements it
 
-[`filesystem.SlackSpaceCapable`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/filesystem.go#L52):
+[`filesystem.SlackSpaceCapable`]({{ site.src }}/internal/filesystem/filesystem.go#L52):
 
 ```go
 SlackRegions() ([]filesystem.SlackRegion, error)  // {Offset, Length} into the image
 ```
 
-[`slackSpaceTechnique`](https://github.com/sahithyandev/nemo/blob/main/internal/technique/technique.go#L197) (`internal/technique/technique.go`) requires
-[`Request.Image`](https://github.com/sahithyandev/nemo/blob/main/internal/technique/technique.go#L76) (image-backed storage), frames the payload, and writes into the
+[`slackSpaceTechnique`]({{ site.src }}/internal/technique/technique.go#L197) (`internal/technique/technique.go`) requires
+[`Request.Image`]({{ site.src }}/internal/technique/technique.go#L76) (image-backed storage), frames the payload, and writes into the
 first region that fits.
 
-- APFS, ext4 and NTFS implement [`SlackRegions`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/filesystem.go#L53), subject to each backend
+- APFS, ext4 and NTFS implement [`SlackRegions`]({{ site.src }}/internal/filesystem/filesystem.go#L53), subject to each backend
   layout restrictions. Ext4 uses the final allocated regular-file block.
 - `fakefs.Entry.SlackRegions` (`internal/filesystem/fakefs/fakefs.go`) is the
   reference. It returns regions pointing into its backing byte-slice image, and

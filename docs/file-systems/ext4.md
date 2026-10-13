@@ -18,12 +18,12 @@ this package sits in the overall layering, see
 
 ## Detection
 
-[`Sniff`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/ext4/ext4.go#L51) ([`ext4.go`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/ext4/ext4.go)) checks for the ext4 superblock magic `0xEF53` at byte
+[`Sniff`]({{ site.src }}/internal/filesystem/ext4/ext4.go#L51) ([`ext4.go`]({{ site.src }}/internal/filesystem/ext4/ext4.go)) checks for the ext4 superblock magic `0xEF53` at byte
 `1024 + 0x38`, the fixed superblock location on every ext2/3/4 filesystem.
 
 ## Mounting
 
-[`New(img)`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/ext4/ext4.go#L82) reads the 1024-byte superblock at offset 1024 and validates it
+[`New(img)`]({{ site.src }}/internal/filesystem/ext4/ext4.go#L82) reads the 1024-byte superblock at offset 1024 and validates it
 before anything else touches the image:
 
 - The magic must match, and the block-size shift (`log_block_size`) must be
@@ -35,14 +35,14 @@ before anything else touches the image:
 - Read-only-compatible `bigalloc` is refused explicitly, since it changes
   the allocation unit away from the raw block size everywhere this parser
   assumes blocks.
-- [`validateGeometry`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/ext4/ext4.go#L167) cross-checks `inodesCount`, `blocksCount`,
+- [`validateGeometry`]({{ site.src }}/internal/filesystem/ext4/ext4.go#L167) cross-checks `inodesCount`, `blocksCount`,
   `blocksPerGroup`, and `inodesPerGroup` for zero values, checks
   `blocksPerGroup` fits the block-bitmap capacity (`blockSize * 8`), checks
   `inodeSize` is at least 128 bytes and a multiple of 4, and checks the
   filesystem's claimed size against the actual image size.
 - The group descriptor table's location and size are bounds-checked against
   the image before any group descriptor is read.
-- [`New`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/ext4/ext4.go#L82) finishes by reading inode 2 (the root) and requiring it to be a
+- [`New`]({{ site.src }}/internal/filesystem/ext4/ext4.go#L82) finishes by reading inode 2 (the root) and requiring it to be a
   directory, so a superblock that parses but points at garbage fails
   immediately rather than later, mid-traversal.
 
@@ -53,11 +53,11 @@ bit is set.
 
 ## Inodes (`inode.go`)
 
-[`readRawInode`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/ext4/inode.go#L41) locates an inode's raw bytes: group number and in-group
+[`readRawInode`]({{ site.src }}/internal/filesystem/ext4/inode.go#L41) locates an inode's raw bytes: group number and in-group
 index from `(inodeNumber - 1) / inodesPerGroup` and `% inodesPerGroup`,
 then the group's descriptor (at `gdtOffset + group * descSize`) gives the
 inode table's starting block, and from there a direct offset calculation
-gives the inode's bytes. [`readInode`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/ext4/inode.go#L26) then decodes just the fields the
+gives the inode's bytes. [`readInode`]({{ site.src }}/internal/filesystem/ext4/inode.go#L26) then decodes just the fields the
 parser needs: `mode`, a 64-bit `size` (low 32 bits at offset 4, high 32
 bits at offset 108, the standard ext4 large-file split), `flags`, and the
 60-byte `i_block` array that holds either the extent tree or (unsupported
@@ -65,12 +65,12 @@ here) indirect block pointers.
 
 ## Extents (`inode.go`)
 
-[`extentBlocks`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/ext4/inode.go#L76) walks an inode's extent tree, refusing three cases up
+[`extentBlocks`]({{ site.src }}/internal/filesystem/ext4/inode.go#L76) walks an inode's extent tree, refusing three cases up
 front: `inlineData` (the file's content lives in the inode itself, no
 blocks to walk), `encrypted` inodes, and any inode without the `extents`
 flag set (the older indirect-block layout).
 
-[`walkExtentNode`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/ext4/inode.go#L99) recurses through internal extent-tree nodes (checking the
+[`walkExtentNode`]({{ site.src }}/internal/filesystem/ext4/inode.go#L99) recurses through internal extent-tree nodes (checking the
 `0xF30A` extent-header magic, that the node's claimed depth matches what
 its parent expected, and a hard cap of depth 5) down to leaf nodes, where
 each 12-byte extent record gives a logical block, a length, and a physical
@@ -80,7 +80,7 @@ guessing at its content. Visited internal-node block numbers are tracked so
 a cyclic or duplicated child pointer can't loop the walk forever. The
 resulting blocks are sorted by logical number and checked for overlap.
 
-Directory traversal (`Children` in [`ext4.go`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/ext4/ext4.go)) reads linear and extent-backed
+Directory traversal (`Children` in [`ext4.go`]({{ site.src }}/internal/filesystem/ext4/ext4.go)) reads linear and extent-backed
 HTree directories. Indexed traversal follows validated root/index pointers,
 checks count/limit fields, block bounds, hash ordering and unique references,
 then parses only leaf blocks as directory records. Holes, unreferenced blocks
@@ -89,7 +89,7 @@ are supported; incompatible feature flags remain subject to the mount allowlist.
 
 ## Extended attributes (`xattr.go`)
 
-[`readXattrRegions`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/ext4/xattr.go#L78) reads the up-to-two places ext4 stores xattrs for one
+[`readXattrRegions`]({{ site.src }}/internal/filesystem/ext4/xattr.go#L78) reads the up-to-two places ext4 stores xattrs for one
 inode: the in-inode gap starting at `128 + i_extra_isize`, when it opens
 with the `0xEA020000` magic, and the external block named by `i_file_acl`
 (low 32 bits at inode offset 104, high 16 bits at offset 118 when the inode
@@ -97,7 +97,7 @@ is large enough), when that block number is nonzero. The external block's
 own header is validated (magic, a nonzero `refcount`, and a block count of
 exactly 1) before its entries are trusted.
 
-[`parseXattrs`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/ext4/xattr.go#L130) walks the shared entry-list format both regions use: 16-byte
+[`parseXattrs`]({{ site.src }}/internal/filesystem/ext4/xattr.go#L130) walks the shared entry-list format both regions use: 16-byte
 fixed entries (name length, namespace index, value offset, a value-inode
 field this parser rejects if nonzero, since ea-inode values need extra
 inode lookups it doesn't do, value length, and a per-entry hash used only
@@ -106,7 +106,7 @@ in the external-block format) packed from the front, terminated by a
 ranges are checked for overlap with each other and with the entry list
 before any value bytes are trusted.
 
-**Writing.** [`writeXattr`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/ext4/xattr.go#L302) tries four placements in order: update the
+**Writing.** [`writeXattr`]({{ site.src }}/internal/filesystem/ext4/xattr.go#L302) tries four placements in order: update the
 attribute in place if the name already exists in either region; otherwise
 pack it into the in-inode region alongside what's already there, if it
 fits; otherwise take over the in-inode region on its own if that's not
@@ -117,44 +117,44 @@ original region; the new attribute goes into an allocated external block
 or the write fails. Capacity and shared-block checks finish before any
 image write, so these rejected operations leave the image unchanged.
 Creating a *new* external block, when none is allocated and no existing
-region has room, is refused. [`storeXattrRegion`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/ext4/xattr.go#L380) also refuses to mutate an
+region has room, is refused. [`storeXattrRegion`]({{ site.src }}/internal/filesystem/ext4/xattr.go#L380) also refuses to mutate an
 external block whose `refcount` is above 1, since two inodes share it and
 an in-place edit would corrupt the other inode's attributes; that needs
-copy-on-write block allocation this parser doesn't do. [`deleteXattr`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/ext4/xattr.go#L360)
+copy-on-write block allocation this parser doesn't do. [`deleteXattr`]({{ site.src }}/internal/filesystem/ext4/xattr.go#L360)
 refuses to remove the last attribute from an external block, since that
 would need to free the block, not just its content.
 
 When `metadata_csum` is enabled, both an inode-body write
-([`updateInodeChecksum`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/ext4/xattr.go#L423)) and an external-block write recompute and store the
+([`updateInodeChecksum`]({{ site.src }}/internal/filesystem/ext4/xattr.go#L423)) and an external-block write recompute and store the
 correct checksum, so a mutated inode or block doesn't fail `fsck` on that
 account alone.
 
 ## Timestomp (`timestomp.go`)
 
-[`Entry`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/ext4/ext4.go#L235) implements [`filesystem.TimestompCapable`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/filesystem.go#L81). `SetTimestamp` reads the
+[`Entry`]({{ site.src }}/internal/filesystem/ext4/ext4.go#L235) implements [`filesystem.TimestompCapable`]({{ site.src }}/internal/filesystem/filesystem.go#L81). `SetTimestamp` reads the
 whole raw inode, computes the field's byte layout, writes the new value
 into that copy, refreshes the inode checksum when `metadata_csum` is
-enabled, and writes the complete inode back in one [`WriteAt`](https://github.com/sahithyandev/nemo/blob/main/internal/image/image.go#L6), so a custody
+enabled, and writes the complete inode back in one [`WriteAt`]({{ site.src }}/internal/image/image.go#L6), so a custody
 decorator wrapping the image sees one mutation event covering the whole
 inode rather than a sub-inode partial write.
 
-[`timestampLayout`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/ext4/timestomp.go#L115) maps `modified` and `accessed` to the fixed offsets every
+[`timestampLayout`]({{ site.src }}/internal/filesystem/ext4/timestomp.go#L115) maps `modified` and `accessed` to the fixed offsets every
 inode has (`i_mtime` at 16, `i_atime` at 8) and `created` to `i_crtime` at
 offset 144, available only when the inode's extra area (past the 128-byte
 "good old" inode, sized by `i_extra_isize`) reaches that far;
-[`inodeExtraEnd`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/ext4/timestomp.go#L139) computes exactly how far that area extends, validating
+[`inodeExtraEnd`]({{ site.src }}/internal/filesystem/ext4/timestomp.go#L139) computes exactly how far that area extends, validating
 `i_extra_isize` itself along the way. A request for `created` on an inode
 too small to carry `i_crtime` is a clear, named error rather than silently
 writing the wrong field.
 
-[`encodeExt4Timestamp`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/ext4/timestomp.go#L162)/[`decodeExt4Timestamp`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/ext4/timestomp.go#L185) implement the split encoding:
+[`encodeExt4Timestamp`]({{ site.src }}/internal/filesystem/ext4/timestomp.go#L162)/[`decodeExt4Timestamp`]({{ site.src }}/internal/filesystem/ext4/timestomp.go#L185) implement the split encoding:
 32-bit seconds since 1970 in the fixed field, and, when the inode's extra
 area also carries the `_extra` field for that timestamp, nanoseconds in the
 upper 30 bits plus a 2-bit epoch extension in the low bits that pushes the
 representable range past 2038. Without an extra field, sub-second precision
 or an out-of-32-bit-range value is rejected outright rather than truncated.
 
-[`Entry`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/ext4/ext4.go#L235) implements the shared [`filesystem.TimestompCapable`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/filesystem.go#L81) methods `Timestamp`
+[`Entry`]({{ site.src }}/internal/filesystem/ext4/ext4.go#L235) implements the shared [`filesystem.TimestompCapable`]({{ site.src }}/internal/filesystem/filesystem.go#L81) methods `Timestamp`
 (a reader), `SupportsTimestamp`, and `SetTimestamp`. `SupportsTimestamp` checks
 whether the inode contains the requested field. The technique layer does not
 compare timestamp values against a historical baseline or automatically save
@@ -190,7 +190,7 @@ for the resulting detection and restoration limits.
 
 Image slack uses the unused tail of the final allocated regular-file block.
 Sparse, overallocated, encrypted, inline-data, and unwritten-extent layouts are
-refused with [`filesystem.ErrUnsupported`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/filesystem.go#L11), allowing automatic detection to
+refused with [`filesystem.ErrUnsupported`]({{ site.src }}/internal/filesystem/filesystem.go#L11), allowing automatic detection to
 continue. Corrupt extent metadata remains fatal. Hide/detect/clear use the shared
 CRC-checked Nemo frame and a backup
 manifest for restoring overwritten residual bytes. Frames from the earlier
@@ -200,7 +200,7 @@ fixtures; they are not detected by the shared frame reader.
 Linux live mode uses descriptor-backed xattr and timestamp syscalls. Native
 operations need ordinary file permissions. Live timestamp reads expose ctime
 from the opened descriptor and birth time through `statx` when supplied by the
-kernel/filesystem. Creation/change time writes return [`filesystem.ErrUnsupported`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/filesystem.go#L11);
+kernel/filesystem. Creation/change time writes return [`filesystem.ErrUnsupported`]({{ site.src }}/internal/filesystem/filesystem.go#L11);
 access/modify writes use `UTIME_OMIT` to preserve the other field atomically.
 
 Explicit live slack detection/extraction opens the backing block device read-only.

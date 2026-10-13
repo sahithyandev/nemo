@@ -65,23 +65,23 @@ whether the technique can be detected at all.
 
 ### Custody log
 
-Every [`WriteAt`](https://github.com/sahithyandev/nemo/blob/main/internal/image/image.go#L6) nemo performs goes through the
+Every [`WriteAt`]({{ site.src }}/internal/image/image.go#L6) nemo performs goes through the
 `internal/custody` decorator, which SHA-256-hashes and logs it. A technique
 cannot opt out; the logging is structural, not a convention. Detection is
 read-only and never writes to the custody log.
 
 ## Implementation Notes
 
-Every technique is a [`Technique`](https://github.com/sahithyandev/nemo/blob/main/internal/technique/technique.go#L92) implementation in `internal/technique`, selected by name in [`technique.Get`](https://github.com/sahithyandev/nemo/blob/main/internal/technique/technique.go#L105):
+Every technique is a [`Technique`]({{ site.src }}/internal/technique/technique.go#L92) implementation in `internal/technique`, selected by name in [`technique.Get`]({{ site.src }}/internal/technique/technique.go#L105):
 
-- [`namedStreamTechnique`](https://github.com/sahithyandev/nemo/blob/main/internal/technique/technique.go#L126)
-- [`slackSpaceTechnique`](https://github.com/sahithyandev/nemo/blob/main/internal/technique/technique.go#L197)
-- [`timestompTechnique`](https://github.com/sahithyandev/nemo/blob/main/internal/technique/technique.go#L376)
+- [`namedStreamTechnique`]({{ site.src }}/internal/technique/technique.go#L126)
+- [`slackSpaceTechnique`]({{ site.src }}/internal/technique/technique.go#L197)
+- [`timestompTechnique`]({{ site.src }}/internal/technique/technique.go#L376)
 
-A technique never imports a filesystem package. It type-asserts the [`Entry`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/filesystem.go#L31) it is handed against the one capability interface it needs, and returns [`technique.ErrUnsupported`](https://github.com/sahithyandev/nemo/blob/main/internal/technique/technique.go#L29) when the assertion fails. The capability interfaces are defined in [`internal/filesystem/filesystem.go`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/filesystem.go):
+A technique never imports a filesystem package. It type-asserts the [`Entry`]({{ site.src }}/internal/filesystem/filesystem.go#L31) it is handed against the one capability interface it needs, and returns [`technique.ErrUnsupported`]({{ site.src }}/internal/technique/technique.go#L29) when the assertion fails. The capability interfaces are defined in [`internal/filesystem/filesystem.go`]({{ site.src }}/internal/filesystem/filesystem.go):
 
 | Technique    | Capability interface | Methods |
 | ------------ | -------------------- | ------- |
-| named-stream | [`filesystem.NamedStreamCapable`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/filesystem.go#L39) | [`WriteStream`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/filesystem.go#L40) / [`ReadStream`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/filesystem.go#L41) / [`DeleteStream`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/filesystem.go#L42) |
-| slack-space  | [`filesystem.SlackSpaceCapable`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/filesystem.go#L52) | [`SlackRegions`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/filesystem.go#L53) |
-| timestomp    | [`filesystem.TimestompCapable`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/filesystem.go#L81) | [`Timestamp`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/filesystem.go#L82) / [`SupportsTimestamp`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/filesystem.go#L83) / [`SetTimestamp`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/filesystem.go#L84) |
+| named-stream | [`filesystem.NamedStreamCapable`]({{ site.src }}/internal/filesystem/filesystem.go#L39) | [`WriteStream`]({{ site.src }}/internal/filesystem/filesystem.go#L40) / [`ReadStream`]({{ site.src }}/internal/filesystem/filesystem.go#L41) / [`DeleteStream`]({{ site.src }}/internal/filesystem/filesystem.go#L42) |
+| slack-space  | [`filesystem.SlackSpaceCapable`]({{ site.src }}/internal/filesystem/filesystem.go#L52) | [`SlackRegions`]({{ site.src }}/internal/filesystem/filesystem.go#L53) |
+| timestomp    | [`filesystem.TimestompCapable`]({{ site.src }}/internal/filesystem/filesystem.go#L81) | [`Timestamp`]({{ site.src }}/internal/filesystem/filesystem.go#L82) / [`SupportsTimestamp`]({{ site.src }}/internal/filesystem/filesystem.go#L83) / [`SetTimestamp`]({{ site.src }}/internal/filesystem/filesystem.go#L84) |

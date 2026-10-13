@@ -42,5 +42,5 @@ See [Modes](../architecture/modes.html) for native-platform limits.
 
 `fakefs` is an in-memory filesystem that implements all three capabilities
 against a byte-slice image. It is how `internal/technique` gets tested without a
-real NTFS, APFS, or ext4 image. A real filesystem's [`Entry`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/filesystem.go#L31) implements the same
-interfaces [`fakefs.Entry`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/fakefs/fakefs.go#L18) already does.
+real NTFS, APFS, or ext4 image. A real filesystem's [`Entry`]({{ site.src }}/internal/filesystem/filesystem.go#L31) implements the same
+interfaces [`fakefs.Entry`]({{ site.src }}/internal/filesystem/fakefs/fakefs.go#L18) already does.

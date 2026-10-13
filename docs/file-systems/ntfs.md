@@ -15,18 +15,18 @@ package sits in the overall layering, see [Architecture](../architecture/).
 
 ## Detection
 
-[`Sniff`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/ntfs/ntfs.go#L28) ([`ntfs.go`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/ntfs/ntfs.go)) checks whether the image starts with the NTFS OEM ID
+[`Sniff`]({{ site.src }}/internal/filesystem/ntfs/ntfs.go#L28) ([`ntfs.go`]({{ site.src }}/internal/filesystem/ntfs/ntfs.go)) checks whether the image starts with the NTFS OEM ID
 string `"NTFS    "` (eight bytes, padded with spaces) at boot-sector offset
 3. It handles a signature shorter than 11 bytes without panicking.
 
 ## Mounting
 
-[`New(img)`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/ntfs/ntfs.go#L144) reads and validates the boot sector, then defers everything else
+[`New(img)`]({{ site.src }}/internal/filesystem/ntfs/ntfs.go#L144) reads and validates the boot sector, then defers everything else
 to lazy, per-call MFT record reads. There is no up-front tree walk.
 
-**1. Read the boot sector ([`bootsector.go`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/ntfs/bootsector.go)).**
+**1. Read the boot sector ([`bootsector.go`]({{ site.src }}/internal/filesystem/ntfs/bootsector.go)).**
 
-[`readBootSector`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/ntfs/bootsector.go#L23) requires the image to be at least 512 bytes, re-checks the
+[`readBootSector`]({{ site.src }}/internal/filesystem/ntfs/bootsector.go#L23) requires the image to be at least 512 bytes, re-checks the
 `"NTFS    "` magic at offset 3, and pulls:
 
 - `bytesPerSector` (offset `0x0b`), validated as a power of two between 256
@@ -35,22 +35,22 @@ to lazy, per-call MFT record reads. There is no up-front tree walk.
 - `mftCluster` and `mftMirrorCluster` (offsets `0x30` and `0x38`), the
   starting clusters of `$MFT` and `$MFTMirr`.
 - `fileRecordSize` and `indexRecordSize` (offsets `0x40` and `0x44`),
-  decoded by [`decodeFileRecordSize`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/ntfs/bootsector.go#L71) from NTFS's signed byte encoding: a
+  decoded by [`decodeFileRecordSize`]({{ site.src }}/internal/filesystem/ntfs/bootsector.go#L71) from NTFS's signed byte encoding: a
   positive value is a cluster count, a negative value `-n` means `1 << n`
   bytes. Zero, an exponent over 31, or a decoded size that doesn't fit a
   `uint32` are all rejected.
 
-**2. Locate MFT records on demand ([`mft.go`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/ntfs/mft.go)).**
+**2. Locate MFT records on demand ([`mft.go`]({{ site.src }}/internal/filesystem/ntfs/mft.go)).**
 
-The first read of any record beyond record 0 triggers [`loadMFTBytes`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/ntfs/mft.go#L82) to read
+The first read of any record beyond record 0 triggers [`loadMFTBytes`]({{ site.src }}/internal/filesystem/ntfs/mft.go#L82) to read
 record 0 itself, parse its `$DATA` attribute, and cache the resulting data
 runs (`f.mftRuns`) and size (`f.mftDataSize`). `$MFT`'s own `$DATA` must be
 non-resident and uncompressed/unencrypted/non-sparse (`attribute.flags ==
 0`); anything else is refused. Every later record read resolves its offset
-through those cached runs via [`readRunsAt`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/ntfs/mft.go#L158), the same run-walking code used
+through those cached runs via [`readRunsAt`]({{ site.src }}/internal/filesystem/ntfs/mft.go#L158), the same run-walking code used
 for stream data.
 
-Every record read goes through [`applyFixups`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/ntfs/mft.go#L107), which validates and reverses
+Every record read goes through [`applyFixups`]({{ site.src }}/internal/filesystem/ntfs/mft.go#L107), which validates and reverses
 NTFS's per-sector update-sequence protection: the last two bytes of each
 512-byte sector are checked against, then replaced from, the update
 sequence array named at offset 4 in the record. A mismatch there means the
@@ -59,14 +59,14 @@ silent guess.
 
 ## MFT records and attributes (`attribute.go`)
 
-[`parseMFTRecord`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/ntfs/attribute.go#L94) reads the 48-byte record header ([`parseMFTRecordHeader`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/ntfs/attribute.go#L200),
+[`parseMFTRecord`]({{ site.src }}/internal/filesystem/ntfs/attribute.go#L94) reads the 48-byte record header ([`parseMFTRecordHeader`]({{ site.src }}/internal/filesystem/ntfs/attribute.go#L200),
 validating `usedSize <= allocatedSize <= len(record)` and a sane first
 attribute offset) and then walks attributes from `firstAttributeOffset`
 until the `0xFFFFFFFF` end marker.
 
 Each attribute is either resident (value bytes inline in the record) or
 non-resident (a run list describing clusters elsewhere), distinguished by a
-byte at offset 8 of the attribute header. [`parseDataRuns`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/ntfs/attribute.go#L283) decodes the
+byte at offset 8 of the attribute header. [`parseDataRuns`]({{ site.src }}/internal/filesystem/ntfs/attribute.go#L283) decodes the
 run-list byte stream: each run is a length-then-offset pair of
 variable-width signed/unsigned integers, and `LCN` deltas accumulate onto a
 running absolute cluster number. VCN coverage, cluster-count overflow, and
@@ -84,54 +84,54 @@ never produces one.
 
 A directory's children come from its `$INDEX_ROOT` attribute (always
 resident, always keyed on `$FILE_NAME`) plus, for a large directory, its
-`$INDEX_ALLOCATION` attribute and `$BITMAP`. [`parseIndexHeader`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/ntfs/directory.go#L105) walks the
+`$INDEX_ALLOCATION` attribute and `$BITMAP`. [`parseIndexHeader`]({{ site.src }}/internal/filesystem/ntfs/directory.go#L105) walks the
 fixed-size index-entry array in both structures the same way, returning
 whether any entry pointed at a child node (`hasChildren`/`INDEX_ENTRY_NODE`).
 
-When the root alone isn't enough, [`directoryEntries`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/ntfs/directory.go#L22) reads one `INDX` record
+When the root alone isn't enough, [`directoryEntries`]({{ site.src }}/internal/filesystem/ntfs/directory.go#L22) reads one `INDX` record
 per set bit in the bitmap, applies fixups the same as an MFT record does
 (with magic `"INDX"` instead of `"FILE"`), checks the record's stored VCN
 against where it was expected to be found, and parses its entries.
 
 A file with more than one directory entry, such as a short 8.3 name plus a
-long name, is deduplicated by [`preferDirectoryNames`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/ntfs/directory.go#L147), which keeps the
+long name, is deduplicated by [`preferDirectoryNames`]({{ site.src }}/internal/filesystem/ntfs/directory.go#L147), which keeps the
 long-namespace entry (namespace 1 "Win32" or 3 "Win32 & DOS") over the
 short-only namespace 2 "DOS" entry.
 
 ## Named streams (`namedstream.go`)
 
 An NTFS file's named streams are its named `$DATA` attributes: every
-`$DATA` attribute after the first unnamed one. [`Entry`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/ntfs/ntfs.go#L92) implements
-[`filesystem.NamedStreamCapable`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/filesystem.go#L39).
+`$DATA` attribute after the first unnamed one. [`Entry`]({{ site.src }}/internal/filesystem/ntfs/ntfs.go#L92) implements
+[`filesystem.NamedStreamCapable`]({{ site.src }}/internal/filesystem/filesystem.go#L39).
 
-[`streamRecord`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/ntfs/namedstream.go#L35) reloads and re-validates the entry's MFT record on every
+[`streamRecord`]({{ site.src }}/internal/filesystem/ntfs/namedstream.go#L35) reloads and re-validates the entry's MFT record on every
 call rather than caching it, and refuses two cases outright: a record whose
 `in-use` flag is clear or whose `baseRecordReference` is nonzero (an
 extension record needing `$ATTRIBUTE_LIST` support this parser doesn't
 have), and any attribute whose name bytes overlap its own header or its
-value/run-list region. [`NamedStreams`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/ntfs/namedstream.go#L74) then lists every named `$DATA`
+value/run-list region. [`NamedStreams`]({{ site.src }}/internal/filesystem/ntfs/namedstream.go#L74) then lists every named `$DATA`
 attribute's name, sorted.
 
-[`ReadStream`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/ntfs/namedstream.go#L123) returns a resident stream's value directly, or, for a
+[`ReadStream`]({{ site.src }}/internal/filesystem/ntfs/namedstream.go#L123) returns a resident stream's value directly, or, for a
 non-resident stream, walks its data runs with the same bounds-checked
-[`readRunsAt`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/ntfs/mft.go#L158) used for MFT records. A compressed, encrypted, or sparse
-stream (checked in [`streamFlags`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/ntfs/namedstream.go#L109), from the attribute's flags and, for a
+[`readRunsAt`]({{ site.src }}/internal/filesystem/ntfs/mft.go#L158) used for MFT records. A compressed, encrypted, or sparse
+stream (checked in [`streamFlags`]({{ site.src }}/internal/filesystem/ntfs/namedstream.go#L109), from the attribute's flags and, for a
 non-resident stream, its compression-unit field) is refused rather than
 misread.
 
-**Writing.** [`WriteStream`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/ntfs/namedstream.go#L161) builds a fresh resident `$DATA` attribute header,
-packs the UTF-16 name and value into it, and calls [`repackStream`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/ntfs/namedstream.go#L266) to splice
+**Writing.** [`WriteStream`]({{ site.src }}/internal/filesystem/ntfs/namedstream.go#L161) builds a fresh resident `$DATA` attribute header,
+packs the UTF-16 name and value into it, and calls [`repackStream`]({{ site.src }}/internal/filesystem/ntfs/namedstream.go#L266) to splice
 it into the record at the position NTFS's ordered-by-type attribute layout
-expects, replacing any resident stream of the same name. A [`WriteStream`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/ntfs/namedstream.go#L161)
-against an existing non-resident stream instead calls [`replaceNonresident`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/ntfs/namedstream.go#L479),
+expects, replacing any resident stream of the same name. A [`WriteStream`]({{ site.src }}/internal/filesystem/ntfs/namedstream.go#L161)
+against an existing non-resident stream instead calls [`replaceNonresident`]({{ site.src }}/internal/filesystem/ntfs/namedstream.go#L479),
 which can overwrite the stream's value only within its existing cluster
-runs (`capacity` from [`streamRuns`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/ntfs/namedstream.go#L296)): growing a stream past its current
+runs (`capacity` from [`streamRuns`]({{ site.src }}/internal/filesystem/ntfs/namedstream.go#L296)): growing a stream past its current
 allocation, or creating a brand-new non-resident stream, needs cluster
 allocation this parser doesn't do, and returns a clear error instead.
-[`DeleteStream`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/ntfs/namedstream.go#L228) refuses a non-resident stream outright, for the same reason:
+[`DeleteStream`]({{ site.src }}/internal/filesystem/ntfs/namedstream.go#L228) refuses a non-resident stream outright, for the same reason:
 freeing its clusters needs deallocation support that doesn't exist.
 
-Every mutation goes through [`prepareStreamRecord`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/ntfs/namedstream.go#L396) before any byte is
+Every mutation goes through [`prepareStreamRecord`]({{ site.src }}/internal/filesystem/ntfs/namedstream.go#L396) before any byte is
 written, which:
 
 - rejects duplicate attribute instance IDs in the record;
@@ -147,15 +147,15 @@ written, which:
   applies it to a "protected" copy of the record for the actual write while
   keeping an "expected" copy (with fixups reversed) to verify against.
 
-[`writeStreamRecord`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/ntfs/namedstream.go#L457)/[`commitStreamRecord`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/ntfs/namedstream.go#L465) write the planned physical extents,
+[`writeStreamRecord`]({{ site.src }}/internal/filesystem/ntfs/namedstream.go#L457)/[`commitStreamRecord`]({{ site.src }}/internal/filesystem/ntfs/namedstream.go#L465) write the planned physical extents,
 then re-read the record and compare it byte-for-byte against the expected
 result, failing loudly on any mismatch instead of leaving a record whose
 on-disk state doesn't match what was intended.
 
 ## Timestomping (`timestomp.go`)
 
-In image mode, [`Entry`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/ntfs/ntfs.go#L92) implements [`filesystem.TimestompCapable`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/filesystem.go#L81) and reads
-timestamps through [`Timestamp`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/ntfs/timestomp.go#L91). It updates creation, modification, metadata
+In image mode, [`Entry`]({{ site.src }}/internal/filesystem/ntfs/ntfs.go#L92) implements [`filesystem.TimestompCapable`]({{ site.src }}/internal/filesystem/filesystem.go#L81) and reads
+timestamps through [`Timestamp`]({{ site.src }}/internal/filesystem/ntfs/timestomp.go#L91). It updates creation, modification, metadata
 change, and access times in resident, unnamed `$STANDARD_INFORMATION` (`0x10`).
 Values must fit unsigned FILETIME (100 ns ticks since 1601-01-01) without
 rounding. `$FILE_NAME` timestamps, DATA streams, ADS, and all other attribute
@@ -170,7 +170,7 @@ a partially completed physical write is not rolled back.
 
 ## Slack space (`slack.go`)
 
-In image mode, [`Entry`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/ntfs/ntfs.go#L92) implements [`filesystem.SlackSpaceCapable`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/filesystem.go#L52). Slack is
+In image mode, [`Entry`]({{ site.src }}/internal/filesystem/ntfs/ntfs.go#L92) implements [`filesystem.SlackSpaceCapable`]({{ site.src }}/internal/filesystem/filesystem.go#L52). Slack is
 allocated cluster bytes minus the unnamed DATA attribute's initialized size.
 Resident files and directories expose no cluster slack. Fragmented non-resident
 DATA is mapped in logical order, with one physical slack region per affected run.
@@ -202,7 +202,7 @@ As with named streams, volume-wide allocation ownership is not inferred.
   fixup code; writing requires 512 to compute the fixup stride).
 - **Live mode for NTFS is read-only and Windows-only.** It reuses the image
   parser against a volume opened with `GENERIC_READ`, so detection requires
-  administrator access. Live writes return [`filesystem.ErrUnsupported`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/filesystem.go#L11) before
+  administrator access. Live writes return [`filesystem.ErrUnsupported`]({{ site.src }}/internal/filesystem/filesystem.go#L11) before
   opening a device. Use an offline image for edits; image mode is unchanged.
 
 ## Live mode (Windows)
@@ -222,7 +222,7 @@ close it immediately. No volume locks, dismounts or raw writes are performed.
 Live reads are not a consistent snapshot: concurrent filesystem changes can
 cause inconsistent results or parser errors. The existing parser limitations
 apply. Native ADS and timestamp writes are not implemented.
-Non-Windows [`OpenLive`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/ntfs/live_unsupported.go#L13) calls return [`filesystem.ErrUnsupported`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/filesystem.go#L11) without touching
+Non-Windows [`OpenLive`]({{ site.src }}/internal/filesystem/ntfs/live_unsupported.go#L13) calls return [`filesystem.ErrUnsupported`]({{ site.src }}/internal/filesystem/filesystem.go#L11) without touching
 the target; NTFS image mode remains available on all supported hosts.
 
 ## Safety against crafted images
@@ -230,13 +230,13 @@ the target; NTFS image mode remains available on all supported hosts.
 - Every size and offset pulled from a boot sector, MFT record header, or
   attribute header is range-checked against the buffer it was read from
   before use, so a crafted value can't drive an out-of-bounds slice.
-- [`decodeFileRecordSize`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/ntfs/bootsector.go#L71)'s exponent path is capped at 31 and its result at
+- [`decodeFileRecordSize`]({{ site.src }}/internal/filesystem/ntfs/bootsector.go#L71)'s exponent path is capped at 31 and its result at
   `uint32` range, so a crafted encoded byte can't overflow into a huge
   allocation.
 - Data-run decoding checks VCN and cluster-count overflow, and that runs
   cover exactly the `lowestVCN`..`highestVCN` range the attribute header
   claims, before any run is used for I/O.
-- [`applyFixups`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/ntfs/mft.go#L107) validates the update sequence array's offset and count
+- [`applyFixups`]({{ site.src }}/internal/filesystem/ntfs/mft.go#L107) validates the update sequence array's offset and count
   against the record size, and every protected sector's saved bytes against
   the array, before trusting the record's content.
 - MFT and stream writes recompute the expected on-disk bytes and read the

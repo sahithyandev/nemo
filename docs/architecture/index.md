@@ -42,22 +42,22 @@ cmd/ (hide.go, detect.go, clear.go, extract.go, features.go, live.go)   Cobra co
       internal/image                         Image interface: ReadAt/WriteAt/Size/Path
 ```
 
-Each layer depends only on the interfaces of the layer below it, never on a concrete sibling. `internal/technique` code never imports `internal/filesystem/ext4` directly; it calls through the [`FileSystem`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/filesystem.go#L24) interface. That is what makes filesystems and techniques independently pluggable.
+Each layer depends only on the interfaces of the layer below it, never on a concrete sibling. `internal/technique` code never imports `internal/filesystem/ext4` directly; it calls through the [`FileSystem`]({{ site.src }}/internal/filesystem/filesystem.go#L24) interface. That is what makes filesystems and techniques independently pluggable.
 
 The contracts for each layer are split into their own pages:
 
-- [Image and Custody](image.html): the [`Image`](https://github.com/sahithyandev/nemo/blob/main/internal/image/image.go#L4) interface and the `internal/custody` write decorator.
-- [Filesystem Interfaces](filesystem.html): [`FileSystem`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/filesystem.go#L24)/[`Entry`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/filesystem.go#L31), the registry, and the three capability interfaces.
-- [Technique Interfaces](technique.html): the [`Technique`](https://github.com/sahithyandev/nemo/blob/main/internal/technique/technique.go#L92) interface, [`Request`](https://github.com/sahithyandev/nemo/blob/main/internal/technique/technique.go#L71)/[`Finding`](https://github.com/sahithyandev/nemo/blob/main/internal/technique/technique.go#L32)/[`Result`](https://github.com/sahithyandev/nemo/blob/main/internal/technique/technique.go#L39), and the backup/manifest contract.
+- [Image and Custody](image.html): the [`Image`]({{ site.src }}/internal/image/image.go#L4) interface and the `internal/custody` write decorator.
+- [Filesystem Interfaces](filesystem.html): [`FileSystem`]({{ site.src }}/internal/filesystem/filesystem.go#L24)/[`Entry`]({{ site.src }}/internal/filesystem/filesystem.go#L31), the registry, and the three capability interfaces.
+- [Technique Interfaces](technique.html): the [`Technique`]({{ site.src }}/internal/technique/technique.go#L92) interface, [`Request`]({{ site.src }}/internal/technique/technique.go#L71)/[`Finding`]({{ site.src }}/internal/technique/technique.go#L32)/[`Result`]({{ site.src }}/internal/technique/technique.go#L39), and the backup/manifest contract.
 - [Modes](modes.html): how image mode and live mode split, and what each platform supports.
 - [Architecture Decisions](decisions.html): the custody, framing, backup, and capability contracts.
 
 ## Why this shape
 
-- Independent ownership: one person builds `internal/filesystem/apfs` while another builds `internal/filesystem/ext4`. Both only need to satisfy [`FileSystem`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/filesystem.go#L24)/[`Entry`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/filesystem.go#L31), so neither blocks the other and neither touches shared code.
-- Incremental support: a filesystem can implement only [`NamedStreamCapable`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/filesystem.go#L39). [`SlackSpaceCapable`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/filesystem.go#L52) and [`TimestompCapable`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/filesystem.go#L81) are separate optional interfaces, so partial support just means a missing interface, not a broken implementation of one big interface.
+- Independent ownership: one person builds `internal/filesystem/apfs` while another builds `internal/filesystem/ext4`. Both only need to satisfy [`FileSystem`]({{ site.src }}/internal/filesystem/filesystem.go#L24)/[`Entry`]({{ site.src }}/internal/filesystem/filesystem.go#L31), so neither blocks the other and neither touches shared code.
+- Incremental support: a filesystem can implement only [`NamedStreamCapable`]({{ site.src }}/internal/filesystem/filesystem.go#L39). [`SlackSpaceCapable`]({{ site.src }}/internal/filesystem/filesystem.go#L52) and [`TimestompCapable`]({{ site.src }}/internal/filesystem/filesystem.go#L81) are separate optional interfaces, so partial support just means a missing interface, not a broken implementation of one big interface.
 - New filesystem equals a new package plus one registry line. No changes to `internal/technique` or the commands.
-- Custody recording is structural, not a convention. Because it is a decorator over [`Image`](https://github.com/sahithyandev/nemo/blob/main/internal/image/image.go#L4), a technique cannot skip it: every [`WriteAt`](https://github.com/sahithyandev/nemo/blob/main/internal/image/image.go#L6) on the wrapped image is hashed and recorded regardless of the caller.
+- Custody recording is structural, not a convention. Because it is a decorator over [`Image`]({{ site.src }}/internal/image/image.go#L4), a technique cannot skip it: every [`WriteAt`]({{ site.src }}/internal/image/image.go#L6) on the wrapped image is hashed and recorded regardless of the caller.
 
 ## Non-goals
 

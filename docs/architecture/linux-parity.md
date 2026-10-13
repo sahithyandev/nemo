@@ -6,7 +6,7 @@ nav_order: 5
 
 # Linux implementation and macOS parity
 
-Linux uses the same [`FileSystem`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/filesystem.go#L24), [`Entry`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/filesystem.go#L31), capability interfaces and technique
+Linux uses the same [`FileSystem`]({{ site.src }}/internal/filesystem/filesystem.go#L24), [`Entry`]({{ site.src }}/internal/filesystem/filesystem.go#L31), capability interfaces and technique
 layer as macOS. Its backend interprets ext4 metadata, while the macOS backend
 interprets APFS metadata. Native operations use each platform's file APIs;
 explicit slack reads use the image parser against verified device access.

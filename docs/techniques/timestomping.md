@@ -77,8 +77,8 @@ things in the extra area past `i_extra_isize`:
   range past 2038.
 
 `internal/filesystem/ext4/timestomp.go` implements exactly this.
-[`encodeExt4Timestamp`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/ext4/timestomp.go#L162) splits a `time.Time` into `(low uint32, extra uint32)` with
-`extra = nanoseconds<<2 | epoch`. [`timestampLayout`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/ext4/timestomp.go#L115) maps `created`, `modified`,
+[`encodeExt4Timestamp`]({{ site.src }}/internal/filesystem/ext4/timestomp.go#L162) splits a `time.Time` into `(low uint32, extra uint32)` with
+`extra = nanoseconds<<2 | epoch`. [`timestampLayout`]({{ site.src }}/internal/filesystem/ext4/timestomp.go#L115) maps `created`, `modified`,
 and `accessed` to offsets 144, 16, and 8, and reports whether the inode is large
 enough to carry the `_extra` field, and whether it carries `i_crtime` at all.
 Offsets from the code:
@@ -135,7 +135,7 @@ exists in more than one place:
 
 ## Why nemo's `detect` reports nothing for timestomp
 
-[`filesystem.TimestompCapable`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/filesystem.go#L81) exposes the current value and field support as well
+[`filesystem.TimestompCapable`]({{ site.src }}/internal/filesystem/filesystem.go#L81) exposes the current value and field support as well
 as the write operation:
 
 ```go
@@ -146,7 +146,7 @@ type TimestompCapable interface {
 }
 ```
 
-[`timestompTechnique.Detect`](https://github.com/sahithyandev/nemo/blob/main/internal/technique/technique.go#L405) (`internal/technique/technique.go`) still returns
+[`timestompTechnique.Detect`]({{ site.src }}/internal/technique/technique.go#L405) (`internal/technique/technique.go`) still returns
 `nil, nil` after confirming that the entry implements the capability. A current
 timestamp does not establish whether it was altered. Nemo has no historical
 baseline comparison or timestamp anomaly detector, so it cannot report a
@@ -160,26 +160,26 @@ backup possible, but the technique and manifest workflow do not implement it.
 
 ## How nemo implements it
 
-[`timestompTechnique`](https://github.com/sahithyandev/nemo/blob/main/internal/technique/technique.go#L376) (`internal/technique/technique.go`):
+[`timestompTechnique`]({{ site.src }}/internal/technique/technique.go#L376) (`internal/technique/technique.go`):
 
 - `hide` requires `--field` (`created`, `modified`, `accessed`, or `changed`) and a
-  non-zero `--timestamp` in RFC 3339, then calls [`SetTimestamp`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/filesystem.go#L84).
+  non-zero `--timestamp` in RFC 3339, then calls [`SetTimestamp`]({{ site.src }}/internal/filesystem/filesystem.go#L84).
 - `detect` always returns no findings, as above.
 - `clear` requires `--field` and the original `--timestamp`, then calls
-  [`SetTimestamp`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/filesystem.go#L84) to put it back.
+  [`SetTimestamp`]({{ site.src }}/internal/filesystem/filesystem.go#L84) to put it back.
 
-`changed` ([`filesystem.TimeChanged`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/filesystem.go#L67)) maps to `i_ctime` on ext4 and `change_time` on
+`changed` ([`filesystem.TimeChanged`]({{ site.src }}/internal/filesystem/filesystem.go#L67)) maps to `i_ctime` on ext4 and `change_time` on
 APFS: the one MACB field the kernel sets on its own and no live userland API lets a
 process write. Editing the image directly bypasses that, so `hide --field changed`
 sets exactly what a live attacker cannot, closing the "old mtime, fresh ctime" gap
 that otherwise gives a stomp away.
 
 ext4 and APFS are implemented. `internal/filesystem/ext4/timestomp.go` writes the
-full inode in one [`WriteAt`](https://github.com/sahithyandev/nemo/blob/main/internal/image/image.go#L6), so [`custody.Wrap`](https://github.com/sahithyandev/nemo/blob/main/internal/custody/custody.go#L35) sees the mutation, and it refreshes
+full inode in one [`WriteAt`]({{ site.src }}/internal/image/image.go#L6), so [`custody.Wrap`]({{ site.src }}/internal/custody/custody.go#L35) sees the mutation, and it refreshes
 the inode checksum when `metadata_csum` is enabled. `internal/filesystem/apfs/timestomp.go`
 patches the four `uint64` nanosecond fields of the `j_inode_val_t` INODE record in
 place, through the same in-place B-tree leaf rewrite `namedstream.go` uses for
-xattrs (see [`btree_write.go`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/apfs/btree_write.go)): the record's size does not change, so the existing
+xattrs (see [`btree_write.go`]({{ site.src }}/internal/filesystem/apfs/btree_write.go)): the record's size does not change, so the existing
 checksum and `btree_info_t` handling covers it without any new machinery.
 
 NTFS is implemented in `internal/filesystem/ntfs/timestomp.go`: it reads and
