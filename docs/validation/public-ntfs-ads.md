@@ -1,3 +1,9 @@
+---
+title: Public NTFS ADS benchmark
+parent: Validation
+nav_order: 1
+---
+
 # Pinned public NTFS ADS benchmark
 
 Recorded on 2026-10-12 on Linux using Go 1.26.9. Source:
