@@ -1,8 +1,8 @@
 > Historical evidence below refers to the recorded 2026-10-01 source/toolchain.
-> Current candidate preparation, clean-clone checks and bounded demo evidence
+> Current release preparation, clean-clone checks and bounded demo evidence
 > are recorded in [owner-completion.md](owner-completion.md). Native QA/DOC issues
 > are closed; the newly pinned public benchmark is recorded with its three
-> metadata mismatches. Historical archive hashes are not current RC hashes.
+> metadata mismatches. Historical archive hashes are not current hashes.
 
 # Clean-clone release rehearsal
 

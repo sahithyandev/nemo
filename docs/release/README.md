@@ -1,9 +1,6 @@
-# v0.1 semester release candidate
+# Release and demo pack
 
-Current version: **0.1.0-rc.1**, selected through `cmd/VERSION`. This is the
-semester candidate for review/demo, not the final stable v0.1 release. GitHub
-marks it as a prerelease. The one-line stable installers use `/releases/latest`
-and therefore do not automatically install this candidate.
+Current version: see `cmd/VERSION`.
 
 ## Build and package
 
@@ -15,8 +12,8 @@ export GOTOOLCHAIN=go1.26.9
 go test ./...
 go vet ./...
 make vulncheck
-python3 scripts/package-release.py --output /tmp/nemo-release-candidate
-cd /tmp/nemo-release-candidate
+python3 scripts/package-release.py --output /tmp/nemo-release
+cd /tmp/nemo-release
 sha256sum -c SHA256SUMS
 ```
 
@@ -32,12 +29,12 @@ The CI release separately builds its standard platform archives, an SBOM and
 these semester demo packs. Main publication requires formatting/release checks,
 vet, reached-vulnerability scanning, Linux/Windows/macOS tests/builds and native
 acceptance jobs. `cmd/VERSION` plus its nonempty changelog section selects the
-automatic candidate tag. No manual pre-created tag is needed.
+automatic release tag. No manual pre-created tag is needed.
 
 ## Run an unpacked Linux demo pack
 
 Install Python 3.11+, e2fsprogs and ordinary POSIX tools before presenting. Unpack
-the Linux `.tar`, change into its `nemo-0.1.0-rc.1-linux-amd64` directory, then run:
+the Linux `.tar`, change into its `nemo-<version>-linux-amd64` directory, then run:
 
 ```sh
 python3 scripts/demo-release.py --max-seconds 180
@@ -55,7 +52,7 @@ in [demo.md](demo.md). Spoken presentation timing is not measured by the runner.
 See [clean-clone rehearsal](rehearsal.md), [Linux acceptance](linux-acceptance.md),
 [macOS acceptance](macos-acceptance.md), and [Windows acceptance](windows-acceptance.md).
 Historical reports name their actual tested source/platform; cross-builds alone
-are not runtime evidence. DOC-01 #31 and QA-01 #32 were closed before this candidate
+are not runtime evidence. DOC-01 #31 and QA-01 #32 were closed before this release
 preparation, and the latest main acceptance contribution (PR #78) is integrated.
 
 The public NTFS benchmark retains upstream expected ADS labels and reports three
@@ -82,5 +79,5 @@ remain the positive functional evidence.
 
 Mutations can destroy data. Demonstrate only on disposable files and unmounted
 image copies, retain originals/manifests, and never use valuable files or physical
-production disks. Candidate publication does not assert a stable final release or
+production disks. Publication does not assert a stable final release or
 unmeasured native/human acceptance.
