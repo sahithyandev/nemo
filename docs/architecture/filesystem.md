@@ -25,13 +25,13 @@ type Entry interface {
 }
 ```
 
-`Children()` backs `detect` with no target: the command calls `Root()` then walks `Children()` recursively (the shape of `io/fs.WalkDir`), running the technique's `Detect` against every `Entry` it reaches. `hide`/`clear` always take an explicit target, so they only call `Open(path)` and never walk. `internal/filesystem/fakefs` is an in-memory `FileSystem`/`Entry` implementing all three capabilities plus an in-memory `Image`; the command and technique tests run against it.
+[`Children()`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/filesystem.go#L34) backs `detect` with no target: the command calls [`Root()`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/filesystem.go#L26) then walks [`Children()`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/filesystem.go#L34) recursively (the shape of `io/fs.WalkDir`), running the technique's [`Detect`](https://github.com/sahithyandev/nemo/blob/main/internal/technique/technique.go#L95) against every [`Entry`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/filesystem.go#L31) it reaches. `hide`/`clear` always take an explicit target, so they only call [`Open(path)`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/registry.go#L62) and never walk. `internal/filesystem/fakefs` is an in-memory [`FileSystem`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/filesystem.go#L24)/[`Entry`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/filesystem.go#L31) implementing all three capabilities plus an in-memory [`Image`](https://github.com/sahithyandev/nemo/blob/main/internal/image/image.go#L4); the command and technique tests run against it.
 
-`registry.go` holds a signature-based lookup (a `[]Detector`, each a byte-pattern sniff plus a constructor) and returns the right `FileSystem` for an image. Adding a filesystem means registering a `Detector` (from that package's `init`) plus a new `internal/filesystem/<fs>/` package; nothing in `internal/technique` or the commands changes.
+[`registry.go`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/registry.go) holds a signature-based lookup (a `[]Detector`, each a byte-pattern sniff plus a constructor) and returns the right [`FileSystem`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/filesystem.go#L24) for an image. Adding a filesystem means registering a [`Detector`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/registry.go#L14) (from that package's `init`) plus a new `internal/filesystem/<fs>/` package; nothing in `internal/technique` or the commands changes.
 
-`Register` panics on an invalid `Detector` (empty `Type`, nil `Sniff`, or nil `New`) or on a `Type` already registered. Registration happens at package init, so these are startup-time programmer errors, not conditions to recover from. `Open` reads up to the first 4096 bytes and sniffs every registered detector rather than stopping at the first hit: no match is an error naming the registered filesystems, more than one match is an "ambiguous image format" error naming every candidate.
+[`Register`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/registry.go#L31) panics on an invalid [`Detector`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/registry.go#L14) (empty [`Type`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/filesystem.go#L14), nil `Sniff`, or nil `New`) or on a [`Type`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/filesystem.go#L14) already registered. Registration happens at package init, so these are startup-time programmer errors, not conditions to recover from. [`Open`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/registry.go#L62) reads up to the first 4096 bytes and sniffs every registered detector rather than stopping at the first hit: no match is an error naming the registered filesystems, more than one match is an "ambiguous image format" error naming every candidate.
 
-Not every filesystem supports every capability the same way, so rather than force all three `Entry` implementations to satisfy a bloated interface, capabilities are split into optional interfaces an `Entry` may also implement:
+Not every filesystem supports every capability the same way, so rather than force all three [`Entry`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/filesystem.go#L31) implementations to satisfy a bloated interface, capabilities are split into optional interfaces an [`Entry`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/filesystem.go#L31) may also implement:
 
 ```go
 type NamedStreamCapable interface {
@@ -51,7 +51,7 @@ type TimestompCapable interface {
 }
 ```
 
-`internal/technique` type-asserts the `Entry` it is given against the capability it needs and returns an "unsupported on this filesystem" error if the assertion fails. ext4 image entries implement all three capabilities. A capability can still return `ErrUnsupported` for an entry type it cannot handle, such as slack space on a directory; default scans skip that technique for the entry and continue walking.
+`internal/technique` type-asserts the [`Entry`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/filesystem.go#L31) it is given against the capability it needs and returns an "unsupported on this filesystem" error if the assertion fails. ext4 image entries implement all three capabilities. A capability can still return [`ErrUnsupported`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/filesystem.go#L11) for an entry type it cannot handle, such as slack space on a directory; default scans skip that technique for the entry and continue walking.
 
 ## Technique selection and the `features` matrix
 
@@ -61,9 +61,9 @@ The commands pick which technique kind purely from the `--technique` flag string
 func Get(name string) (Technique, error) // "named-stream" | "slack-space" | "timestomp"
 ```
 
-Whether the selected technique works against the given target is answered separately, at call time, by the type assertion above: the `Entry` implements the required capability or it does not. So filesystem support is never a lookup table keyed by `(FileSystem type, technique)`; it falls out of whether a given `ntfs.Entry`/`apfs.Entry`/`ext4.Entry` implements the capability.
+Whether the selected technique works against the given target is answered separately, at call time, by the type assertion above: the [`Entry`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/filesystem.go#L31) implements the required capability or it does not. So filesystem support is never a lookup table keyed by `(FileSystem type, technique)`; it falls out of whether a given [`ntfs.Entry`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/ntfs/ntfs.go#L92)/[`apfs.Entry`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/apfs/apfs.go#L731)/[`ext4.Entry`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/ext4/ext4.go#L235) implements the capability.
 
-`nemo features` needs that matrix without an image loaded, so it cannot run the type assertion against a live `Entry`. Instead each filesystem package declares its supported technique names once, in the `Detector` it registers:
+`nemo features` needs that matrix without an image loaded, so it cannot run the type assertion against a live [`Entry`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/filesystem.go#L31). Instead each filesystem package declares its supported technique names once, in the [`Detector`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/registry.go#L14) it registers:
 
 ```go
 type Detector struct {
@@ -74,4 +74,4 @@ type Detector struct {
 }
 ```
 
-`features` reads `Techniques` off every registered `Detector` and prints the matrix: no image, no reflection, and no way to drift from `registry.go` because it reads the same struct detection uses. Filesystem implementations must keep their declared techniques consistent with their capabilities. See [Techniques](../techniques/#support-matrix) for the matrix.
+`features` reads `Techniques` off every registered [`Detector`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/registry.go#L14) and prints the matrix: no image, no reflection, and no way to drift from [`registry.go`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/registry.go) because it reads the same struct detection uses. Filesystem implementations must keep their declared techniques consistent with their capabilities. See [Techniques](../techniques/#support-matrix) for the matrix.

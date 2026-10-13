@@ -11,11 +11,11 @@ are, how they work on disk, how much data they hold, how they get detected, and
 where the code lives. It assumes you can read Go and a hex dump but have never
 touched filesystem forensics.
 
-Every technique is one `Technique` implementation in `internal/technique`
-(`namedStreamTechnique`, `slackSpaceTechnique`, `timestompTechnique`), selected
-by name in `technique.Get`. A technique never imports a filesystem package. It
-type-asserts the `Entry` it is handed against the one capability interface it
-needs and returns `technique.ErrUnsupported` when the assertion fails
+Every technique is one [`Technique`](https://github.com/sahithyandev/nemo/blob/main/internal/technique/technique.go#L92) implementation in `internal/technique`
+([`namedStreamTechnique`](https://github.com/sahithyandev/nemo/blob/main/internal/technique/technique.go#L126), [`slackSpaceTechnique`](https://github.com/sahithyandev/nemo/blob/main/internal/technique/technique.go#L197), [`timestompTechnique`](https://github.com/sahithyandev/nemo/blob/main/internal/technique/technique.go#L376)), selected
+by name in [`technique.Get`](https://github.com/sahithyandev/nemo/blob/main/internal/technique/technique.go#L105). A technique never imports a filesystem package. It
+type-asserts the [`Entry`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/filesystem.go#L31) it is handed against the one capability interface it
+needs and returns [`technique.ErrUnsupported`](https://github.com/sahithyandev/nemo/blob/main/internal/technique/technique.go#L29) when the assertion fails
 (`internal/technique/technique.go`). The capability interfaces are defined in
 `internal/filesystem/filesystem.go`:
 
@@ -39,11 +39,11 @@ See [Modes](../architecture/modes.html) for native-platform limits.
 
 `fakefs` is an in-memory filesystem that implements all three capabilities
 against a byte-slice image. It is how `internal/technique` gets tested without a
-real NTFS, APFS, or ext4 image. A real filesystem's `Entry` implements the same
-interfaces `fakefs.Entry` already does.
+real NTFS, APFS, or ext4 image. A real filesystem's [`Entry`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/filesystem.go#L31) implements the same
+interfaces [`fakefs.Entry`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/fakefs/fakefs.go#L18) already does.
 
 `nemo features` prints this matrix at runtime from the `Techniques` field each
-filesystem declares on its `filesystem.Detector`, so it cannot drift from what is
+filesystem declares on its [`filesystem.Detector`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/registry.go#L14), so it cannot drift from what is
 actually registered. See [Filesystem Interfaces](../architecture/filesystem.html).
 
 ## Shared vocabulary
@@ -76,7 +76,7 @@ information that was not updated in lockstep, or a journal entry. "nemo can't
 detect it" (as with timestomp) describes nemo's current capabilities, not
 whether the technique can be detected at all.
 
-**Custody log.** Every `WriteAt` nemo performs goes through the
+**Custody log.** Every [`WriteAt`](https://github.com/sahithyandev/nemo/blob/main/internal/image/image.go#L6) nemo performs goes through the
 `internal/custody` decorator, which SHA-256-hashes and logs it. A technique
 cannot opt out; the logging is structural, not a convention. Detection is
 read-only and never writes to the custody log.

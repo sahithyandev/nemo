@@ -82,13 +82,13 @@ ext4 stores xattrs in up to two places, and nemo reads and writes both
 1. In-inode, in the gap between the end of the fixed 128-byte inode and the end
    of the inode as sized by the filesystem, which is typically 256 bytes. The gap
    begins at `128 + i_extra_isize` and, when it holds xattrs, starts with the
-   32-bit magic `0xEA020000` (little-endian; the `xattrMagic` constant in
-   `xattr.go`). Room here runs from tens to about 150 bytes.
+   32-bit magic `0xEA020000` (little-endian; the [`xattrMagic`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/ext4/xattr.go#L13) constant in
+   [`xattr.go`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/ext4/xattr.go)). Room here runs from tens to about 150 bytes.
 2. An external xattr block, one filesystem block (4 KiB by default) pointed to by
    `i_file_acl` (`raw[104:]` plus a 16-bit high half at `raw[118:]` in the code).
    It begins with a 32-byte header: magic, `refcount`, block count (must be 1),
    then a hash. Identical xattr blocks get deduplicated and reference-counted
-   across inodes, which is why `storeXattrRegion` refuses to mutate a block whose
+   across inodes, which is why [`storeXattrRegion`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/ext4/xattr.go#L380) refuses to mutate a block whose
    `refcount` is above 1. That case needs copy-on-write allocation nemo does not
    do.
 
@@ -108,7 +108,7 @@ offset  size  field
 Entries are 4-byte aligned (`(16 + name_len + 3) &^ 3`) and packed from the
 front. Values are 4-byte aligned and packed from the back. A 4-byte zero
 terminates the entry list. The namespace prefix is stripped from the stored name
-and encoded as `e_name_index` (from `xattrPrefixes` in `xattr.go`):
+and encoded as `e_name_index` (from [`xattrPrefixes`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/ext4/xattr.go#L22) in [`xattr.go`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/ext4/xattr.go)):
 
 | Prefix       | index | privilege to write |
 | ------------ | ----- | ------------------ |
@@ -166,7 +166,7 @@ editors) drops it.
   that are not real system attributes, or `ResourceFork` xattrs on file types
   that never have one, are the flags.
 
-nemo's `namedStreamTechnique.Detect` (`internal/technique/technique.go`) lists
+nemo's [`namedStreamTechnique.Detect`](https://github.com/sahithyandev/nemo/blob/main/internal/technique/technique.go#L144) (`internal/technique/technique.go`) lists
 `entry.NamedStreams()` and reports each with its byte size. It does not judge
 whether a stream is suspicious; it reports every non-default stream it finds.
 
@@ -183,7 +183,7 @@ whether a stream is suspicious; it reports every non-default stream it finds.
 
 ## How nemo implements it
 
-`filesystem.NamedStreamCapable` (`internal/filesystem/filesystem.go`):
+[`filesystem.NamedStreamCapable`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/filesystem.go#L39) (`internal/filesystem/filesystem.go`):
 
 ```go
 WriteStream(name string, data []byte) error
@@ -191,12 +191,12 @@ ReadStream(name string) ([]byte, error)
 DeleteStream(name string) error
 ```
 
-`namedStreamTechnique` in `internal/technique/technique.go` requires a
-`--stream-name`. It calls `WriteStream` for `hide`, lists `NamedStreams()` plus
-`ReadStream` for `detect`, and `DeleteStream` for `clear`.
+[`namedStreamTechnique`](https://github.com/sahithyandev/nemo/blob/main/internal/technique/technique.go#L126) in `internal/technique/technique.go` requires a
+`--stream-name`. It calls [`WriteStream`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/filesystem.go#L40) for `hide`, lists [`NamedStreams()`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/filesystem.go#L35) plus
+[`ReadStream`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/filesystem.go#L41) for `detect`, and [`DeleteStream`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/filesystem.go#L42) for `clear`.
 
-- ext4 is implemented. `internal/filesystem/ext4/ext4.go` (`NamedStreams`,
-  `ReadStream`, `WriteStream`, `DeleteStream`) delegates to `xattr.go`. Write
+- ext4 is implemented. `internal/filesystem/ext4/ext4.go` ([`NamedStreams`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/filesystem.go#L35),
+  [`ReadStream`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/filesystem.go#L41), [`WriteStream`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/filesystem.go#L40), [`DeleteStream`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/filesystem.go#L42)) delegates to [`xattr.go`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/ext4/xattr.go). Write
   placement policy: update in place if the name exists, else pack into the
   in-inode area, else use the external block. It refuses shared blocks
   (`refcount > 1`) and refuses to empty an external block, since both need block
@@ -213,9 +213,9 @@ DeleteStream(name string) error
   would need to grow past either limit fails with a clear error. Deleting a
   stream-backed xattr drops the record but leaves its extents allocated.
 - NTFS is implemented. `internal/filesystem/ntfs/namedstream.go` reads and
-  writes ADS by editing the MFT record directly: `NamedStreams` lists every
-  named `$DATA` attribute, `ReadStream` returns a resident value or follows
-  non-resident data runs, and `WriteStream`/`DeleteStream` repack the record
+  writes ADS by editing the MFT record directly: [`NamedStreams`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/filesystem.go#L35) lists every
+  named `$DATA` attribute, [`ReadStream`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/filesystem.go#L41) returns a resident value or follows
+  non-resident data runs, and [`WriteStream`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/filesystem.go#L40)/[`DeleteStream`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/filesystem.go#L42) repack the record
   in place. A resident stream can be replaced or created if it fits the
   record's free space; a non-resident stream can be overwritten only within
   its existing cluster runs, since nemo has no run allocation. Every
@@ -230,6 +230,6 @@ xattr syscall against the target's real path (the resource fork included, as
 `com.apple.ResourceFork`), no volume parsing or elevated privilege needed.
 See [APFS live mode](../file-systems/apfs.html#live-mode-macos).
 
-When adding a filesystem, mirror `fakefs.Entry`
+When adding a filesystem, mirror [`fakefs.Entry`](https://github.com/sahithyandev/nemo/blob/main/internal/filesystem/fakefs/fakefs.go#L18)
 (`internal/filesystem/fakefs/fakefs.go`), the test double that already
 implements all three capabilities. The technique layer needs no changes.
