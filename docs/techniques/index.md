@@ -1,25 +1,15 @@
 ---
 title: Techniques
-nav_order: 4
+nav_order: 2
 has_children: true
 ---
 
-# Hiding Techniques
+# Techniques
 
-This directory explains the anti-forensic techniques nemo implements: what they
+These pages explain the anti-forensic techniques nemo implements: what they
 are, how they work on disk, how much data they hold, how they get detected, and
 where the code lives. It assumes you can read Go and a hex dump but have never
 touched filesystem forensics.
-
-Read the shared vocabulary below first, then the technique you are working on:
-
-- [named-streams.md](named-streams.html) covers NTFS Alternate Data Streams, ext4
-  and APFS extended attributes, and APFS resource forks.
-- [slack-space.md](slack-space.html) covers writing into allocated-but-unused bytes
-  at the tail of a cluster, block, or metadata record.
-- [timestomping.md](timestomping.html) covers rewriting a file's MACB timestamps.
-
-## Where each technique sits in the codebase
 
 Every technique is one `Technique` implementation in `internal/technique`
 (`namedStreamTechnique`, `slackSpaceTechnique`, `timestompTechnique`), selected
@@ -35,17 +25,17 @@ needs and returns `technique.ErrUnsupported` when the assertion fails
 | slack-space   | `filesystem.SlackSpaceCapable`  | `SlackRegions`                                |
 | timestomp     | `filesystem.TimestompCapable`   | `Timestamp` / `SupportsTimestamp` / `SetTimestamp`         |
 
-## Support matrix (current)
+## Support matrix
 
 This table covers image-mode capabilities; filesystem layout restrictions apply.
-See [Live Mode](../architecture/live-mode.html) for native-platform limits.
+See [Modes](../architecture/modes.html) for native-platform limits.
 
 | Filesystem | named-stream | slack-space | timestomp |
 | ---------- | ------------ | ----------- | --------- |
-| ext4       | done, `internal/filesystem/ext4/ext4.go` and `xattr.go` | implemented (bounded image layouts) | done, `internal/filesystem/ext4/timestomp.go` |
-| APFS       | done, `internal/filesystem/apfs/namedstream.go` (in-place B-tree leaf rewrite, no allocation) | implemented (bounded image layouts) | implemented |
-| NTFS       | done, `internal/filesystem/ntfs/namedstream.go` (resident and non-resident, MFT-mirror aware) | implemented (bounded image layouts) | implemented |
-| fakefs     | done | done | done (test double, `internal/filesystem/fakefs`) |
+| ext4       | `internal/filesystem/ext4/ext4.go` and `xattr.go` | bounded image layouts | `internal/filesystem/ext4/timestomp.go` |
+| APFS       | `internal/filesystem/apfs/namedstream.go` (in-place B-tree leaf rewrite, no allocation) | bounded image layouts | yes |
+| NTFS       | `internal/filesystem/ntfs/namedstream.go` (resident and non-resident, MFT-mirror aware) | bounded image layouts | yes |
+| fakefs     | yes | yes | yes (test double, `internal/filesystem/fakefs`) |
 
 `fakefs` is an in-memory filesystem that implements all three capabilities
 against a byte-slice image. It is how `internal/technique` gets tested without a
@@ -90,40 +80,3 @@ whether the technique can be detected at all.
 `internal/custody` decorator, which SHA-256-hashes and logs it. A technique
 cannot opt out; the logging is structural, not a convention. Detection is
 read-only and never writes to the custody log.
-
-## Techniques nemo does not implement
-
-These are out of scope per [Overview](../overview.html). Recognise them so you do not
-reach for one by accident, and so you know where nemo's guarantees stop.
-
-**Unallocated-space hiding and file carving.** Writing a payload into blocks the
-filesystem currently marks free, or recovering files from there. The next
-allocation overwrites it, and recovering it is a data-recovery problem rather
-than a filesystem-parsing one. nemo only touches space the filesystem considers
-allocated.
-
-**Reserved metadata regions.** NTFS keeps about 16 MFT records reserved
-(`$MFT` through `$Extend`), and the `$Boot` file's tail is padding. ext4
-reserves inodes 1 through 10 and pads its group descriptors. Data parked there
-survives normal use, but any `fsck` or `chkdsk` flags or clobbers it, and
-writing there risks corrupting the volume.
-
-**`$BadClus` and bad-block-list marking.** Telling NTFS (`$BadClus`) or ext4 (the
-bad-block inode) that a good cluster is bad so the filesystem routes around it,
-then reading it directly. Every modern forensic suite checks for this first.
-
-**Deleted-inode and deleted-MFT-record reuse.** Writing into the record of a
-just-deleted file before the filesystem reuses it. Racy and short-lived.
-
-**Steganography inside file formats.** Hiding a payload in the unused bits of a
-JPEG, PNG, or PDF. This has no filesystem component and is a large field of its
-own.
-
-**Sparse-file holes.** A sparse file's unwritten ranges read as zeros and occupy
-no blocks, so there is nothing to hide in, only a size-versus-allocation
-mismatch to notice.
-
-**Snapshot and VSS stashing.** Putting data in a Volume Shadow Copy or an APFS
-snapshot and deleting the live copy. This is "hide a normal file where most tools
-do not look," not a filesystem-structure technique, and it depends on snapshot
-retention you do not control.

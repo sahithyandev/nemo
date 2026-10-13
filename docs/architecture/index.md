@@ -1,6 +1,6 @@
 ---
 title: Architecture
-nav_order: 6
+nav_order: 4
 has_children: true
 ---
 
@@ -12,86 +12,19 @@ Adding a filesystem (FAT32 later, say) or a technique should mean writing a new 
 
 ## File structure
 
-What exists today is marked "built". `internal/tskcheck` is the only planned piece left.
-
 ```text
 nemo/
-  main.go                  // built: calls cmd.Execute
-  cmd/                      // package cmd, one file per command
-    root.go                // built: root command + "nemo version" (embeds VERSION)
-    VERSION                // built
-    hide.go                // built
-    detect.go              // built
-    clear.go               // built
-    extract.go             // built: reads a hidden payload back out
-    features.go            // built: "nemo features" support matrix
-    filesystems.go         // built: blank-imports the filesystem packages so they register
-    live.go                // built: live-mode target router (ext4 on Linux, NTFS on Windows, APFS on macOS)
+  main.go
+  cmd/                      // Cobra commands, one file per command, plus the live-mode router
   internal/
-    image/
-      image.go             // built: Image interface (ReadAt, WriteAt, Size, Path)
-      rawimage.go          // built: os.File backend, Open + OpenReadOnly
-      readonly.go          // built: ReadOnly wrapper, fails every write (detect's guard)
-      aligned.go           // built: sector-aligned wrapper for raw character devices
-      identity_unix.go     // built: opened device/inode identity
-      identity_windows.go  // built: opened volume/file identity
-      identity_filesystem.go // built: ext4 UUID binding for backups
-    binutil/
-      binutil.go           // built: Uint/Int, Bits, String/UTF16String
-      reader.go            // built: sequential cursor with a sticky first-error
-      doc.go                // built
-    filesystem/
-      filesystem.go        // built: FileSystem, Entry, Type, the three capability interfaces
-      registry.go          // built: Detector, Register, Detectors, signature-based Open
-      fakefs/
-        fakefs.go          // built: in-memory FileSystem/Entry with all three capabilities
-        image.go           // built: in-memory Image, for tests
-      ntfs/
-        ntfs.go             // built: parser + Detector
-        mft.go              // built
-        attribute.go        // built
-        bootsector.go       // built
-        directory.go        // built
-        namedstream.go     // built: ADS, resident and non-resident, MFT-mirror aware
-        slack.go            // built: cluster-slack regions, fragmented-run aware
-        timestomp.go        // built: $STANDARD_INFORMATION field writes
-        live_windows.go    // built: read-only volume access reusing the image parser
-        live_unsupported.go // built: "unsupported on this OS" on non-Windows builds
-      apfs/
-        apfs.go            // built: parser + Detector
-        namedstream.go     // built: xattr + resource fork (in-place B-tree leaf rewrite)
-        btree_write.go     // built: single-leaf in-place rewrite helpers
-        btree.go           // built
-        slack.go            // built: per-extent dstream slack regions
-        timestomp.go        // built: j_inode_val_t field writes
-        live_darwin.go      // built: path-backed liveEntry (xattr/setattrlist) plus raw-device slack
-        live_unsupported.go // built: "unsupported on this OS" on non-darwin builds
-      ext4/
-        ext4.go            // built: parser + Detector
-        indexed.go         // built: validated HTree directory traversal
-        inode.go           // built
-        xattr.go           // built: named streams via xattr
-        timestomp.go       // built
-        slack.go            // built: final-block slack regions
-        live_linux.go       // built: native xattrs/timestamps and skipped-child warnings
-        live_slack_linux.go // built: verified read-only backing-device discovery
-        live_slack_stub.go  // built: unsupported non-Linux live slack entry point
-        live_stub.go        // built: "unsupported on this OS" on non-Linux builds
-    technique/
-      technique.go         // built: Technique interface, Finding/Result/Backup/Request, Get, ErrUnsupported
-      slackframe.go        // built: slack frame encode/decode
-      manifest.go          // built: JSON Lines backup manifest for clear
-    custody/
-      custody.go           // built: Wrap decorator, SHA-256 + in-memory write events
-      log.go                // built: Record type, append to the custody log
-    validation/            // built: local-dataset scoring used by tools/validate
-      validation.go
-    tskcheck/              // planned
-      tskcheck.go           // cgo adapter over libtsk, isolated so only this package needs cgo
-  tools/
-    validate/              // built: CLI entry point for internal/validation
-      main.go
-  go.mod
+    image/                  // Image interface, raw file backend, read-only and aligned wrappers
+    binutil/                // bounds-safe binary readers
+    filesystem/             // FileSystem/Entry interfaces, registry, in-memory fakefs
+      ntfs/ apfs/ ext4/     // parser, named streams, slack, timestomp, live mode
+    technique/              // Technique interface, slack framing, backup manifest
+    custody/                // write-recording Image decorator and custody log
+    validation/             // local-dataset scoring
+  tools/validate/           // CLI entry point for internal/validation
 ```
 
 ## Layers
@@ -116,18 +49,16 @@ The contracts for each layer are split into their own pages:
 - [Image and Custody](image.html): the `Image` interface and the `internal/custody` write decorator.
 - [Filesystem Interfaces](filesystem.html): `FileSystem`/`Entry`, the registry, and the three capability interfaces.
 - [Technique Interfaces](technique.html): the `Technique` interface, `Request`/`Finding`/`Result`, and the backup/manifest contract.
-- [Live Mode](live-mode.html): how image mode and live mode split, and what each platform supports.
+- [Modes](modes.html): how image mode and live mode split, and what each platform supports.
 - [Architecture Decisions](decisions.html): the custody, framing, backup, and capability contracts.
-
-`internal/tskcheck` remains planned and isolated in its own package, since it is the only place cgo would be required (a libtsk binding). Nothing else in the tree may import it, so the rest of the codebase stays buildable with `CGO_ENABLED=0`.
 
 ## Why this shape
 
 - Independent ownership: one person builds `internal/filesystem/apfs` while another builds `internal/filesystem/ext4`. Both only need to satisfy `FileSystem`/`Entry`, so neither blocks the other and neither touches shared code.
-- Incremental shipping: a filesystem can land with only `NamedStreamCapable`. `SlackSpaceCapable` and `TimestompCapable` are separate optional interfaces, so partial support is just the unbuilt pieces missing, not a broken implementation of one big interface.
+- Incremental support: a filesystem can implement only `NamedStreamCapable`. `SlackSpaceCapable` and `TimestompCapable` are separate optional interfaces, so partial support just means a missing interface, not a broken implementation of one big interface.
 - New filesystem equals a new package plus one registry line. No changes to `internal/technique` or the commands.
 - Custody recording is structural, not a convention. Because it is a decorator over `Image`, a technique cannot skip it: every `WriteAt` on the wrapped image is hashed and recorded regardless of the caller.
 
 ## Non-goals
 
-This mirrors [Overview](../overview.html)'s scope: no runtime plugin loading (dynamic `.so`/`.dll`), no config-driven technique selection beyond the `--technique` flag. "Pluggable" here means new Go packages behind existing interfaces, compiled in.
+This mirrors [Home](../#scope)'s scope: no runtime plugin loading (dynamic `.so`/`.dll`), no config-driven technique selection beyond the `--technique` flag. "Pluggable" here means new Go packages behind existing interfaces, compiled in.
