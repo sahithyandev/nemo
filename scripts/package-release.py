@@ -41,8 +41,8 @@ def main():
                 "source_commit": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
                 "tracked_source_dirty": bool(subprocess.check_output(["git", "status", "--porcelain", "--untracked-files=no"], cwd=ROOT, text=True)),
                 "build_flags": ["-trimpath", "-buildvcs=false", "-ldflags=-buildid=", "CGO_ENABLED=0"]}, sort_keys=True, indent=2).encode() + b"\n"
-            for doc in ("LICENSE", "CHANGELOG.md", *[str(path.relative_to(ROOT)) for path in sorted((ROOT / "docs/release").glob("*.md"))]):
-                files[Path(doc).name if doc != "docs/release/README.md" else "RELEASE.md"] = (ROOT / doc).read_bytes()
+            for doc in ("LICENSE", "CHANGELOG.md", *[str(path.relative_to(ROOT)) for path in sorted((ROOT / "release").glob("*.md"))]):
+                files[Path(doc).name if doc != "release/README.md" else "RELEASE.md"] = (ROOT / doc).read_bytes()
             stem = f"nemo-{version}-{system}-{arch}"
             if system == "windows":
                 archive = args.output / (stem + ".zip")

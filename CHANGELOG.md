@@ -84,7 +84,7 @@ Validation and safeguards:
 - Go unit tests, vet, native Linux acceptance, exact restoration/extraction,
   independently checked custody hashes and read-only-source checks.
 - Clean-clone packaging/rehearsal evidence and the timed command-segment report
-  are recorded in `docs/release/`; the eight-minute speaker plan does not claim
+  are recorded in `release/`; the eight-minute speaker plan does not claim
   a measured human presentation.
 - Native macOS/Windows acceptance evidence was contributed in PR #78. Updated
   native runners account for versioned frame sizes; native jobs gate publication.

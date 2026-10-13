@@ -10,7 +10,7 @@ On the Linux presentation machine, install Python 3.11+ and e2fsprogs (`mke2fs`,
 `mkfs.ext4`, `debugfs`); `sh`, `stat` and `truncate` must also be available.
 No Go compiler, downloads, sudo or disk mounting are needed for the archived demo.
 Build the release archives beforehand using the release instructions in `RELEASE.md`
-(the source checkout equivalent is `docs/release/README.md`). Verify the archive with
+(the source checkout equivalent is `release/README.md`). Verify the archive with
 `sha256sum -c SHA256SUMS`, unpack the matching Linux archive, and change into its
 `nemo-VERSION-linux-amd64` directory. The archive contains these runnable assets:
 
