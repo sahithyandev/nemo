@@ -6,7 +6,7 @@ nav_order: 1
 
 # nemo
 
-Nemo is a cross-platform CLI tool, written in Go, for hiding, detecting, and clearing hidden data on NTFS, APFS, and ext4. It works in two modes: image mode, offline against a raw, unencrypted disk image, and live mode, directly on the filesystem of the machine it runs on (see [Modes](architecture/modes.html) for what each platform supports). Grab a disk image and try it out below.
+Nemo is a cross-platform CLI tool, written in Go, for hiding, detecting, and clearing hidden data on NTFS, APFS, and ext4. It works in two modes: image mode, offline against a raw, unencrypted disk image, and live mode, directly on the filesystem of the machine it runs on (see [Modes](modes.html) for what each platform supports). Grab a disk image and try it out below.
 
 ## Install
 

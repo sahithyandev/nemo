@@ -50,7 +50,7 @@ The contracts for each layer are split into their own pages:
 - [Image and Custody](image.html): the [`Image`]({{ site.src }}/internal/image/image.go#L4) interface and the `internal/custody` write decorator.
 - [Filesystem Interfaces](filesystem.html): [`FileSystem`]({{ site.src }}/internal/filesystem/filesystem.go#L24)/[`Entry`]({{ site.src }}/internal/filesystem/filesystem.go#L31), the registry, and the three capability interfaces.
 - [Technique Interfaces](technique.html): the [`Technique`]({{ site.src }}/internal/technique/technique.go#L92) interface, [`Request`]({{ site.src }}/internal/technique/technique.go#L71)/[`Finding`]({{ site.src }}/internal/technique/technique.go#L32)/[`Result`]({{ site.src }}/internal/technique/technique.go#L39), and the backup/manifest contract.
-- [Modes](modes.html): how image mode and live mode split, and what each platform supports.
+- [Mode implementation](modes.html): how image mode and live mode split in the code, and the two `Entry` implementations per filesystem.
 - [Architecture Decisions](decisions.html): the custody, framing, backup, and capability contracts.
 
 ## Why this shape

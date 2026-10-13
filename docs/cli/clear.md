@@ -40,4 +40,4 @@ Live mode runs on ext4 (Linux), NTFS (Windows, read-only), and APFS (macOS). A
 target on a non-native or unsupported volume refuses with a clear error naming
 that filesystem rather than falling through to something wrong. `slack-space`
 live clear always fails against a mounted APFS volume and is unsupported on
-Linux and NTFS entirely; use `--image` instead. See [Modes](../architecture/modes.html).
+Linux and NTFS entirely; use `--image` instead. See [Modes](../modes.html).

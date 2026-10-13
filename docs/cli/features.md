@@ -31,7 +31,7 @@ permissions.
 ## Support matrix
 
 This table covers image-mode capabilities; filesystem layout restrictions apply.
-See [Modes](../architecture/modes.html) for native-platform limits.
+See [Modes](../modes.html) for native-platform limits.
 
 | Filesystem | named-stream | slack-space | timestomp |
 | ---------- | ------------ | ----------- | --------- |
