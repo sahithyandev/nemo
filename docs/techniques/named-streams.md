@@ -90,7 +90,7 @@ ext4 stores xattrs in up to two places, and nemo reads and writes both
    then a hash. Identical xattr blocks get deduplicated and reference-counted
    across inodes, which is why `storeXattrRegion` refuses to mutate a block whose
    `refcount` is above 1. That case needs copy-on-write allocation nemo does not
-   do yet.
+   do.
 
 Each attribute is an `ext4_xattr_entry`:
 
@@ -200,7 +200,7 @@ DeleteStream(name string) error
   placement policy: update in place if the name exists, else pack into the
   in-inode area, else use the external block. It refuses shared blocks
   (`refcount > 1`) and refuses to empty an external block, since both need block
-  allocation or deallocation that is not built yet.
+  allocation or deallocation that nemo does not implement.
 - APFS is implemented. `internal/filesystem/apfs/namedstream.go` reads `j_xattr`
   records from the volume's filesystem B-tree and follows a data stream's file
   extents for stream-backed values. Writes rewrite the affected B-tree leaf in
@@ -218,7 +218,7 @@ DeleteStream(name string) error
   non-resident data runs, and `WriteStream`/`DeleteStream` repack the record
   in place. A resident stream can be replaced or created if it fits the
   record's free space; a non-resident stream can be overwritten only within
-  its existing cluster runs, since no run allocation is built yet. Every
+  its existing cluster runs, since nemo has no run allocation. Every
   write is verified by reading the record back, and a write to one of the
   first few MFT records, or to a data run overlapping `$MFTMirr`'s on-disk
   bytes, is refused rather than leaving the mirror stale. See

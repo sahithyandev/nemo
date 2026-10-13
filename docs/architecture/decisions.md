@@ -23,7 +23,7 @@ Logging occurs after mutation and does not roll back a write; these records are
 not a transactional write-ahead log, and per-offset wrapper events are not the
 persisted JSON Lines schema. Slack backups are persisted before overwriting bytes.
 
-See [Image and Custody](image.md) and [Live Mode](live-mode.md).
+See [Image and Custody](image.md) and [Modes](modes.md).
 
 ## Slack framing
 
@@ -61,4 +61,4 @@ capability it needs and receives a stable unsupported error when an entry or
 platform cannot provide it. This keeps unsupported live and filesystem cases
 explicit rather than silently falling back to another mode.
 
-See [Filesystem Interfaces](filesystem.md) and [Live Mode](live-mode.md).
+See [Filesystem Interfaces](filesystem.md) and [Modes](modes.md).

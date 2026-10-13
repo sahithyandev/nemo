@@ -35,5 +35,5 @@ never attempts a live `slack-space` detect, the same way it skips any technique 
 filesystem doesn't support; on macOS, `--technique slack-space` explicitly does,
 opening the volume's raw device read-only (root only if that device node isn't
 already readable by the current user). Live `slack-space` detect is unsupported
-on Linux and NTFS entirely. See [Live Mode](../architecture/live-mode.html) and
+on Linux and NTFS entirely. See [Modes](../architecture/modes.html) and
 [APFS live mode](../file-systems/apfs.html#live-mode-macos).

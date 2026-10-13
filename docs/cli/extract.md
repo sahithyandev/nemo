@@ -32,5 +32,5 @@ For slack-space, `extract` returns only the first valid framed payload it finds,
 Live mode runs on ext4 (Linux), NTFS (Windows, read-only), and APFS (macOS); each
 platform only ever reaches its native filesystem, so a target on a non-native or
 unsupported volume refuses with a clear error naming that filesystem rather than
-falling through to something wrong. See [Live Mode](../architecture/live-mode.html)
+falling through to something wrong. See [Modes](../architecture/modes.html)
 and [APFS live mode](../file-systems/apfs.html#live-mode-macos).

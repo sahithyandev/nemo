@@ -129,7 +129,7 @@ runs (`capacity` from `streamRuns`): growing a stream past its current
 allocation, or creating a brand-new non-resident stream, needs cluster
 allocation this parser doesn't do, and returns a clear error instead.
 `DeleteStream` refuses a non-resident stream outright, for the same reason:
-freeing its clusters needs deallocation support that doesn't exist yet.
+freeing its clusters needs deallocation support that doesn't exist.
 
 Every mutation goes through `prepareStreamRecord` before any byte is
 written, which:
@@ -221,7 +221,7 @@ close it immediately. No volume locks, dismounts or raw writes are performed.
 
 Live reads are not a consistent snapshot: concurrent filesystem changes can
 cause inconsistent results or parser errors. The existing parser limitations
-apply. Native ADS and timestamp writes are not implemented in this phase.
+apply. Native ADS and timestamp writes are not implemented.
 Non-Windows `OpenLive` calls return `filesystem.ErrUnsupported` without touching
 the target; NTFS image mode remains available on all supported hosts.
 

@@ -14,7 +14,7 @@ nemo features --mode image
 nemo features --mode live
 ```
 
-Useful for checking capabilities before running `hide` against a given image, without consulting the docs. The matrix is built from the same `internal/filesystem` and `internal/technique` registrations used at runtime, so it can't drift from actual behavior. See [Filesystem Interfaces](../architecture/filesystem.html#technique-selection-and-the-features-matrix) for how it's assembled, and [Techniques](../techniques/#support-matrix-current) for the current matrix.
+Useful for checking capabilities before running `hide` against a given image, without consulting the docs. The matrix is built from the same `internal/filesystem` and `internal/technique` registrations used at runtime, so it can't drift from actual behavior. See [Filesystem Interfaces](../architecture/filesystem.html#technique-selection-and-the-features-matrix) for how it's assembled, and [Techniques](../techniques/#support-matrix) for the matrix.
 
 The default and `--mode image` report registered image techniques. `--mode live`
 reports native capabilities on the current operating system, with a `LIMITS`

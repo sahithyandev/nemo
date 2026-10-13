@@ -70,8 +70,8 @@ type Detector struct {
     Type       Type
     Sniff      func([]byte) bool
     New        func(image.Image) (FileSystem, error)
-    Techniques []string // ext4 today: []string{"named-stream", "slack-space", "timestomp"}
+    Techniques []string // ext4: []string{"named-stream", "slack-space", "timestomp"}
 }
 ```
 
-`features` reads `Techniques` off every registered `Detector` and prints the matrix: no image, no reflection, and no way to drift from `registry.go` because it reads the same struct detection uses. Filesystem implementations must keep their declared techniques consistent with their capabilities. See [Techniques](../techniques/#support-matrix-current) for the matrix as it stands.
+`features` reads `Techniques` off every registered `Detector` and prints the matrix: no image, no reflection, and no way to drift from `registry.go` because it reads the same struct detection uses. Filesystem implementations must keep their declared techniques consistent with their capabilities. See [Techniques](../techniques/#support-matrix) for the matrix.

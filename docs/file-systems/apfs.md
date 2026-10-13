@@ -313,7 +313,7 @@ The four timestamps live at fixed offsets in the `j_inode_val_t` INODE record:
 `uint64` nanosecond count since the Unix epoch. `SetTimestamp` finds that record
 through `fsTree.rewriteLeaf` (the same in-place leaf rewrite `namedstream.go` uses)
 and overwrites 8 of its bytes, leaving the rest of the record, including `xfields`,
-untouched. The record's length never changes, so this is the same same-size-replace
+untouched. The record's length never changes, so this is the same-size-replace
 case `replaceXattr` already covers: no B-tree rebalance, no `btree_info_t` update
 beyond what `bumpRootKeyCount` already does for a zero-delta mutation.
 
@@ -402,7 +402,7 @@ Some things aren't attempted at all, not even refused with an error.
 `live_darwin.go` implements live mode for APFS on macOS: no volume parsing, every
 operation is a syscall against a path. It's a second, independent `filesystem.Entry`
 (`liveEntry`), not the image-mode `Entry` running with a different backing store; see
-[Live Mode](../architecture/live-mode.html) for why they're kept separate. Every other
+[Modes](../architecture/modes.html) for why they're kept separate. Every other
 OS gets `live_unsupported.go` (`//go:build !darwin`), which returns
 `filesystem.ErrUnsupported` so cross-compiling stays clean.
 

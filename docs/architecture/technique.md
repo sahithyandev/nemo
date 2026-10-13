@@ -48,7 +48,7 @@ one `Backup` per line, `Original` as base64, `Timestamp` as RFC 3339. `hide`
 passes a closure calling `AppendManifest`; a write failure there aborts the hide
 before any bytes are overwritten. `clear` replays it via
 `LoadManifest` and `LatestImageBackup`; image identity and exact frame digest are checked before mutation, and later matching records win, so re-hiding a target then
-clearing restores the last hide's bytes. See [CLI Reference](../cli/#the-manifest) for the user-facing flag.
+clearing restores the last hide's bytes. `--manifest` (default `nemo-manifest.jsonl`) names that file. `hide` appends to it before overwriting slack-space bytes, so a later `clear` can restore them. See [Slack-Space Hiding](../techniques/slack-space.html) for what gets recorded.
 
 **Extract.** `extract` reads a hidden payload back out without mutating anything.
 named-stream delegates to `filesystem.NamedStreamCapable.ReadStream`. slack-space
@@ -62,9 +62,8 @@ framed payload (for example, stale frames left behind by an earlier hide that
 was never cleared), `Extract` returns only the first one it finds, while
 `Detect` lists every frame it finds. The two can disagree about which payload
 is "the" payload on such a target. `Clear` makes the same first-frame
-assumption, so the behavior is at least consistent across all three. A
-`--index` flag to pick a specific frame is a reasonable future addition; none
-exists today.
+assumption, so the behavior is at least consistent across all three. There is no
+`--index` flag to pick a specific frame.
 
 **Timestomp limitation.** `filesystem.TimestompCapable` exposes `Timestamp`,
 `SupportsTimestamp`, and `SetTimestamp`. Reading a current value does not establish

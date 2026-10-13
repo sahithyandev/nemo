@@ -28,10 +28,10 @@ Options:
 - `--timestamp`: the value to set the chosen timestamp field to, in RFC 3339 format. Required for `timestomp`.
 - `--manifest`: path to the backup manifest (default `nemo-manifest.jsonl`). For `slack-space`, `hide` appends the residual bytes it is about to overwrite to this JSON Lines file so a later `clear` can restore them; the hide aborts if the manifest cannot be written. See [Technique Interfaces](../architecture/technique.html) for the full backup contract.
 
-See [Modes](./#modes) and [Custody logging](./#custody-logging) for how `--image` and the custody record work.
+See [Modes](../architecture/modes.html) and [Image and Custody](../architecture/image.html) for how `--image` and the custody record work.
 
 Live mutation supports APFS on macOS and ext4 on Linux. Linux accepts `user.*`
 xattrs and accessed/modified timestamps on verified ext4 mounts, and refuses live
 slack. Windows NTFS live access is read-only. APFS refuses writes to mounted raw
 volumes; use disposable image fixtures for slack demonstrations. See
-[Live Mode](../architecture/live-mode.html).
+[Modes](../architecture/modes.html).

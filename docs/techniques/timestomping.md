@@ -151,12 +151,12 @@ type TimestompCapable interface {
 timestamp does not establish whether it was altered. Nemo has no historical
 baseline comparison or timestamp anomaly detector, so it cannot report a
 supported finding from the current value alone. Cross-checking independent
-records, such as NTFS `$SI` against `$FN`, remains future work.
+records, such as NTFS `$SI` against `$FN`, is not supported.
 
 `hide` does not automatically read and save the original timestamp to a manifest.
 Consequently, `nemo clear --technique timestomp` requires the original timestamp
 supplied explicitly and rejects a zero value. The shared reader makes an automatic
-backup possible, but the technique and manifest workflow do not implement it yet.
+backup possible, but the technique and manifest workflow do not implement it.
 
 ## How nemo implements it
 

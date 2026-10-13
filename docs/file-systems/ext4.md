@@ -156,7 +156,7 @@ or an out-of-32-bit-range value is rejected outright rather than truncated.
 
 `Entry` implements the shared `filesystem.TimestompCapable` methods `Timestamp`
 (a reader), `SupportsTimestamp`, and `SetTimestamp`. `SupportsTimestamp` checks
-whether the inode contains the requested field. The technique layer does not yet
+whether the inode contains the requested field. The technique layer does not
 compare timestamp values against a historical baseline or automatically save
 original timestamps. See [Timestomping](../techniques/timestomping.html#why-nemos-detect-reports-nothing-for-timestomp)
 for the resulting detection and restoration limits.
