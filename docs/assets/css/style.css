@@ -57,7 +57,7 @@ body {
 main {
   flex: 1;
   min-width: 0;
-  max-width: 780px;
+  max-width: min(65rem, 92vw);
   padding: 2.5rem 3rem;
 }
 
@@ -77,10 +77,60 @@ main h2 {
 
 main h3 { font-size: 1.15rem; }
 
+.toc {
+  margin: 1.25rem 0 2rem;
+  font-size: 0.85rem;
+  border-left: 2px solid #e0e0e0;
+  padding-left: 0.9rem;
+}
+
+.toc strong {
+  display: block;
+  margin-bottom: 0.5rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #888;
+}
+
+.toc ul { margin: 0; padding: 0; list-style: none; }
+.toc ul ul { padding-left: 0.85rem; }
+.toc li { margin: 0.45rem 0; }
+.toc a {
+  display: block;
+  color: #555;
+  text-decoration: none;
+  line-height: 1.3;
+  opacity: 0.7;
+  transition: color 0.2s ease, opacity 0.2s ease;
+}
+.toc a:hover { color: #0969da; opacity: 1; }
+.toc a.active { color: #0969da; opacity: 1; }
+
+@media (min-width: 1150px) {
+  body.has-toc main { margin-right: 260px; }
+
+  body.has-toc .toc {
+    position: fixed;
+    top: 2.5rem;
+    right: 1.5rem;
+    width: 220px;
+    max-height: calc(100vh - 5rem);
+    overflow-y: auto;
+    margin: 0;
+  }
+}
+
 main a { color: #0969da; }
 main a:hover { text-decoration: none; }
 
 main p, main ul, main ol { color: #2a2a2a; }
+
+main p {
+  max-width: 72ch;
+  text-balance: pretty;
+}
 
 main blockquote {
   margin: 1rem 0;
@@ -104,7 +154,23 @@ main th, main td {
 
 main th { background: #f6f6f6; }
 
+main table.test-images td:last-child { width: 1%; white-space: nowrap; }
+
+.btn {
+  display: inline-block;
+  padding: 0.3rem 0.75rem;
+  background: #0969da;
+  color: #fff;
+  border-radius: 5px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.btn:hover { background: #0860c7; }
+
 main pre {
+  position: relative;
   background: #272822;
   color: #f8f8f2;
   padding: 1rem;
@@ -113,14 +179,47 @@ main pre {
   font-size: 0.88rem;
 }
 
-main code {
-  background: #f0f0f0;
-  padding: 0.15em 0.35em;
-  border-radius: 3px;
-  font-size: 0.88em;
+.copy-btn {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  padding: 0.2rem 0.55rem;
+  font-size: 0.75rem;
+  color: #f8f8f2;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s;
 }
 
-main pre code { background: none; padding: 0; }
+main pre:hover .copy-btn,
+.copy-btn:focus { opacity: 1; }
+
+main code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  background: #eef1f5;
+  color: #24292f;
+  border: 1px solid #dde2e8;
+  padding: 0.1em 0.4em;
+  border-radius: 4px;
+  font-size: 0.85em;
+  word-break: break-word;
+}
+
+main a code { color: inherit; }
+
+main pre, main pre code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+
+main pre code {
+  background: none;
+  color: inherit;
+  border: 0;
+  padding: 0;
+  font-size: inherit;
+  word-break: normal;
+}
 
 main img { max-width: 100%; }
 
@@ -164,4 +263,222 @@ main img { max-width: 100%; }
     max-width: 100%;
     padding: 4rem 1.25rem 2rem;
   }
+}
+
+/* syntax highlighting (rouge monokai) */
+.highlight table td { padding: 5px; }
+.highlight table pre { margin: 0; }
+.highlight .c, .highlight .ch, .highlight .cd, .highlight .cpf {
+  color: #75715e;
+  font-style: italic;
+}
+.highlight .cm {
+  color: #75715e;
+  font-style: italic;
+}
+.highlight .c1 {
+  color: #75715e;
+  font-style: italic;
+}
+.highlight .cp {
+  color: #75715e;
+  font-weight: bold;
+}
+.highlight .cs {
+  color: #75715e;
+  font-weight: bold;
+  font-style: italic;
+}
+.highlight .err {
+  color: #960050;
+  background-color: #1e0010;
+}
+.highlight .gi {
+  color: #ffffff;
+  background-color: #324932;
+}
+.highlight .gd {
+  color: #ffffff;
+  background-color: #493131;
+}
+.highlight .ge {
+  font-style: italic;
+}
+.highlight .ges {
+  font-weight: bold;
+  font-style: italic;
+}
+.highlight .gr {
+  color: #aa0000;
+}
+.highlight .gt {
+  color: #aa0000;
+}
+.highlight .gh {
+  color: #999999;
+}
+.highlight .go {
+  color: #888888;
+}
+.highlight .gp {
+  color: #555555;
+}
+.highlight .gs {
+  font-weight: bold;
+}
+.highlight .gu {
+  color: #aaaaaa;
+}
+.highlight .k, .highlight .kv {
+  color: #66d9ef;
+  font-weight: bold;
+}
+.highlight .kc {
+  color: #66d9ef;
+  font-weight: bold;
+}
+.highlight .kd {
+  color: #66d9ef;
+  font-weight: bold;
+}
+.highlight .kp {
+  color: #66d9ef;
+  font-weight: bold;
+}
+.highlight .kr {
+  color: #66d9ef;
+  font-weight: bold;
+}
+.highlight .kt {
+  color: #66d9ef;
+  font-weight: bold;
+}
+.highlight .kn {
+  color: #f92672;
+  font-weight: bold;
+}
+.highlight .ow {
+  color: #f92672;
+  font-weight: bold;
+}
+.highlight .o {
+  color: #f92672;
+  font-weight: bold;
+}
+.highlight .mf {
+  color: #ae81ff;
+}
+.highlight .mh {
+  color: #ae81ff;
+}
+.highlight .il {
+  color: #ae81ff;
+}
+.highlight .mi {
+  color: #ae81ff;
+}
+.highlight .mo {
+  color: #ae81ff;
+}
+.highlight .m, .highlight .mb, .highlight .mx {
+  color: #ae81ff;
+}
+.highlight .se {
+  color: #ae81ff;
+}
+.highlight .sa {
+  color: #66d9ef;
+  font-weight: bold;
+}
+.highlight .sb {
+  color: #e6db74;
+}
+.highlight .sc {
+  color: #e6db74;
+}
+.highlight .sd {
+  color: #e6db74;
+}
+.highlight .s2 {
+  color: #e6db74;
+}
+.highlight .sh {
+  color: #e6db74;
+}
+.highlight .si {
+  color: #e6db74;
+}
+.highlight .sx {
+  color: #e6db74;
+}
+.highlight .sr {
+  color: #e6db74;
+}
+.highlight .s1 {
+  color: #e6db74;
+}
+.highlight .ss {
+  color: #e6db74;
+}
+.highlight .s, .highlight .dl {
+  color: #e6db74;
+}
+.highlight .na {
+  color: #a6e22e;
+}
+.highlight .nc {
+  color: #a6e22e;
+  font-weight: bold;
+}
+.highlight .nd {
+  color: #a6e22e;
+  font-weight: bold;
+}
+.highlight .ne {
+  color: #a6e22e;
+  font-weight: bold;
+}
+.highlight .nf, .highlight .fm {
+  color: #a6e22e;
+  font-weight: bold;
+}
+.highlight .no {
+  color: #66d9ef;
+}
+.highlight .bp {
+  color: #f8f8f2;
+}
+.highlight .nb {
+  color: #f8f8f2;
+}
+.highlight .ni {
+  color: #f8f8f2;
+}
+.highlight .nn {
+  color: #f8f8f2;
+}
+.highlight .vc {
+  color: #f8f8f2;
+}
+.highlight .vg {
+  color: #f8f8f2;
+}
+.highlight .vi {
+  color: #f8f8f2;
+}
+.highlight .nv, .highlight .vm {
+  color: #f8f8f2;
+}
+.highlight .w {
+  color: #f8f8f2;
+}
+.highlight .nl {
+  color: #f8f8f2;
+  font-weight: bold;
+}
+.highlight .nt {
+  color: #f92672;
+}
+  color: #f8f8f2;
+  background-color: #49483e;
 }

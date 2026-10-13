@@ -31,5 +31,68 @@
   <main>
     {{ content }}
   </main>
+  <script>
+    (function () {
+      var headings = document.querySelectorAll('main h2[id], main h3[id]');
+      if (headings.length < 2) return;
+      var toc = document.createElement('nav');
+      toc.className = 'toc';
+      var html = '<strong>On this page</strong><ul>';
+      var inSub = false;
+      headings.forEach(function (h) {
+        var link = '<a href="#' + h.id + '">' + h.textContent + '</a>';
+        if (h.tagName === 'H3') {
+          if (!inSub) { html += '<ul>'; inSub = true; }
+          html += '<li>' + link + '</li>';
+        } else {
+          if (inSub) { html += '</ul>'; inSub = false; }
+          html += '<li>' + link + '</li>';
+        }
+      });
+      if (inSub) html += '</ul>';
+      html += '</ul>';
+      toc.innerHTML = html;
+      var h1 = document.querySelector('main h1');
+      (h1 || document.querySelector('main')).insertAdjacentElement('afterend', toc);
+      document.body.classList.add('has-toc');
+
+      var links = {};
+      toc.querySelectorAll('a').forEach(function (a) {
+        links[a.getAttribute('href').slice(1)] = a;
+      });
+      var active = null;
+      var setActive = function (id) {
+        if (active) active.classList.remove('active');
+        active = id ? links[id] : null;
+        if (active) active.classList.add('active');
+      };
+      var visible = new Set();
+      var observer = new IntersectionObserver(function (entries) {
+        entries.forEach(function (e) {
+          if (e.isIntersecting) visible.add(e.target.id);
+          else visible.delete(e.target.id);
+        });
+        var top = null;
+        headings.forEach(function (h) {
+          if (top === null && visible.has(h.id)) top = h.id;
+        });
+        if (top) setActive(top);
+      }, { rootMargin: '0px 0px -75% 0px' });
+      headings.forEach(function (h) { observer.observe(h); });
+    })();
+    document.querySelectorAll('main pre').forEach(function (pre) {
+      var btn = document.createElement('button');
+      btn.className = 'copy-btn';
+      btn.type = 'button';
+      btn.textContent = 'Copy';
+      btn.addEventListener('click', function () {
+        navigator.clipboard.writeText(pre.innerText).then(function () {
+          btn.textContent = 'Copied';
+          setTimeout(function () { btn.textContent = 'Copy'; }, 1500);
+        });
+      });
+      pre.appendChild(btn);
+    });
+  </script>
 </body>
 </html>
