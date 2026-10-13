@@ -41,9 +41,41 @@ Each filesystem stores these differently, at different precision, in different
 structures. Some fields cannot be set through any normal API at all. That
 asymmetry is what makes timestomping detectable.
 
-## On-disk mechanics
+## Detection by a third party
 
-### NTFS: the `$SI` and `$FN` pair
+Timestomping is among the more detectable techniques, because the information
+exists in more than one place:
+
+- NTFS: cross-check `$SI` against `$FN`, check sub-second precision, and parse the
+  `$LogFile` transaction log and `$UsnJrnl:$J` change journal, which record the
+  real times of operations independently of the file's own fields.
+- ext4: compare `ctime` against `mtime` and `atime`. The `jbd2` journal records
+  the actual write times of recent metadata changes.
+- APFS: compare against snapshot copies and Spotlight. `fsck_apfs` and forensic
+  tools diff the inode record against snapshot deltas.
+- Everywhere: external corroboration such as application logs, `$Recycle.Bin` and
+  `.Trash` records, Prefetch (`.pf` file mtimes), browser history, backup
+  catalogs, and MRU registry keys. Timestomping the file touches none of these.
+
+## Why nemo's `detect` reports nothing for timestomp
+
+[`timestompTechnique.Detect`]({{ site.src }}/internal/technique/technique.go#L405) (`internal/technique/technique.go`) returns
+`nil, nil` after confirming that the entry implements the capability. A current
+timestamp does not establish whether it was altered. Nemo has no historical
+baseline comparison or timestamp anomaly detector, so it cannot report a
+supported finding from the current value alone. Cross-checking independent
+records, such as NTFS `$SI` against `$FN`, is not supported.
+
+`hide` does not automatically read and save the original timestamp to a manifest.
+Consequently, `nemo clear --technique timestomp` requires the original timestamp
+supplied explicitly and rejects a zero value. The shared reader makes an automatic
+backup possible, but the technique and manifest workflow do not implement it.
+
+## Implementation Notes
+
+### On-disk mechanics
+
+#### NTFS: the `$SI` and `$FN` pair
 
 Every MFT record carries the four timestamps twice:
 
@@ -53,7 +85,7 @@ Every MFT record carries the four timestamps twice:
   rename or move. It is not writable through the Win32 API at all.
 
 All eight values are Windows FILETIME: a 64-bit count of 100-nanosecond intervals
-since 1601-01-01 UTC. Reference: `[MS-FSCC]` §2.4.7 and §2.4.4.
+since 1601-01-01 UTC.[^fscc]
 
 What an examiner checks:
 
@@ -65,7 +97,7 @@ What an examiner checks:
   value that was typed rather than recorded. Many tools set only whole seconds.
 - Ordering. M earlier than B, or a timestamp before the volume was formatted.
 
-### ext4: split second and nanosecond fields
+#### ext4: split second and nanosecond fields
 
 The 128-byte "good old" inode holds `i_atime`, `i_mtime`, and `i_ctime` as
 32-bit signed seconds since 1970. Larger inodes, typically 256 bytes, add two
@@ -100,12 +132,11 @@ the ext4 timestomp signature. nemo can write `i_ctime`, because it edits the
 inode bytes directly in an image, which is a capability a live attacker on a
 mounted filesystem does not have.
 
-### APFS: nanosecond fields in the inode record
+#### APFS: nanosecond fields in the inode record
 
 APFS stores the four timestamps in the `j_inode_val_t` inode record in the
 filesystem B-tree, each a 64-bit count of nanoseconds since 1970-01-01 UTC
-(Apple's *APFS Reference*, `j_inode_val_t`: `create_time`, `mod_time`,
-`change_time`, `access_time`). The precision is higher than NTFS or ext4, so a
+(`create_time`, `mod_time`, `change_time`, `access_time`).[^apfs] The precision is higher than NTFS or ext4, so a
 whole-second value is an even stronger sign a human typed it.
 
 APFS also keeps copies of the dates that a timestomp does not reach:
@@ -117,23 +148,7 @@ APFS also keeps copies of the dates that a timestomp does not reach:
   (`com.apple.quarantine`), carry their own dates.
 - Local `tmutil` snapshots preserve the inode record as it was.
 
-## Detection by a third party
-
-Timestomping is among the more detectable techniques, because the information
-exists in more than one place:
-
-- NTFS: cross-check `$SI` against `$FN`, check sub-second precision, and parse the
-  `$LogFile` transaction log and `$UsnJrnl:$J` change journal, which record the
-  real times of operations independently of the file's own fields.
-- ext4: compare `ctime` against `mtime` and `atime`. The `jbd2` journal records
-  the actual write times of recent metadata changes.
-- APFS: compare against snapshot copies and Spotlight. `fsck_apfs` and forensic
-  tools diff the inode record against snapshot deltas.
-- Everywhere: external corroboration such as application logs, `$Recycle.Bin` and
-  `.Trash` records, Prefetch (`.pf` file mtimes), browser history, backup
-  catalogs, and MRU registry keys. Timestomping the file touches none of these.
-
-## Why nemo's `detect` reports nothing for timestomp
+### In nemo
 
 [`filesystem.TimestompCapable`]({{ site.src }}/internal/filesystem/filesystem.go#L81) exposes the current value and field support as well
 as the write operation:
@@ -145,20 +160,6 @@ type TimestompCapable interface {
     SetTimestamp(field TimeField, t time.Time) error
 }
 ```
-
-[`timestompTechnique.Detect`]({{ site.src }}/internal/technique/technique.go#L405) (`internal/technique/technique.go`) still returns
-`nil, nil` after confirming that the entry implements the capability. A current
-timestamp does not establish whether it was altered. Nemo has no historical
-baseline comparison or timestamp anomaly detector, so it cannot report a
-supported finding from the current value alone. Cross-checking independent
-records, such as NTFS `$SI` against `$FN`, is not supported.
-
-`hide` does not automatically read and save the original timestamp to a manifest.
-Consequently, `nemo clear --technique timestomp` requires the original timestamp
-supplied explicitly and rejects a zero value. The shared reader makes an automatic
-backup possible, but the technique and manifest workflow do not implement it.
-
-## How nemo implements it
 
 [`timestompTechnique`]({{ site.src }}/internal/technique/technique.go#L376) (`internal/technique/technique.go`):
 
@@ -199,3 +200,9 @@ APFS also has a live-mode path on macOS (`internal/filesystem/apfs/live_darwin.g
 `setattrlist(ATTR_CMN_CRTIME)` (stdlib has no equivalent), and `changed` stays
 unsupported there too, for the same reason it's unsupported live everywhere else. See
 [APFS live mode](../file-systems/apfs.html#live-mode-macos).
+
+## References
+
+[^fscc]: Microsoft, [\[MS-FSCC\]: File System Control Codes](https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-fscc/), §2.4.7 and §2.4.4.
+
+[^apfs]: Apple, [*Apple File System Reference*](https://developer.apple.com/support/downloads/Apple-File-System-Reference.pdf), `j_inode_val_t`.
