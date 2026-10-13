@@ -1,6 +1,6 @@
 ---
 title: Slack-Space Hiding
-parent: Techniques
+parent: How techniques work
 nav_order: 2
 ---
 

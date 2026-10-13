@@ -1,15 +1,17 @@
 ---
-title: Techniques
-nav_order: 2
+title: How techniques work
+nav_group: "Contributing"
+nav_order: 1
 has_children: true
 ---
 
-# Techniques
+# How techniques work
 
 These pages explain the anti-forensic techniques nemo implements: what they
 are, how they work on disk, how much data they hold, how they get detected, and
 where the code lives. It assumes you can read Go and a hex dump but have never
-touched filesystem forensics.
+touched filesystem forensics. For a plain summary of what each technique does and
+when to pick it, see [Techniques](../techniques.html).
 
 The per-filesystem support matrix is on the [features](../cli/features.html#support-matrix) page.
 

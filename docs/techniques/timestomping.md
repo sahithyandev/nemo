@@ -1,6 +1,6 @@
 ---
 title: Timestomping
-parent: Techniques
+parent: How techniques work
 nav_order: 3
 ---
 

@@ -153,5 +153,5 @@ retention you do not control.
 ## Where to go next
 
 - Use the tool: [CLI Reference](cli/).
-- Understand the techniques: [Techniques](techniques/).
-- Contribute a filesystem or technique: [Architecture](architecture/) and [File Systems](file-systems/).
+- Understand the techniques: [Techniques](techniques.html).
+- Contribute a filesystem or technique: [How techniques work](techniques/), [Architecture](architecture/), and [File Systems](file-systems/).
