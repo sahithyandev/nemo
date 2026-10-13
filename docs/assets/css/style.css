@@ -96,7 +96,7 @@ body {
 main {
   overflow-y: auto;
   scrollbar-width: none;
-  padding: 2.5rem max(3rem, calc(100% - 65rem)) 2.5rem 3rem;
+  padding: 2.5rem max(3rem, calc(100% - 80rem)) 2.5rem 3rem;
 }
 
 main::-webkit-scrollbar { display: none; }
@@ -165,10 +165,9 @@ main h3 { font-size: 1.15rem; }
 main a { color: var(--link); }
 main a:hover { text-decoration: none; }
 
-main p, main ul, main ol { color: var(--fg-2); }
-
-main p {
-  max-width: 72ch;
+main p, main ul, main ol {
+  color: var(--fg-2);
+  max-width: 80ch;
   text-balance: pretty;
 }
 
@@ -245,7 +244,7 @@ main code {
   padding: 0.1em 0.4em;
   border-radius: 4px;
   font-size: 0.85em;
-  word-break: break-word;
+  word-break: keep-all;
 }
 
 main a code { color: inherit; }
