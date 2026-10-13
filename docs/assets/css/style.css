@@ -521,3 +521,15 @@ main img { max-width: 100%; }
   color: #f8f8f2;
   background-color: #49483e;
 }
+
+/* adjacent footnote refs read as "1,2" instead of "12" */
+sup[id^="fnref:"] + sup[id^="fnref:"]::before {
+  content: ",";
+}
+
+.footnotes li {
+  margin: 0.25em 0;
+}
+.footnotes li p {
+  margin: 0;
+}
