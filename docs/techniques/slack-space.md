@@ -53,58 +53,6 @@ one 4096-byte block:
   disk. It is volume-level rather than per-file, so it is out of scope for nemo's
   per-target `hide`.
 
-## On-disk mechanics
-
-nemo's slack write is filesystem-agnostic at the technique layer. A filesystem's
-[`Entry`]({{ site.src }}/internal/filesystem/filesystem.go#L31) implements [`filesystem.SlackSpaceCapable`]({{ site.src }}/internal/filesystem/filesystem.go#L52) and returns
-`[]filesystem.SlackRegion{ {Offset, Length} }`, giving absolute byte offsets into
-the image. The technique picks the first region big enough, reads the bytes it is
-about to overwrite so it can back them up, and writes the frame. What differs per
-filesystem is how the regions get computed.
-
-### NTFS
-
-- Cluster slack: parse the file's `$DATA` data-runs to find the last cluster,
-  compute `end_of_file mod cluster_size`, and the region runs from
-  `last_cluster_start + used` to `last_cluster_start + cluster_size`.
-- Resident-`$DATA` slack: when the file's contents are resident in the MFT
-  record, the free space between the end of the last attribute and the record's
-  `bytes_allocated` (typically 1024) is usable, though `chkdsk` and any record
-  rewrite reclaim it.
-
-### ext4
-
-- Block slack: the file uses extents (an `ext4_extent` tree), so walk to the last
-  extent, and the slack is the tail of its last block.
-- Three features change or remove the slack:
-  - Inline data (`inline_data`): a tiny file's contents live in the inode and the
-    in-inode xattr area, so there is no data block and no block slack.
-  - `bigalloc`: allocation happens in multi-block clusters, so there is
-    proportionally more slack, but the unit size is not the block size.
-  - Delayed allocation: a freshly written file may not have blocks assigned yet,
-    so slack does not exist until the writeback.
-
-### APFS
-
-- Implemented in `internal/filesystem/apfs/slack.go`. Every allocated byte past
-  the file's logical size counts as slack, computed per `FILE_EXTENT`, not just
-  the tail of the last one: a file with unused whole blocks before its final
-  partial one gets a region for each. The logical size and physical extents
-  come from the inode's `j_dstream_t` extended field, keyed by its
-  `private_id`, the same lookup a stream-backed xattr's data uses.
-- A `com.apple.decmpfs`-compressed file, or one whose data stream carries any
-  non-zero `default_crypto_id` (per-file encryption), is refused outright
-  rather than given a region computed against a meaningless logical size.
-  See [the APFS parser doc](../file-systems/apfs.html#slack-space-slackgo)
-  for the details.
-- The copy-on-write caveat matters here more than anywhere else. APFS never
-  overwrites a live block. Any modification to the file, including one the OS
-  makes for its own reasons, writes the changed data to a new block and repoints
-  the file's extent at it. The old block, with your payload in its slack, becomes
-  free, or gets pinned by a snapshot and frozen. A slack payload on APFS is
-  therefore valid only until the next write to that file, which you do not
-  control. Automatic `tmutil` local snapshots make this worse.
-
 ## Why it is fragile
 
 Contributors get this wrong more than anything else about the technique. A slack
@@ -236,7 +184,61 @@ clearing a target restores the most recent hide's bytes.
 - On a journalling filesystem the raw block write still passes through the block
   layer's write cache but is not journalled, since it is not filesystem metadata.
 
-## How nemo implements it
+## Implementation Notes
+
+### On-disk mechanics
+
+nemo's slack write is filesystem-agnostic at the technique layer. A filesystem's
+[`Entry`]({{ site.src }}/internal/filesystem/filesystem.go#L31) implements [`filesystem.SlackSpaceCapable`]({{ site.src }}/internal/filesystem/filesystem.go#L52) and returns
+`[]filesystem.SlackRegion{ {Offset, Length} }`, giving absolute byte offsets into
+the image. The technique picks the first region big enough, reads the bytes it is
+about to overwrite so it can back them up, and writes the frame. What differs per
+filesystem is how the regions get computed.
+
+#### NTFS
+
+- Cluster slack: parse the file's `$DATA` data-runs to find the last cluster,
+  compute `end_of_file mod cluster_size`, and the region runs from
+  `last_cluster_start + used` to `last_cluster_start + cluster_size`.
+- Resident-`$DATA` slack: when the file's contents are resident in the MFT
+  record, the free space between the end of the last attribute and the record's
+  `bytes_allocated` (typically 1024) is usable, though `chkdsk` and any record
+  rewrite reclaim it.
+
+#### ext4
+
+- Block slack: the file uses extents (an `ext4_extent` tree), so walk to the last
+  extent, and the slack is the tail of its last block.
+- Three features change or remove the slack:
+  - Inline data (`inline_data`): a tiny file's contents live in the inode and the
+    in-inode xattr area, so there is no data block and no block slack.
+  - `bigalloc`: allocation happens in multi-block clusters, so there is
+    proportionally more slack, but the unit size is not the block size.
+  - Delayed allocation: a freshly written file may not have blocks assigned yet,
+    so slack does not exist until the writeback.
+
+#### APFS
+
+- Implemented in `internal/filesystem/apfs/slack.go`. Every allocated byte past
+  the file's logical size counts as slack, computed per `FILE_EXTENT`, not just
+  the tail of the last one: a file with unused whole blocks before its final
+  partial one gets a region for each. The logical size and physical extents
+  come from the inode's `j_dstream_t` extended field, keyed by its
+  `private_id`, the same lookup a stream-backed xattr's data uses.
+- A `com.apple.decmpfs`-compressed file, or one whose data stream carries any
+  non-zero `default_crypto_id` (per-file encryption), is refused outright
+  rather than given a region computed against a meaningless logical size.
+  See [the APFS parser doc](../file-systems/apfs.html#slack-space-slackgo)
+  for the details.
+- The copy-on-write caveat matters here more than anywhere else. APFS never
+  overwrites a live block. Any modification to the file, including one the OS
+  makes for its own reasons, writes the changed data to a new block and repoints
+  the file's extent at it. The old block, with your payload in its slack, becomes
+  free, or gets pinned by a snapshot and frozen. A slack payload on APFS is
+  therefore valid only until the next write to that file, which you do not
+  control. Automatic `tmutil` local snapshots make this worse.
+
+### In nemo
 
 [`filesystem.SlackSpaceCapable`]({{ site.src }}/internal/filesystem/filesystem.go#L52):
 
