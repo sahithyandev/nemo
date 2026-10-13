@@ -80,6 +80,19 @@ body {
   margin-top: 0.15rem;
 }
 
+.nav-group { margin-bottom: 1.1rem; }
+.nav-group > ul { padding-left: 0; margin-top: 0.3rem; }
+
+.nav-group-label {
+  display: block;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--nav);
+  opacity: 0.6;
+}
+
 .sidebar li { margin: 0.1rem 0; }
 
 .sidebar a {

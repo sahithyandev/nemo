@@ -1,6 +1,7 @@
 ---
 title: CLI Reference
-nav_order: 6
+nav_group: "User Guide"
+nav_order: 2
 has_children: true
 ---
 

@@ -1,5 +1,6 @@
 ---
 title: Home
+nav_group: "User Guide"
 nav_order: 1
 ---
 

@@ -12,18 +12,26 @@
   <nav class="sidebar">
     <a class="site-title" href="{{ '/' | relative_url }}">{{ site.title }}</a>
     <ul>
-      {% assign top_pages = site.pages | where_exp: "p", "p.title and p.parent == nil" | sort: "nav_order" %}
-      {% for p in top_pages %}
-        <li>
-          <a href="{{ p.url | relative_url }}"{% if p.url == page.url %} class="active"{% endif %}>{{ p.title }}</a>
-          {% if p.has_children %}
-            {% assign children = site.pages | where_exp: "c", "c.parent == p.title" | sort: "nav_order" %}
-            <ul>
-              {% for c in children %}
-                <li><a href="{{ c.url | relative_url }}"{% if c.url == page.url %} class="active"{% endif %}>{{ c.title }}</a></li>
-              {% endfor %}
-            </ul>
-          {% endif %}
+      {% assign groups = "User Guide,Contributing" | split: "," %}
+      {% for g in groups %}
+        <li class="nav-group">
+          <span class="nav-group-label">{{ g }}</span>
+          <ul>
+            {% assign sections = site.pages | where_exp: "s", "s.nav_group == g" | sort: "nav_order" %}
+            {% for s in sections %}
+              <li>
+                <a href="{{ s.url | relative_url }}"{% if s.url == page.url %} class="active"{% endif %}>{{ s.title }}</a>
+                {% if s.has_children %}
+                  {% assign children = site.pages | where_exp: "c", "c.parent == s.title" | sort: "nav_order" %}
+                  <ul>
+                    {% for c in children %}
+                      <li><a href="{{ c.url | relative_url }}"{% if c.url == page.url %} class="active"{% endif %}>{{ c.title }}</a></li>
+                    {% endfor %}
+                  </ul>
+                {% endif %}
+              </li>
+            {% endfor %}
+          </ul>
         </li>
       {% endfor %}
     </ul>
