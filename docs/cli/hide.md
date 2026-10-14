@@ -28,7 +28,7 @@ nemo hide <target> --technique <technique> [--image <path>] [options]
 
 ### The manifest
 
-For `slack-space`, `hide` first appends the bytes it is about to overwrite to the manifest, a JSON Lines file. A later `clear` uses it to restore them. If the manifest cannot be written, the hide aborts. The full contract is in [Technique interfaces](../architecture/technique.html).
+For `slack-space`, `hide` first appends the bytes it is about to overwrite to the manifest, a JSON Lines file. A later `clear` uses it to restore them. If the manifest cannot be written, the hide aborts. See [The manifest](../manifest.html) for the format and how `clear` uses it.
 
 ## Related pages
 

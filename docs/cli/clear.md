@@ -29,7 +29,7 @@ Like `hide`, every `clear` writes an entry to the chain-of-custody log, in both 
 
 ## Restoration limits
 
-**Slack-space.** `clear` restores the original bytes only if the manifest from the earlier `hide` is available. Without it, the frame is zero-filled. The manifest contract is in [reversibility and the manifest](../techniques/slack-space.html#reversibility-the-manifest).
+**Slack-space.** `clear` restores the original bytes only if the manifest from the earlier `hide` is available. Without it, the frame is zero-filled. See [The manifest](../manifest.html) for details.
 
 **Timestomp.** You must supply the original timestamp. Nemo cannot read the old value back off the filesystem, and timestomp has no manifest. See [Timestomping](../techniques/timestomping.html#why-nemos-detect-reports-nothing-for-timestomp).
 
