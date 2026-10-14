@@ -6,10 +6,9 @@ nav_order: 3
 
 # Techniques
 
-nemo hides, detects, and clears data with three techniques, picked per command
-with `--technique`. This page is what each one does and when to reach for it. For
-the on-disk mechanics, per-filesystem detail, and nemo's implementation, see
-[How techniques work](techniques/).
+Nemo has three techniques. Pick one per command with `--technique`.
+
+This page says what each one does and when to use it. For on-disk details and how nemo implements them, see [How techniques work](techniques/).
 
 | Technique | What it does | Rough capacity | Survives a cross-filesystem copy | nemo can detect it |
 | --------- | ------------ | -------------- | -------------------------------- | ------------------ |
@@ -19,29 +18,24 @@ the on-disk mechanics, per-filesystem detail, and nemo's implementation, see
 
 ## Named-stream
 
-The practical default for stashing a file's worth of data that reads back
-cleanly. The payload hangs off the target file, so `ls`, `dir`, Finder, and a
-plain checksum all see only the original. It needs no special privilege. The
-catch is portability: copying to FAT32/exFAT, syncing through most cloud clients,
-or emailing the file drops the stream. A forensic tool that enumerates streams
-(`dir /r`, `getfattr`, `xattr -l`) finds it, and so does `nemo detect`.
+This is the default choice for stashing a file's worth of data. The payload hangs off the target file, so `ls`, `dir`, Finder, and a plain checksum only see the original. It needs no special privilege.
+
+The catch is portability. Copying to FAT32 or exFAT, syncing through most cloud clients, or emailing the file drops the stream.
+
+Tools that list streams (`dir /r`, `getfattr`, `xattr -l`) will find it. So will `nemo detect`.
 
 ## Slack-space
 
-For a small payload you want to leave no size change behind. Because it lives in
-space the filesystem already allocated to the file, nothing about the file's
-listed size shifts. It is fragile: growing or rewriting the file can overwrite
-the payload, and the capacity is under a single block. In live mode it needs
-administrator (Windows) or root (macOS, Linux) because it has to open the raw
-device; see [Modes](modes.html). `nemo detect` finds nemo-framed slack.
+Use it for a small payload when the file's size must not change. The data sits in space the filesystem already gave the file, so the listed size stays put.
+
+It is fragile. Growing or rewriting the file can overwrite the payload. Capacity is under one block.
+
+In live mode it needs administrator (Windows) or root (macOS, Linux), because nemo opens the raw device. See [Modes](modes.html). `nemo detect` finds slack data that nemo wrote.
 
 ## Timestomp
 
-Use this to alter a timeline rather than hide bytes: it changes a file's
-modified, accessed, changed, and birth timestamps. nemo cannot detect it, because
-there is no timestamp-anomaly detector, so `nemo detect` reports nothing for a
-timestomped file. That is a limit of nemo today, not proof the change is
-undetectable to a full forensic suite.
+Use it to change a timeline, not to hide bytes. It sets a file's modified, accessed, changed, and birth timestamps.
 
-Check which filesystem/technique pairs are available before you run one with
-[`nemo features`](cli/features.html).
+Nemo cannot detect it. There is no timestamp-anomaly detector, so `nemo detect` reports nothing for a timestomped file. That is a limit of nemo today. It does not mean a full forensic suite would miss it.
+
+To check which filesystem and technique pairs are available, run [`nemo features`](cli/features.html).
