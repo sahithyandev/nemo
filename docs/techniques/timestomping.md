@@ -153,6 +153,13 @@ The live path is in `internal/filesystem/apfs/live_darwin.go`.
 
 See [APFS live mode](../file-systems/apfs.html#live-mode-macos).
 
+## Further reading
+
+- [MITRE ATT&CK T1070.006](https://attack.mitre.org/techniques/T1070/006/) on how timestomping is used and detected.
+- [ext4 inodes](https://docs.kernel.org/filesystems/ext4/inodes.html) for the timestamp fields and their encoding.
+- [`$STANDARD_INFORMATION`](https://flatcap.github.io/linux-ntfs/ntfs/attributes/standard_information.html) and [`$FILE_NAME`](https://flatcap.github.io/linux-ntfs/ntfs/attributes/file_name.html) for the two NTFS timestamp copies.
+- [More in References](../references.html).
+
 ## References
 
 [^fscc]: Microsoft, [\[MS-FSCC\]: File System Control Codes](https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-fscc/), §2.4.7 and §2.4.4.

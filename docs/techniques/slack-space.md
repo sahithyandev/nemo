@@ -180,3 +180,10 @@ SlackRegions() ([]filesystem.SlackRegion, error)  // {Offset, Length} into the i
 
 - APFS, ext4, and NTFS implement [`SlackRegions`]({{ site.src }}/internal/filesystem/filesystem.go#L53), subject to each backend's layout limits. ext4 uses the final allocated block of a regular file.
 - `fakefs.Entry.SlackRegions` (`internal/filesystem/fakefs/fakefs.go`) is the reference. It returns regions that point into its backing byte-slice image, and the technique's tests run against it.
+
+## Further reading
+
+- [Slack space](https://en.wikipedia.org/wiki/Slack_space) on Wikipedia, a short intro.
+- [The Sleuth Kit](https://www.sleuthkit.org/sleuthkit/docs.php) for tools such as `blkls -s` that read slack.
+- [ext4 dynamic structures](https://docs.kernel.org/filesystems/ext4/dynamic.html) for extents and inline data.
+- [More in References](../references.html).

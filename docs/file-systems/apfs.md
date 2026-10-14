@@ -552,3 +552,10 @@ test`) that drives a built `bin/nemo` binary through the same checks end to end,
 the privileged slack-space device path against a scratch disk image when run with
 `sudo` available. Its header comment lists what it needs and what it skips without
 root.
+
+## Further reading
+
+- [Apple File System Reference](https://developer.apple.com/support/downloads/Apple-File-System-Reference.pdf), the official spec.
+- [libfsapfs format notes](https://github.com/libyal/libfsapfs/blob/main/documentation/Apple%20File%20System%20%28APFS%29.asciidoc) for community notes on gaps in the spec.
+- [`setattrlist(2)`](https://developer.apple.com/library/archive/documentation/System/Conceptual/ManPages_iPhoneOS/man2/setattrlist.2.html) for live creation-time writes.
+- [More in References](../references.html).

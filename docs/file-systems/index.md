@@ -27,3 +27,5 @@ These pages document each filesystem parser: detection, mounting, on-disk struct
 | ext4 | yes | yes | in-inode and external block | yes | yes |
 
 Each parser refuses any on-disk layout it does not fully understand, with a clear error. It never guesses. The Limitations section on each page lists the specific refusals.
+
+Specs for each filesystem are listed on the [References](../references.html) page.

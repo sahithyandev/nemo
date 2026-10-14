@@ -75,3 +75,7 @@ The capability interfaces live in [`internal/filesystem/filesystem.go`]({{ site.
 | named-stream | [`filesystem.NamedStreamCapable`]({{ site.src }}/internal/filesystem/filesystem.go#L39) | [`WriteStream`]({{ site.src }}/internal/filesystem/filesystem.go#L40) / [`ReadStream`]({{ site.src }}/internal/filesystem/filesystem.go#L41) / [`DeleteStream`]({{ site.src }}/internal/filesystem/filesystem.go#L42) |
 | slack-space  | [`filesystem.SlackSpaceCapable`]({{ site.src }}/internal/filesystem/filesystem.go#L52) | [`SlackRegions`]({{ site.src }}/internal/filesystem/filesystem.go#L53) |
 | timestomp    | [`filesystem.TimestompCapable`]({{ site.src }}/internal/filesystem/filesystem.go#L81) | [`Timestamp`]({{ site.src }}/internal/filesystem/filesystem.go#L82) / [`SupportsTimestamp`]({{ site.src }}/internal/filesystem/filesystem.go#L83) / [`SetTimestamp`]({{ site.src }}/internal/filesystem/filesystem.go#L84) |
+
+## Further reading
+
+All specs, docs, and tools are collected on the [References](../references.html) page.

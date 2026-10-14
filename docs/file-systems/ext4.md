@@ -236,3 +236,11 @@ It checks existing values after external fallback and after deletion. It also co
 `indexed_test.go` generates disposable 1 KiB and 4 KiB ext4 images with `mke2fs`, `debugfs`, and `e2fsck -D`. It lists 700 indexed files with metadata checksums on. Synthetic cases cover index levels and malformed metadata. The e2fsprogs cases skip when those tools are missing.
 
 `python3 scripts/linux-acceptance.py --work-parent <ext4-directory> --require-live` adds native xattr, timestamp, extraction, and skipped-child checks to the image round trips. The Linux CI job uses this mode, so missing native coverage fails instead of silently skipping.
+
+## Further reading
+
+- [ext4 documentation](https://docs.kernel.org/filesystems/ext4/index.html) in the kernel docs.
+- [Superblock](https://docs.kernel.org/filesystems/ext4/super.html), [inodes](https://docs.kernel.org/filesystems/ext4/inodes.html), and [dynamic structures](https://docs.kernel.org/filesystems/ext4/dynamic.html) (extents).
+- [Directory entries](https://docs.kernel.org/filesystems/ext4/directory.html) for HTree.
+- [Extended attributes](https://docs.kernel.org/filesystems/ext4/attributes.html).
+- [More in References](../references.html).

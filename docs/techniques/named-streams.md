@@ -183,6 +183,14 @@ Every write is verified by reading the record back. Nemo refuses a write to one 
 
 When adding a filesystem, mirror [`fakefs.Entry`]({{ site.src }}/internal/filesystem/fakefs/fakefs.go#L18) (`internal/filesystem/fakefs/fakefs.go`). That test double already implements all three capabilities. The technique layer needs no changes.
 
+## Further reading
+
+- [MITRE ATT&CK T1564.004](https://attack.mitre.org/techniques/T1564/004/) on how attackers use NTFS streams.
+- [File streams](https://learn.microsoft.com/en-us/windows/win32/fileio/file-streams) on Microsoft Learn.
+- [`xattr(7)`](https://man7.org/linux/man-pages/man7/xattr.7.html) for Linux xattr namespaces.
+- [ext4 extended attributes](https://docs.kernel.org/filesystems/ext4/attributes.html) in the kernel docs.
+- [More in References](../references.html).
+
 ## References
 
 [^fscc]: Microsoft, [\[MS-FSCC\]: File System Control Codes](https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-fscc/), §2.4.4.

@@ -213,3 +213,10 @@ These tests build synthetic boot sectors and MFT records byte by byte:
 - `namedstream_test.go`
 
 They do not depend on an image from a real Windows install. They pin down the exact on-disk layout assumptions: fixup geometry, resident and non-resident attribute headers, `INDEX_ROOT` and `INDEX_ALLOCATION` traversal, and resident and non-resident stream writes.
+
+## Further reading
+
+- [NTFS Documentation](https://flatcap.github.io/linux-ntfs/ntfs/) for the on-disk layout.
+- [Data runs](https://flatcap.github.io/linux-ntfs/ntfs/concepts/data_runs.html) for how non-resident attributes map to clusters.
+- [libfsntfs format notes](https://github.com/libyal/libfsntfs/blob/main/documentation/New%20Technologies%20File%20System%20%28NTFS%29.asciidoc) as a cross-check.
+- [More in References](../references.html).
