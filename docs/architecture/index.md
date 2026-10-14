@@ -9,7 +9,9 @@ has_children: true
 
 ## Goal
 
-Adding a filesystem (FAT32 later, say) or a technique should mean writing a new package that satisfies existing interfaces, not touching code that already works. This lets contributors own a filesystem or technique independently and ship it incrementally, without stepping on each other or on the `cmd/` command files.
+Adding a filesystem (FAT32 later, say) or a technique should mean writing a new package that fits existing interfaces. It should not mean editing code that already works.
+
+That lets contributors own a filesystem or technique on their own and ship it step by step. They do not step on each other or on the `cmd/` command files.
 
 ## File structure
 
@@ -43,23 +45,23 @@ cmd/ (hide.go, detect.go, clear.go, extract.go, features.go, live.go)   Cobra co
       internal/image                         Image interface: ReadAt/WriteAt/Size/Path
 ```
 
-Each layer depends only on the interfaces of the layer below it, never on a concrete sibling. `internal/technique` code never imports `internal/filesystem/ext4` directly; it calls through the [`FileSystem`]({{ site.src }}/internal/filesystem/filesystem.go#L24) interface. That is what makes filesystems and techniques independently pluggable.
+Each layer depends only on the interfaces of the layer below it, never on a concrete sibling. For example, `internal/technique` never imports `internal/filesystem/ext4`. It calls through the [`FileSystem`]({{ site.src }}/internal/filesystem/filesystem.go#L24) interface. That is what lets filesystems and techniques plug in independently.
 
-The contracts for each layer are split into their own pages:
+Each layer's contract has its own page:
 
-- [Image and Custody](image.html): the [`Image`]({{ site.src }}/internal/image/image.go#L4) interface and the `internal/custody` write decorator.
-- [Filesystem Interfaces](filesystem.html): [`FileSystem`]({{ site.src }}/internal/filesystem/filesystem.go#L24)/[`Entry`]({{ site.src }}/internal/filesystem/filesystem.go#L31), the registry, and the three capability interfaces.
-- [Technique Interfaces](technique.html): the [`Technique`]({{ site.src }}/internal/technique/technique.go#L92) interface, [`Request`]({{ site.src }}/internal/technique/technique.go#L71)/[`Finding`]({{ site.src }}/internal/technique/technique.go#L32)/[`Result`]({{ site.src }}/internal/technique/technique.go#L39), and the backup/manifest contract.
+- [Image and custody](image.html): the [`Image`]({{ site.src }}/internal/image/image.go#L4) interface and the `internal/custody` write decorator.
+- [Filesystem interfaces](filesystem.html): [`FileSystem`]({{ site.src }}/internal/filesystem/filesystem.go#L24) and [`Entry`]({{ site.src }}/internal/filesystem/filesystem.go#L31), the registry, and the three capability interfaces.
+- [Technique interfaces](technique.html): the [`Technique`]({{ site.src }}/internal/technique/technique.go#L92) interface, [`Request`]({{ site.src }}/internal/technique/technique.go#L71), [`Finding`]({{ site.src }}/internal/technique/technique.go#L32), [`Result`]({{ site.src }}/internal/technique/technique.go#L39), and the backup and manifest contract.
 - [Mode implementation](modes.html): how image mode and live mode split in the code, and the two `Entry` implementations per filesystem.
-- [Architecture Decisions](decisions.html): the custody, framing, backup, and capability contracts.
+- [Architecture decisions](decisions.html): the custody, framing, backup, and capability contracts.
 
 ## Why this shape
 
-- Independent ownership: one person builds `internal/filesystem/apfs` while another builds `internal/filesystem/ext4`. Both only need to satisfy [`FileSystem`]({{ site.src }}/internal/filesystem/filesystem.go#L24)/[`Entry`]({{ site.src }}/internal/filesystem/filesystem.go#L31), so neither blocks the other and neither touches shared code.
-- Incremental support: a filesystem can implement only [`NamedStreamCapable`]({{ site.src }}/internal/filesystem/filesystem.go#L39). [`SlackSpaceCapable`]({{ site.src }}/internal/filesystem/filesystem.go#L52) and [`TimestompCapable`]({{ site.src }}/internal/filesystem/filesystem.go#L81) are separate optional interfaces, so partial support just means a missing interface, not a broken implementation of one big interface.
-- New filesystem equals a new package plus one registry line. No changes to `internal/technique` or the commands.
-- Custody recording is structural, not a convention. Because it is a decorator over [`Image`]({{ site.src }}/internal/image/image.go#L4), a technique cannot skip it: every [`WriteAt`]({{ site.src }}/internal/image/image.go#L6) on the wrapped image is hashed and recorded regardless of the caller.
+- **Independent ownership.** One person can build `internal/filesystem/apfs` while another builds `internal/filesystem/ext4`. Both only need to satisfy [`FileSystem`]({{ site.src }}/internal/filesystem/filesystem.go#L24) and [`Entry`]({{ site.src }}/internal/filesystem/filesystem.go#L31). Neither blocks the other, and neither touches shared code.
+- **Incremental support.** A filesystem can implement only [`NamedStreamCapable`]({{ site.src }}/internal/filesystem/filesystem.go#L39). [`SlackSpaceCapable`]({{ site.src }}/internal/filesystem/filesystem.go#L52) and [`TimestompCapable`]({{ site.src }}/internal/filesystem/filesystem.go#L81) are separate optional interfaces. Partial support means a missing interface, not a half-built implementation of one big interface.
+- **Cheap to extend.** A new filesystem is a new package plus one registry line. `internal/technique` and the commands stay unchanged.
+- **Custody by structure.** Custody recording is a decorator over [`Image`]({{ site.src }}/internal/image/image.go#L4), so a technique cannot skip it. Every [`WriteAt`]({{ site.src }}/internal/image/image.go#L6) on the wrapped image is hashed and recorded, whoever the caller is.
 
 ## Non-goals
 
-This mirrors [Home](../#scope)'s scope: no runtime plugin loading (dynamic `.so`/`.dll`), no config-driven technique selection beyond the `--technique` flag. "Pluggable" here means new Go packages behind existing interfaces, compiled in.
+This matches the scope on [Home](../#scope). There is no runtime plugin loading (dynamic `.so` or `.dll`). There is no config-driven technique selection beyond the `--technique` flag. "Pluggable" here means new Go packages behind existing interfaces, compiled in.

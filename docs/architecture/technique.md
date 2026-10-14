@@ -4,9 +4,9 @@ parent: Architecture
 nav_order: 3
 ---
 
-# Technique Interfaces
+# Technique interfaces
 
-[Techniques](../techniques/) covers what each technique does on disk: byte layouts, capacity, and how it gets detected. This page covers only the code shape.
+[Techniques](../techniques/) covers what each technique does on disk: byte layouts, capacity, and detection. This page covers only the code shape.
 
 ```go
 type Technique interface {
@@ -18,62 +18,87 @@ type Technique interface {
 }
 ```
 
-There is one [`Technique`]({{ site.src }}/internal/technique/technique.go#L92) interface, not one per capability. Each of the three
-concrete techniques takes a bare [`filesystem.Entry`]({{ site.src }}/internal/filesystem/filesystem.go#L31) and type-asserts the single
-capability it needs ([`NamedStreamCapable`]({{ site.src }}/internal/filesystem/filesystem.go#L39), [`SlackSpaceCapable`]({{ site.src }}/internal/filesystem/filesystem.go#L52), or
-[`TimestompCapable`]({{ site.src }}/internal/filesystem/filesystem.go#L81)), returning the [`ErrUnsupported`]({{ site.src }}/internal/technique/technique.go#L29) sentinel (wrapped as
-`technique %q: unsupported on this filesystem`, so match it with `errors.Is`, not
-by string) when the assertion fails. [`Get(name)`]({{ site.src }}/internal/technique/technique.go#L105) maps a `--technique` string to
-the concrete technique. [`Request`]({{ site.src }}/internal/technique/technique.go#L71) is the shared, mostly-optional input bag
-(`Data`, `StreamName`, `Field`, [`Timestamp`]({{ site.src }}/internal/filesystem/filesystem.go#L82), [`Image`]({{ site.src }}/internal/image/image.go#L4), `Restore`, [`Backup`]({{ site.src }}/internal/technique/technique.go#L59)); an
-operation reads only the fields it needs.
+## One interface, three techniques
 
-**Slack framing.** New payloads use a 28-byte `NEM2` header with a random per-hide nonce; historical 12-byte `NEMO` frames remain readable. The header distinguishes payloads from residual noise and prevents identical payloads from reusing stale backup digests. See [Slack-Space Hiding](../techniques/slack-space.html#nemos-payload-frame) for the exact byte layout. Frame parsing checks the versioned header and payload bounds before slicing. This lives in [`slackframe.go`]({{ site.src }}/internal/technique/slackframe.go).
+There is one [`Technique`]({{ site.src }}/internal/technique/technique.go#L92) interface, not one per capability.
 
-**Restoration and backup contract.** For slack-space operations,
-`Request.Backup func(Backup) error`, when set, is called with the pre-write state (`Backup{Technique, Target, Location,
-Original []byte, Timestamp}`) before any destructive write; returning an error
-aborts the operation. slack-space [`Hide`]({{ site.src }}/internal/technique/technique.go#L94) and [`Clear`]({{ site.src }}/internal/technique/technique.go#L96) emit the overwritten bytes
-this way. `clear` for slack-space writes back the caller-supplied original bytes
-([`Request.Restore`]({{ site.src }}/internal/technique/technique.go#L81), distinct from the hide payload in [`Request.Data`]({{ site.src }}/internal/technique/technique.go#L72)) when
-available, otherwise zero-fills the frame; [`Result.Restored`]({{ site.src }}/internal/technique/technique.go#L50) reports which
-happened. A [`Request.Restore`]({{ site.src }}/internal/technique/technique.go#L81) whose length does not match the frame is rejected
-rather than zero-filled. A nil [`Backup`]({{ site.src }}/internal/technique/technique.go#L59) means the caller opted out of
-reversibility.
+Each concrete technique takes a bare [`filesystem.Entry`]({{ site.src }}/internal/filesystem/filesystem.go#L31) and checks for the one capability it needs: [`NamedStreamCapable`]({{ site.src }}/internal/filesystem/filesystem.go#L39), [`SlackSpaceCapable`]({{ site.src }}/internal/filesystem/filesystem.go#L52), or [`TimestompCapable`]({{ site.src }}/internal/filesystem/filesystem.go#L81).
 
-The persistence side lives in [`manifest.go`]({{ site.src }}/internal/technique/manifest.go): [`AppendManifest(path, Backup)`]({{ site.src }}/internal/technique/manifest.go#L24),
-[`LoadManifest(path)`]({{ site.src }}/internal/technique/manifest.go#L41), [`LatestImageBackup(records, technique, target, location, identity)`]({{ site.src }}/internal/technique/manifest.go#L125). The
-file (`nemo-manifest.jsonl` by default, `--manifest` to relocate) is JSON Lines,
-one [`Backup`]({{ site.src }}/internal/technique/technique.go#L59) per line, `Original` as base64, [`Timestamp`]({{ site.src }}/internal/filesystem/filesystem.go#L82) as RFC 3339. `hide`
-passes a closure calling [`AppendManifest`]({{ site.src }}/internal/technique/manifest.go#L24); a write failure there aborts the hide
-before any bytes are overwritten. `clear` replays it via
-[`LoadManifest`]({{ site.src }}/internal/technique/manifest.go#L41) and [`LatestImageBackup`]({{ site.src }}/internal/technique/manifest.go#L125); image identity and exact frame digest are checked before mutation, and later matching records win, so re-hiding a target then
-clearing restores the last hide's bytes. `--manifest` (default `nemo-manifest.jsonl`) names that file. `hide` appends to it before overwriting slack-space bytes, so a later `clear` can restore them. See [Slack-Space Hiding](../techniques/slack-space.html) for what gets recorded.
+If the check fails, it returns the [`ErrUnsupported`]({{ site.src }}/internal/technique/technique.go#L29) sentinel, wrapped as `technique %q: unsupported on this filesystem`. Match it with `errors.Is`, not by string.
 
-**Extract.** `extract` reads a hidden payload back out without mutating anything.
-named-stream delegates to `filesystem.NamedStreamCapable.ReadStream`. slack-space
-walks the entry's [`SlackRegions`]({{ site.src }}/internal/filesystem/filesystem.go#L53) and returns the payload of the first valid framed
-slack payload it finds (CRC-checked via the same frame parser [`Hide`]({{ site.src }}/internal/technique/technique.go#L94)/[`Clear`]({{ site.src }}/internal/technique/technique.go#L96) use),
-erroring `"no framed slack payload found to extract"` if none decode. timestomp has
-no retrievable payload (see below) and always errors.
+[`Get(name)`]({{ site.src }}/internal/technique/technique.go#L105) maps a `--technique` string to the concrete technique.
 
-**First-frame limitation.** If a target's slack space holds more than one valid
-framed payload (for example, stale frames left behind by an earlier hide that
-was never cleared), [`Extract`]({{ site.src }}/internal/technique/technique.go#L100) returns only the first one it finds, while
-[`Detect`]({{ site.src }}/internal/technique/technique.go#L95) lists every frame it finds. The two can disagree about which payload
-is "the" payload on such a target. [`Clear`]({{ site.src }}/internal/technique/technique.go#L96) makes the same first-frame
-assumption, so the behavior is at least consistent across all three. There is no
-`--index` flag to pick a specific frame.
+[`Request`]({{ site.src }}/internal/technique/technique.go#L71) is the shared input. Most of its fields are optional, and an operation reads only the ones it needs:
 
-**Timestomp limitation.** [`filesystem.TimestompCapable`]({{ site.src }}/internal/filesystem/filesystem.go#L81) exposes [`Timestamp`]({{ site.src }}/internal/filesystem/filesystem.go#L82),
-[`SupportsTimestamp`]({{ site.src }}/internal/filesystem/filesystem.go#L83), and [`SetTimestamp`]({{ site.src }}/internal/filesystem/filesystem.go#L84). Reading a current value does not establish
-whether it was altered. No historical baseline comparison or anomaly detector is
-implemented, so `timestomp.Detect` returns no findings. `timestomp.Hide` does not
-automatically save original timestamps to the manifest; `timestomp.Clear` requires
-the caller to supply the original value explicitly and rejects a zero value.
-See [Timestomping](../techniques/timestomping.html#why-nemos-detect-reports-nothing-for-timestomp).
+- `Data`
+- `StreamName`
+- `Field`
+- [`Timestamp`]({{ site.src }}/internal/filesystem/filesystem.go#L82)
+- [`Image`]({{ site.src }}/internal/image/image.go#L4)
+- `Restore`
+- [`Backup`]({{ site.src }}/internal/technique/technique.go#L59)
 
-[`Finding`]({{ site.src }}/internal/technique/technique.go#L32) and [`Result`]({{ site.src }}/internal/technique/technique.go#L39) are shared, technique-agnostic value types:
+## Slack framing
+
+New payloads use a 28-byte `NEM2` header with a random per-hide nonce. Older 12-byte `NEMO` frames stay readable.
+
+The header tells a payload apart from leftover noise. The nonce stops identical payloads from reusing stale backup digests. Frame parsing checks the versioned header and payload bounds before slicing. The code is in [`slackframe.go`]({{ site.src }}/internal/technique/slackframe.go).
+
+The exact byte layout is in [nemo's payload frame](../techniques/slack-space.html#nemos-payload-frame).
+
+## Restoration and backup contract
+
+For slack-space operations, `Request.Backup func(Backup) error` is called before any destructive write, when it is set. It receives the pre-write state: `Backup{Technique, Target, Location, Original []byte, Timestamp}`. If it returns an error, the operation aborts.
+
+- Slack-space [`Hide`]({{ site.src }}/internal/technique/technique.go#L94) and [`Clear`]({{ site.src }}/internal/technique/technique.go#L96) pass the overwritten bytes this way.
+- `clear` writes back the caller's original bytes ([`Request.Restore`]({{ site.src }}/internal/technique/technique.go#L81), separate from the hide payload in [`Request.Data`]({{ site.src }}/internal/technique/technique.go#L72)) when it has them. Otherwise it zero-fills the frame.
+- [`Result.Restored`]({{ site.src }}/internal/technique/technique.go#L50) says which happened.
+- A [`Request.Restore`]({{ site.src }}/internal/technique/technique.go#L81) whose length does not match the frame is rejected, not zero-filled.
+- A nil [`Backup`]({{ site.src }}/internal/technique/technique.go#L59) means the caller opted out of reversibility.
+
+### Persistence
+
+The saving side is in [`manifest.go`]({{ site.src }}/internal/technique/manifest.go):
+
+- [`AppendManifest(path, Backup)`]({{ site.src }}/internal/technique/manifest.go#L24)
+- [`LoadManifest(path)`]({{ site.src }}/internal/technique/manifest.go#L41)
+- [`LatestImageBackup(records, technique, target, location, identity)`]({{ site.src }}/internal/technique/manifest.go#L125)
+
+The file is `nemo-manifest.jsonl` by default, and `--manifest` moves it. It is JSON Lines with one [`Backup`]({{ site.src }}/internal/technique/technique.go#L59) per line. `Original` is base64 and [`Timestamp`]({{ site.src }}/internal/filesystem/filesystem.go#L82) is RFC 3339.
+
+- `hide` passes a closure that calls [`AppendManifest`]({{ site.src }}/internal/technique/manifest.go#L24). If that write fails, the hide aborts before any byte is overwritten.
+- `clear` reads it back with [`LoadManifest`]({{ site.src }}/internal/technique/manifest.go#L41) and [`LatestImageBackup`]({{ site.src }}/internal/technique/manifest.go#L125). It checks the image identity and exact frame digest before changing anything.
+- Later matching records win. Re-hiding a target and then clearing it restores the last hide's bytes.
+
+See [slack-space hiding](../techniques/slack-space.html) for what gets recorded.
+
+## Extract
+
+`extract` reads a hidden payload without changing anything.
+
+- **named-stream:** calls `filesystem.NamedStreamCapable.ReadStream`.
+- **slack-space:** walks the entry's [`SlackRegions`]({{ site.src }}/internal/filesystem/filesystem.go#L53) and returns the first valid framed payload. It uses the same CRC-checking frame parser as [`Hide`]({{ site.src }}/internal/technique/technique.go#L94) and [`Clear`]({{ site.src }}/internal/technique/technique.go#L96). If none decodes, it errors with `"no framed slack payload found to extract"`.
+- **timestomp:** has no payload to retrieve and always errors.
+
+## First-frame limitation
+
+A target's slack space can hold more than one valid frame. Stale frames from an earlier, uncleared hide are one cause.
+
+[`Extract`]({{ site.src }}/internal/technique/technique.go#L100) returns only the first frame. [`Detect`]({{ site.src }}/internal/technique/technique.go#L95) lists them all. So the two can disagree about which payload is the payload. [`Clear`]({{ site.src }}/internal/technique/technique.go#L96) also uses the first frame, so at least `extract` and `clear` agree.
+
+There is no `--index` flag to pick a specific frame.
+
+## Timestomp limitation
+
+[`filesystem.TimestompCapable`]({{ site.src }}/internal/filesystem/filesystem.go#L81) exposes [`Timestamp`]({{ site.src }}/internal/filesystem/filesystem.go#L82), [`SupportsTimestamp`]({{ site.src }}/internal/filesystem/filesystem.go#L83), and [`SetTimestamp`]({{ site.src }}/internal/filesystem/filesystem.go#L84).
+
+Reading a current value does not show whether it was altered. There is no historical baseline and no anomaly detector, so `timestomp.Detect` returns no findings.
+
+`timestomp.Hide` does not save the original timestamp to the manifest. `timestomp.Clear` needs the caller to supply the original, and it rejects a zero value. See [Timestomping](../techniques/timestomping.html#why-nemos-detect-reports-nothing-for-timestomp).
+
+## `Finding` and `Result`
+
+[`Finding`]({{ site.src }}/internal/technique/technique.go#L32) and [`Result`]({{ site.src }}/internal/technique/technique.go#L39) are shared value types that do not depend on the technique:
 
 ```go
 type Finding struct {
@@ -90,6 +115,14 @@ type Result struct {
 }
 ```
 
-[`Finding`]({{ site.src }}/internal/technique/technique.go#L32) is what `detect` prints, one per line (technique, location, size), matching [CLI Reference](../cli/detect.html)'s output spec. [`Result`]({{ site.src }}/internal/technique/technique.go#L39) is what `hide` and `clear` return on success. It carries no hash or timestamp of its own, because `internal/custody` already captures both for every [`WriteAt`]({{ site.src }}/internal/image/image.go#L6) at the [`Image`]({{ site.src }}/internal/image/image.go#L4) layer, see [Image and Custody](image.html). The command builds the custody-log line from [`Result`]({{ site.src }}/internal/technique/technique.go#L39) (which technique, which target, what happened) plus the hash and timestamp the custody decorator recorded, so neither layer duplicates the other.
+[`Finding`]({{ site.src }}/internal/technique/technique.go#L32) is what `detect` prints, one per line (technique, location, size). It matches the output spec in the [CLI reference](../cli/detect.html).
 
-Commands depend only on these interfaces, never on a filesystem-specific technique type. Because [`Hide`]({{ site.src }}/internal/technique/technique.go#L94)/[`Detect`]({{ site.src }}/internal/technique/technique.go#L95)/[`Clear`]({{ site.src }}/internal/technique/technique.go#L96) only touch the capability interfaces, the technique logic is filesystem-agnostic: one concrete implementation per technique kind ([`namedStreamTechnique`]({{ site.src }}/internal/technique/technique.go#L126), [`slackSpaceTechnique`]({{ site.src }}/internal/technique/technique.go#L197), [`timestompTechnique`]({{ site.src }}/internal/technique/technique.go#L376)), all in `internal/technique`, each working against any [`Entry`]({{ site.src }}/internal/filesystem/filesystem.go#L31) that satisfies the capability it needs.
+[`Result`]({{ site.src }}/internal/technique/technique.go#L39) is what `hide` and `clear` return on success. It carries no hash or timestamp, because `internal/custody` already captures both for every [`WriteAt`]({{ site.src }}/internal/image/image.go#L6) at the [`Image`]({{ site.src }}/internal/image/image.go#L4) layer. See [Image and custody](image.html).
+
+The command builds the custody-log line from [`Result`]({{ site.src }}/internal/technique/technique.go#L39) (which technique, which target, what happened) plus the hash and timestamp the custody decorator recorded. Neither layer duplicates the other.
+
+## Why commands stay simple
+
+Commands depend only on these interfaces, never on a filesystem-specific technique type.
+
+[`Hide`]({{ site.src }}/internal/technique/technique.go#L94), [`Detect`]({{ site.src }}/internal/technique/technique.go#L95), and [`Clear`]({{ site.src }}/internal/technique/technique.go#L96) only touch the capability interfaces. So the technique logic works on any filesystem. There is one implementation per technique, all in `internal/technique`: [`namedStreamTechnique`]({{ site.src }}/internal/technique/technique.go#L126), [`slackSpaceTechnique`]({{ site.src }}/internal/technique/technique.go#L197), and [`timestompTechnique`]({{ site.src }}/internal/technique/technique.go#L376). Each works with any [`Entry`]({{ site.src }}/internal/filesystem/filesystem.go#L31) that has the capability it needs.
