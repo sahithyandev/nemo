@@ -30,20 +30,11 @@ the full CLI reference, platform/privilege requirements for live mode, and known
 
 ## Docs
 
-- [docs/overview.md](docs/overview.md) - goals, scope, and targeted filesystems
+- [docs/index.md](docs/index.md) - install, examples, and scope
 - [docs/cli/](docs/cli/index.md) - modes and commands
 - [docs/architecture/](docs/architecture/index.md) - package layout and interfaces
 - [docs/techniques/](docs/techniques/index.md) - how the hiding techniques work on disk
 - [docs/architecture/decisions.md](docs/architecture/decisions.md) - shared contract decisions
-- [docs/roadmap.md](docs/roadmap.md)
-
-## Semester release candidate
-
-The `0.1.0-rc.1` demo/review build is a prerelease. See the
-[release and demo instructions](docs/release/README.md) for reproducible
-four-target packages, checksums, disposable demos and validation limitations.
-The one-line installers above select the latest stable release; download the
-candidate explicitly from its GitHub prerelease page when reviewing it.
 
 ## Development
 
@@ -147,15 +138,12 @@ first.
 - [Sahithyan K.](https://github.com/sahithyandev)
 - [Senanayake H. P. V. R.](https://github.com/Viranske-1)
 
-## Validation and release candidate
+## Validation and releases
 
 Run detection against an explicitly supplied local dataset with the
 [validation harness](docs/validation/README.md). The documented synthetic ext4
-sample runs without downloading a public corpus. Public-dataset acceptance is
-tracked separately from this sample.
+sample runs without downloading a public corpus.
 
-See the [v0.1 release candidate pack](docs/release/README.md) for cross-platform
-builds, Linux acceptance evidence, the demonstration plan, and remaining release
-gates. `make release-package OUTPUT=/tmp/nemo-new-release` creates archives in a
+See the [release pack](release/README.md) for cross-platform builds,
+acceptance evidence, and the demonstration plan. `make release-package OUTPUT=/tmp/nemo-new-release` creates archives in a
 new directory without tagging or publishing.
-

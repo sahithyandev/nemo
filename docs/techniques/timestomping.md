@@ -1,6 +1,6 @@
 ---
 title: Timestomping
-parent: Techniques
+parent: How techniques work
 nav_order: 3
 ---
 
@@ -8,11 +8,9 @@ nav_order: 3
 
 ## What it is
 
-Timestomping is rewriting a file's timestamps so it looks older or newer than it
-is, or contemporaneous with other files. It defeats timeline analysis, which is
-the technique an examiner reaches for first. Unlike named-stream and slack-space
-hiding, nothing gets stored. An existing field is overwritten with a chosen
-value.
+Timestomping rewrites a file's timestamps so it looks older, newer, or contemporary with other files. It defeats timeline analysis, which is the first thing an examiner reaches for.
+
+Unlike named-stream and slack-space hiding, it stores nothing. It overwrites an existing field with a chosen value.
 
 ```sh
 # Linux (ext4): set mtime and atime
@@ -25,10 +23,9 @@ SetFile -m 01/01/2019 00:00:00 report.txt   # from the Xcode command-line tools
 (Get-Item report.txt).LastWriteTime = '2019-01-01'
 ```
 
-## The MACB timestamps, and why they are not one thing
+## The MACB timestamps
 
-An examiner reconstructs "what happened when" from four timestamps, remembered as
-MACB:
+An examiner rebuilds "what happened when" from four timestamps, remembered as MACB:
 
 | Letter | Meaning | NTFS | ext4 | APFS |
 | ------ | ------- | ---- | ---- | ---- |
@@ -37,53 +34,59 @@ MACB:
 | C | metadata last changed | `$SI` and `$FN` CtimeMs (MFT change) | `i_ctime` | `change_time` (`ctime`) |
 | B | born, or created | `$SI` and `$FN` CrtimeMs | `i_crtime` | `create_time` |
 
-Each filesystem stores these differently, at different precision, in different
-structures. Some fields cannot be set through any normal API at all. That
-asymmetry is what makes timestomping detectable.
+Each filesystem stores these differently, at different precision, in different structures. Some fields cannot be set through any normal API. That mismatch is what makes timestomping detectable.
 
-## On-disk mechanics
+## Detection by a third party
 
-### NTFS: the `$SI` and `$FN` pair
+Timestomping is one of the more detectable techniques, because the same information exists in more than one place.
 
-Every MFT record carries the four timestamps twice:
+- **NTFS:** cross-check `$SI` against `$FN` and check sub-second precision. Parse the `$LogFile` transaction log and the `$UsnJrnl:$J` change journal. They record the real times of operations apart from the file's own fields.
+- **ext4:** compare `ctime` with `mtime` and `atime`. The `jbd2` journal records the actual write times of recent metadata changes.
+- **APFS:** compare against snapshot copies and Spotlight. `fsck_apfs` and forensic tools diff the inode record against snapshot deltas.
+- **Everywhere:** look for outside evidence. That includes application logs, `$Recycle.Bin` and `.Trash` records, Prefetch (`.pf` file mtimes), browser history, backup catalogs, and MRU registry keys. Timestomping the file touches none of them.
 
-- `$STANDARD_INFORMATION` (`$SI`, attribute `0x10`) is the set that Explorer,
-  `dir`, and the Win32 API (`GetFileTime` and `SetFileTime`) read and write.
-- `$FILE_NAME` (`$FN`, attribute `0x30`) is a second copy the kernel updates on
-  rename or move. It is not writable through the Win32 API at all.
+## Why nemo's `detect` reports nothing for timestomp
 
-All eight values are Windows FILETIME: a 64-bit count of 100-nanosecond intervals
-since 1601-01-01 UTC. Reference: `[MS-FSCC]` §2.4.7 and §2.4.4.
+[`timestompTechnique.Detect`]({{ site.src }}/internal/technique/technique.go#L405) (`internal/technique/technique.go`) confirms the entry implements the capability, then returns `nil, nil`.
+
+A current timestamp cannot show whether it was altered. Nemo has no historical baseline and no timestamp anomaly detector. It does not cross-check independent records, such as NTFS `$SI` against `$FN`. So it cannot report a finding from the current value alone.
+
+`hide` does not read the original timestamp and save it to a manifest. So `nemo clear --technique timestomp` needs the original timestamp passed in, and it rejects a zero value. The shared reader would make an automatic backup possible, but the technique and manifest workflow do not do it.
+
+## Implementation Notes
+
+### On-disk mechanics
+
+#### NTFS: the `$SI` and `$FN` pair
+
+Every MFT record carries the four timestamps twice.
+
+- `$STANDARD_INFORMATION` (`$SI`, attribute `0x10`) is the set that Explorer, `dir`, and the Win32 API (`GetFileTime`, `SetFileTime`) read and write.
+- `$FILE_NAME` (`$FN`, attribute `0x30`) is a second copy that the kernel updates on rename or move. The Win32 API cannot write it.
+
+All eight values are Windows FILETIME: a 64-bit count of 100-nanosecond intervals since 1601-01-01 UTC.[^fscc]
 
 What an examiner checks:
 
-- `$SI` against `$FN`. A user-space timestomp tool sets `$SI` and leaves `$FN`
-  alone, so `$FN` still shows the real creation time. Forensic suites flag the
-  mismatch automatically.
-- Sub-second digits. Real timestamps have noise in the low digits;
-  `2019-01-01T00:00:00.0000000`, with every 100 ns sub-second bit zero, shows a
-  value that was typed rather than recorded. Many tools set only whole seconds.
-- Ordering. M earlier than B, or a timestamp before the volume was formatted.
+- **`$SI` against `$FN`.** A user-space timestomp tool sets `$SI` and leaves `$FN` alone, so `$FN` still shows the real creation time. Forensic suites flag the mismatch automatically.
+- **Sub-second digits.** Real timestamps have noise in the low digits. A value like `2019-01-01T00:00:00.0000000`, with every 100 ns bit zero, looks typed, not recorded. Many tools set whole seconds only.
+- **Ordering.** M earlier than B, or a timestamp from before the volume was formatted.
 
-### ext4: split second and nanosecond fields
+#### ext4: split second and nanosecond fields
 
-The 128-byte "good old" inode holds `i_atime`, `i_mtime`, and `i_ctime` as
-32-bit signed seconds since 1970. Larger inodes, typically 256 bytes, add two
-things in the extra area past `i_extra_isize`:
+The 128-byte "good old" inode holds `i_atime`, `i_mtime`, and `i_ctime` as 32-bit signed seconds since 1970. Larger inodes, typically 256 bytes, add two things in the extra area past `i_extra_isize`:
 
 - `i_crtime` (creation), a 32-bit seconds field at inode offset 144.
-- `i_{mtime,atime,ctime,crtime}_extra`, 32-bit fields packing nanoseconds in the
-  upper 30 bits and a 2-bit epoch extension in the low bits, which pushes the
-  range past 2038.
+- `i_{mtime,atime,ctime,crtime}_extra`, 32-bit fields that pack nanoseconds into the upper 30 bits and a 2-bit epoch extension into the low bits. The extension pushes the range past 2038.
 
 `internal/filesystem/ext4/timestomp.go` implements exactly this.
-`encodeExt4Timestamp` splits a `time.Time` into `(low uint32, extra uint32)` with
-`extra = nanoseconds<<2 | epoch`. `timestampLayout` maps `created`, `modified`,
-and `accessed` to offsets 144, 16, and 8, and reports whether the inode is large
-enough to carry the `_extra` field, and whether it carries `i_crtime` at all.
+
+- [`encodeExt4Timestamp`]({{ site.src }}/internal/filesystem/ext4/timestomp.go#L162) splits a `time.Time` into `(low uint32, extra uint32)` with `extra = nanoseconds<<2 | epoch`.
+- [`timestampLayout`]({{ site.src }}/internal/filesystem/ext4/timestomp.go#L115) maps `created`, `modified`, and `accessed` to offsets 144, 16, and 8. It also reports whether the inode is large enough for the `_extra` field and whether it has `i_crtime` at all.
+
 Offsets from the code:
 
-```
+```text
 i_atime            8
 i_mtime           16
 i_extra_isize    128   (16-bit; xattr magic 0xEA020000 may follow)
@@ -93,50 +96,23 @@ i_crtime         144
 i_crtime_extra   148
 ```
 
-What an examiner checks: `i_ctime` cannot be set by any userland API. The kernel
-stamps it `now` on every inode change, including the write that stomps
-`i_mtime`. So `mtime` far in the past while `ctime` reads "a few seconds ago" is
-the ext4 timestomp signature. nemo can write `i_ctime`, because it edits the
-inode bytes directly in an image, which is a capability a live attacker on a
-mounted filesystem does not have.
+What an examiner checks: no userland API can set `i_ctime`. The kernel stamps it with the current time on every inode change, including the write that stomps `i_mtime`. So an `mtime` far in the past with a `ctime` of a few seconds ago is the ext4 timestomp signature.
 
-### APFS: nanosecond fields in the inode record
+Nemo can write `i_ctime`, because it edits the inode bytes directly in an image. A live attacker on a mounted filesystem cannot.
 
-APFS stores the four timestamps in the `j_inode_val_t` inode record in the
-filesystem B-tree, each a 64-bit count of nanoseconds since 1970-01-01 UTC
-(Apple's *APFS Reference*, `j_inode_val_t`: `create_time`, `mod_time`,
-`change_time`, `access_time`). The precision is higher than NTFS or ext4, so a
-whole-second value is an even stronger sign a human typed it.
+#### APFS: nanosecond fields in the inode record
+
+APFS stores the four timestamps in the `j_inode_val_t` inode record in the filesystem B-tree. Each is a 64-bit count of nanoseconds since 1970-01-01 UTC (`create_time`, `mod_time`, `change_time`, `access_time`).[^apfs] The precision is higher than NTFS or ext4, so a whole-second value is an even stronger sign that a human typed it.
 
 APFS also keeps copies of the dates that a timestomp does not reach:
 
-- Spotlight metadata (`.Spotlight-V100`) indexes
-  `kMDItemContentModificationDate`, `kMDItemDateAdded`, and others from when the
-  file was indexed.
-- `com.apple.metadata:*` xattrs, for example `_kMDItemUserTags` and quarantine
-  (`com.apple.quarantine`), carry their own dates.
-- Local `tmutil` snapshots preserve the inode record as it was.
+- Spotlight metadata (`.Spotlight-V100`) indexes `kMDItemContentModificationDate`, `kMDItemDateAdded`, and others from when the file was indexed.
+- `com.apple.metadata:*` xattrs, such as `_kMDItemUserTags`, and quarantine (`com.apple.quarantine`) carry their own dates.
+- Local `tmutil` snapshots keep the inode record as it was.
 
-## Detection by a third party
+### In nemo
 
-Timestomping is among the more detectable techniques, because the information
-exists in more than one place:
-
-- NTFS: cross-check `$SI` against `$FN`, check sub-second precision, and parse the
-  `$LogFile` transaction log and `$UsnJrnl:$J` change journal, which record the
-  real times of operations independently of the file's own fields.
-- ext4: compare `ctime` against `mtime` and `atime`. The `jbd2` journal records
-  the actual write times of recent metadata changes.
-- APFS: compare against snapshot copies and Spotlight. `fsck_apfs` and forensic
-  tools diff the inode record against snapshot deltas.
-- Everywhere: external corroboration such as application logs, `$Recycle.Bin` and
-  `.Trash` records, Prefetch (`.pf` file mtimes), browser history, backup
-  catalogs, and MRU registry keys. Timestomping the file touches none of these.
-
-## Why nemo's `detect` reports nothing for timestomp
-
-`filesystem.TimestompCapable` exposes the current value and field support as well
-as the write operation:
+[`filesystem.TimestompCapable`]({{ site.src }}/internal/filesystem/filesystem.go#L81) exposes the current value and field support, as well as the write:
 
 ```go
 type TimestompCapable interface {
@@ -146,56 +122,46 @@ type TimestompCapable interface {
 }
 ```
 
-`timestompTechnique.Detect` (`internal/technique/technique.go`) still returns
-`nil, nil` after confirming that the entry implements the capability. A current
-timestamp does not establish whether it was altered. Nemo has no historical
-baseline comparison or timestamp anomaly detector, so it cannot report a
-supported finding from the current value alone. Cross-checking independent
-records, such as NTFS `$SI` against `$FN`, remains future work.
+[`timestompTechnique`]({{ site.src }}/internal/technique/technique.go#L376) (`internal/technique/technique.go`) works like this:
 
-`hide` does not automatically read and save the original timestamp to a manifest.
-Consequently, `nemo clear --technique timestomp` requires the original timestamp
-supplied explicitly and rejects a zero value. The shared reader makes an automatic
-backup possible, but the technique and manifest workflow do not implement it yet.
+- `hide` requires `--field` (`created`, `modified`, `accessed`, or `changed`) and a non-zero `--timestamp` in RFC 3339. It then calls [`SetTimestamp`]({{ site.src }}/internal/filesystem/filesystem.go#L84).
+- `detect` always returns no findings, as explained above.
+- `clear` requires `--field` and the original `--timestamp`. It calls [`SetTimestamp`]({{ site.src }}/internal/filesystem/filesystem.go#L84) to put it back.
 
-## How nemo implements it
+#### The `changed` field
 
-`timestompTechnique` (`internal/technique/technique.go`):
+`changed` ([`filesystem.TimeChanged`]({{ site.src }}/internal/filesystem/filesystem.go#L67)) maps to `i_ctime` on ext4 and `change_time` on APFS. The kernel sets this MACB field on its own, and no live userland API lets a process write it.
 
-- `hide` requires `--field` (`created`, `modified`, `accessed`, or `changed`) and a
-  non-zero `--timestamp` in RFC 3339, then calls `SetTimestamp`.
-- `detect` always returns no findings, as above.
-- `clear` requires `--field` and the original `--timestamp`, then calls
-  `SetTimestamp` to put it back.
+Editing the image directly bypasses that. So `hide --field changed` sets exactly what a live attacker cannot. It closes the "old mtime, fresh ctime" gap that normally gives a stomp away.
 
-`changed` (`filesystem.TimeChanged`) maps to `i_ctime` on ext4 and `change_time` on
-APFS: the one MACB field the kernel sets on its own and no live userland API lets a
-process write. Editing the image directly bypasses that, so `hide --field changed`
-sets exactly what a live attacker cannot, closing the "old mtime, fresh ctime" gap
-that otherwise gives a stomp away.
+#### Per filesystem
 
-ext4 and APFS are implemented. `internal/filesystem/ext4/timestomp.go` writes the
-full inode in one `WriteAt`, so `custody.Wrap` sees the mutation, and it refreshes
-the inode checksum when `metadata_csum` is enabled. `internal/filesystem/apfs/timestomp.go`
-patches the four `uint64` nanosecond fields of the `j_inode_val_t` INODE record in
-place, through the same in-place B-tree leaf rewrite `namedstream.go` uses for
-xattrs (see `btree_write.go`): the record's size does not change, so the existing
-checksum and `btree_info_t` handling covers it without any new machinery.
+- **ext4.** `internal/filesystem/ext4/timestomp.go` writes the whole inode in one [`WriteAt`]({{ site.src }}/internal/image/image.go#L6), so [`custody.Wrap`]({{ site.src }}/internal/custody/custody.go#L35) sees the change. It refreshes the inode checksum when `metadata_csum` is on.
+- **APFS.** `internal/filesystem/apfs/timestomp.go` patches the four `uint64` nanosecond fields of the `j_inode_val_t` INODE record in place. It uses the same in-place B-tree leaf rewrite as `namedstream.go` (see [`btree_write.go`]({{ site.src }}/internal/filesystem/apfs/btree_write.go)). The record size does not change, so the existing checksum and `btree_info_t` handling covers it.
+- **NTFS.** `internal/filesystem/ntfs/timestomp.go` reads and writes the chosen `$STANDARD_INFORMATION` timestamp with 100 ns precision. It regenerates the record fixups and verifies the write. It does not update the `$FILE_NAME` timestamps or compare the two copies for detection.
+- **fakefs.** `fakefs.Entry.SetTimestamp` (`internal/filesystem/fakefs/fakefs.go`) is the test double.
 
-NTFS is implemented in `internal/filesystem/ntfs/timestomp.go`: it reads and
-writes the selected `$STANDARD_INFORMATION` timestamp with 100 ns precision,
-regenerates record fixups, and verifies the write. It does not update `$FILE_NAME`
-timestamps or compare the two copies for detection.
+A timestomp still leaves independent copies of the old dates behind. On APFS, the directory entry's own `date_added` (`j_drec_val_t`), Spotlight metadata, and local snapshots all keep the value from before the stomp.
 
-A timestomp still leaves independent copies of the dates behind. On APFS
-specifically: the directory entry's own `date_added` (`j_drec_val_t`), Spotlight
-metadata, and local snapshots all keep the value as it was before the stomp.
+#### macOS live mode
 
-`fakefs.Entry.SetTimestamp` (`internal/filesystem/fakefs/fakefs.go`) is the test
-double.
+The live path is in `internal/filesystem/apfs/live_darwin.go`.
 
-APFS also has a live-mode path on macOS (`internal/filesystem/apfs/live_darwin.go`):
-`modified`/`accessed` go through `os.Chtimes`, `created` through
-`setattrlist(ATTR_CMN_CRTIME)` (stdlib has no equivalent), and `changed` stays
-unsupported there too, for the same reason it's unsupported live everywhere else. See
-[APFS live mode](../file-systems/apfs.html#live-mode-macos).
+- `modified` and `accessed` go through `os.Chtimes`.
+- `created` goes through `setattrlist(ATTR_CMN_CRTIME)`, because the standard library has no equivalent.
+- `changed` is unsupported, for the same reason it is unsupported live everywhere.
+
+See [APFS live mode](../file-systems/apfs.html#live-mode-macos).
+
+## Further reading
+
+- [MITRE ATT&CK T1070.006](https://attack.mitre.org/techniques/T1070/006/) on how timestomping is used and detected.
+- [ext4 inodes](https://docs.kernel.org/filesystems/ext4/inodes.html) for the timestamp fields and their encoding.
+- [`$STANDARD_INFORMATION`](https://flatcap.github.io/linux-ntfs/ntfs/attributes/standard_information.html) and [`$FILE_NAME`](https://flatcap.github.io/linux-ntfs/ntfs/attributes/file_name.html) for the two NTFS timestamp copies.
+- [More in References](../references.html).
+
+## References
+
+[^fscc]: Microsoft, [\[MS-FSCC\]: File System Control Codes](https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-fscc/), §2.4.7 and §2.4.4.
+
+[^apfs]: Apple, [*Apple File System Reference*](https://developer.apple.com/support/downloads/Apple-File-System-Reference.pdf), `j_inode_val_t`.

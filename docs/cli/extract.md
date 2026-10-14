@@ -6,31 +6,37 @@ nav_order: 4
 
 # `nemo extract`
 
-Reads a previously hidden payload back out of a target and writes it to a file or standard output. `extract` is read-only: it never writes to the target and never touches the custody log.
+Reads a hidden payload out of a target and writes it to a file or standard output. `extract` is read-only. It never writes to the target and never touches the custody log.
 
-Usage:
-
-```
+```sh
 nemo extract <target> --technique <technique> [--image <path>] [options]
 ```
 
-Arguments:
+## Arguments
 
-- `<target>`: path to the file to extract hidden data from. In live mode, a path on the local filesystem. In image mode, a path inside the given disk image.
+- `<target>`: the file to extract from. In live mode, a path on the local filesystem. In image mode, a path inside the disk image.
 
-Options:
+## Options
 
-- `--technique, -t`: which technique's hidden data to read. One of `named-stream` or `slack-space` (required). `timestomp` is rejected: it overwrites a timestamp field in place and stores no retrievable payload.
-- `--image, -i`: path to a raw disk image. If given, `extract` runs in image mode against that image, opened read-only, instead of the live filesystem.
-- `--stream-name`: name of the stream to read. Required for `named-stream`, rejected for `slack-space`.
-- `--output, -o`: file to write the recovered payload to. Default: standard output.
+- `--technique, -t` (required): `named-stream` or `slack-space`. `timestomp` is rejected, because it changes a timestamp in place and stores no payload.
+- `--image, -i`: path to a raw disk image. With it, `extract` runs in image mode, and the image is opened read-only.
+- `--stream-name`: stream to read. Required for `named-stream`, rejected for `slack-space`.
+- `--output, -o`: file to write the payload to. Default is standard output.
 
-There is no `--manifest` flag. A slack-space payload is self-describing: nemo wraps every slack payload in a 12-byte, CRC-checked frame when hiding it, so `extract` finds and reads that frame directly off disk without needing the manifest `clear` uses for restoration. See [Slack-Space Hiding](../techniques/slack-space.html#nemos-payload-frame) for the frame layout. If a target's slack space holds no such frame, `extract` errors rather than returning residual noise as if it were a payload.
+## Slack-space payloads
 
-For slack-space, `extract` returns only the first valid framed payload it finds, even if a target holds several (stale frames from an earlier, uncleared hide). `detect` lists all of them, so the two can disagree about which one is "the" payload on such a target. A future `--index` flag could let you pick a specific one; see [Technique Interfaces](../architecture/technique.html#first-frame-limitation).
+There is no `--manifest` flag. Nemo wraps every slack payload in a 12-byte, CRC-checked frame when it hides it. `extract` reads that frame straight off the disk, so it does not need the manifest that `clear` uses. The layout is in [nemo's payload frame](../techniques/slack-space.html#nemos-payload-frame).
 
-Live mode runs on ext4 (Linux), NTFS (Windows, read-only), and APFS (macOS); each
-platform only ever reaches its native filesystem, so a target on a non-native or
-unsupported volume refuses with a clear error naming that filesystem rather than
-falling through to something wrong. See [Live Mode](../architecture/live-mode.html)
-and [APFS live mode](../file-systems/apfs.html#live-mode-macos).
+If the slack space holds no frame, `extract` fails. It never hands back leftover noise as a payload.
+
+### Several frames on one target
+
+`extract` returns only the first valid frame it finds. A target can hold several if an earlier hide was never cleared. `detect` lists all of them, so the two commands can disagree about which one is the payload.
+
+A future `--index` flag could let you pick one. See [Technique interfaces](../architecture/technique.html#first-frame-limitation).
+
+## Live mode
+
+Live mode works on ext4 (Linux), NTFS (Windows, read-only), and APFS (macOS). Each platform only reaches its native filesystem. A target on any other volume is refused with an error that names the filesystem.
+
+See [Modes](../modes.html) and [APFS live mode](../file-systems/apfs.html#live-mode-macos).

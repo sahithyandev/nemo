@@ -1,47 +1,30 @@
 ---
 title: CLI Reference
-nav_order: 3
+nav_group: "User Guide"
+nav_order: 2
 has_children: true
 ---
 
-# CLI Reference
+# CLI reference
 
-Built today: `hide`, `detect`, `clear`, `extract`, `features`, `version`, `help`.
-Live mode supports APFS on macOS, ext4 on Linux (user xattrs and accessed/modified
-timestamps), and read-only NTFS volume access on Windows. See
-[Live Mode](../architecture/live-mode.html) for platform restrictions.
+| Command                     | Purpose                                              |
+| --------------------------- | ---------------------------------------------------- |
+| [`features`](features.html) | print which filesystems support which techniques     |
+| [`hide`](hide.html)         | write payload data into a target using one technique |
+| [`detect`](detect.html)     | scan a target or image for hidden data               |
+| [`extract`](extract.html)   | read a hidden payload back out                       |
+| [`clear`](clear.html)       | remove hidden data and restore the target            |
+| `version`                   | print the tool's version                             |
+| `help`                      | print usage information                              |
 
-## Modes
+Every command except `version` and `help` has its own page.
 
-Nemo runs in one of two modes, chosen per command:
+## version
 
-- **Image mode** (used when `--image` is given): operates offline against a raw disk image. Filesystem type is detected from the image, not specified by the user.
-- **Live mode** (used when `--image` is omitted): operates directly on a file on the local, running machine, using the OS's native filesystem calls. This is the mode an everyday user reaches for to hide a file on their own machine. See [Live Mode](../architecture/live-mode.html) for supported platforms.
+`nemo version` prints the version and exits. It takes no arguments or options. The version string is embedded at compile time from `cmd/VERSION`.
 
-Until a native filesystem implementation or image detector is registered, the corresponding mode fails with a clear unsupported/unrecognized error; nemo never falls back from one mode to the other. See [Live Mode](../architecture/live-mode.html) for how the two modes are built internally.
+## help
 
-## Custody logging
+`nemo help` prints general usage. `nemo help <command>` prints that command's description, arguments, and options.
 
-Every successful `hide` and `clear` writes an entry to the chain-of-custody log automatically, in both modes, with no flag to disable it. See [Image and Custody](../architecture/image.html) for why this can't be opted out of. `detect` is read-only: it never writes to the target and never touches the custody log.
-
-On success, `hide` and `clear` emit their custody record as one JSON object on standard output, including the selected technique, technique-specific detail, and affected byte count. If the output sink fails after the filesystem mutation, the command reports the failure but does not imply that the mutation was rolled back.
-
-## The manifest
-
-`--manifest` (default `nemo-manifest.jsonl`) names a JSON Lines file that `hide` appends to before overwriting slack-space bytes, so a later `clear` can restore them. See [Technique Interfaces](../architecture/technique.html) for the backup and restore contract, and [Slack-Space Hiding](../techniques/slack-space.html) for what gets recorded.
-
-## Commands
-
-| Command | Purpose | Status |
-| --- | --- | --- |
-| [`features`](features.html) | print the filesystem × technique support matrix | built |
-| [`hide`](hide.html) | write payload data into a target using one technique | built |
-| [`detect`](detect.html) | scan a target or image for hidden data | built |
-| [`extract`](extract.html) | read a previously hidden payload back out | built |
-| [`clear`](clear.html) | remove previously hidden data and restore the target | built |
-| [`version`](version.html) | print the tool's version | built |
-| [`help`](help.html) | print usage information | built |
-
-## Out of Scope
-
-Any interface beyond the command line (no GUI).
+`--help` or `-h` does the same on any command, for example `nemo hide --help`.

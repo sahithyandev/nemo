@@ -1,129 +1,81 @@
 ---
-title: Techniques
-nav_order: 4
+title: How techniques work
+nav_group: "Contributing"
+nav_order: 1
 has_children: true
 ---
 
-# Hiding Techniques
+# How techniques work
 
-This directory explains the anti-forensic techniques nemo implements: what they
-are, how they work on disk, how much data they hold, how they get detected, and
-where the code lives. It assumes you can read Go and a hex dump but have never
-touched filesystem forensics.
+These pages explain the techniques nemo implements. For each one they cover how it works on disk, how much data it holds, how it gets detected, and where the code lives.
 
-Read the shared vocabulary below first, then the technique you are working on:
+They assume you can read Go and a hex dump. You do not need filesystem forensics experience. For a plain summary of what each technique does, see [Techniques](../techniques.html).
 
-- [named-streams.md](named-streams.html) covers NTFS Alternate Data Streams, ext4
-  and APFS extended attributes, and APFS resource forks.
-- [slack-space.md](slack-space.html) covers writing into allocated-but-unused bytes
-  at the tail of a cluster, block, or metadata record.
-- [timestomping.md](timestomping.html) covers rewriting a file's MACB timestamps.
-
-## Where each technique sits in the codebase
-
-Every technique is one `Technique` implementation in `internal/technique`
-(`namedStreamTechnique`, `slackSpaceTechnique`, `timestompTechnique`), selected
-by name in `technique.Get`. A technique never imports a filesystem package. It
-type-asserts the `Entry` it is handed against the one capability interface it
-needs and returns `technique.ErrUnsupported` when the assertion fails
-(`internal/technique/technique.go`). The capability interfaces are defined in
-`internal/filesystem/filesystem.go`:
-
-| Technique     | Capability interface           | Methods                                       |
-| ------------- | ------------------------------ | -------------------------------------------- |
-| named-stream  | `filesystem.NamedStreamCapable` | `WriteStream` / `ReadStream` / `DeleteStream` |
-| slack-space   | `filesystem.SlackSpaceCapable`  | `SlackRegions`                                |
-| timestomp     | `filesystem.TimestompCapable`   | `Timestamp` / `SupportsTimestamp` / `SetTimestamp`         |
-
-## Support matrix (current)
-
-This table covers image-mode capabilities; filesystem layout restrictions apply.
-See [Live Mode](../architecture/live-mode.html) for native-platform limits.
-
-| Filesystem | named-stream | slack-space | timestomp |
-| ---------- | ------------ | ----------- | --------- |
-| ext4       | done, `internal/filesystem/ext4/ext4.go` and `xattr.go` | implemented (bounded image layouts) | done, `internal/filesystem/ext4/timestomp.go` |
-| APFS       | done, `internal/filesystem/apfs/namedstream.go` (in-place B-tree leaf rewrite, no allocation) | implemented (bounded image layouts) | implemented |
-| NTFS       | done, `internal/filesystem/ntfs/namedstream.go` (resident and non-resident, MFT-mirror aware) | implemented (bounded image layouts) | implemented |
-| fakefs     | done | done | done (test double, `internal/filesystem/fakefs`) |
-
-`fakefs` is an in-memory filesystem that implements all three capabilities
-against a byte-slice image. It is how `internal/technique` gets tested without a
-real NTFS, APFS, or ext4 image. A real filesystem's `Entry` implements the same
-interfaces `fakefs.Entry` already does.
-
-`nemo features` prints this matrix at runtime from the `Techniques` field each
-filesystem declares on its `filesystem.Detector`, so it cannot drift from what is
-actually registered. See [Filesystem Interfaces](../architecture/filesystem.html).
+The per-filesystem support matrix is on the [features](../cli/features.html#support-matrix) page.
 
 ## Shared vocabulary
 
-**Cluster / block.** The smallest unit a filesystem allocates. NTFS calls it a
-cluster (default 4 KiB); ext4 and APFS call it a block (also 4 KiB by default). A
-1-byte file still consumes a whole one.
+### Cluster and block
 
-**Allocated size vs. used size.** The allocated size is how many bytes the
-filesystem reserved, always a whole number of clusters. The used size (sometimes
-"valid data length") is how many of those bytes hold the file's content. The gap
-is slack. See [slack-space.md](slack-space.html).
+The smallest unit a filesystem allocates. NTFS calls it a cluster. ext4 and APFS call it a block. All three default to 4 KiB. A 1-byte file still takes a whole one.
 
-**Resident vs. non-resident.** NTFS and APFS can store a small attribute value
-inline inside the file's metadata record (resident) rather than in its own
-allocated block (non-resident). The threshold is roughly the free space left in
-the record: about 700 bytes for a 1 KiB NTFS MFT record, about 3 KiB for an APFS
-xattr. Resident data has no cluster slack of its own; it shares the record's
-slack.
+### Allocated size
 
-**MACB.** The four timestamps a forensic examiner builds a timeline from:
-Modified (content changed), Accessed (content read), Changed (metadata changed,
-the NTFS/ext4 `ctime`), Birth (created, `crtime`). Not every filesystem stores
-all four, and no two store them the same way. See
-[timestomping.md](timestomping.html).
+The bytes the filesystem reserved for a file. It is always a whole number of clusters.
 
-**"Detectable."** A technique is detectable when an examiner has a reliable
-signal that data was hidden: a structural anomaly, a second copy of the same
-information that was not updated in lockstep, or a journal entry. "nemo can't
-detect it" (as with timestomp) describes nemo's current capabilities, not
-whether the technique can be detected at all.
+### Used size
 
-**Custody log.** Every `WriteAt` nemo performs goes through the
-`internal/custody` decorator, which SHA-256-hashes and logs it. A technique
-cannot opt out; the logging is structural, not a convention. Detection is
-read-only and never writes to the custody log.
+Also called "valid data length". The part of the allocated bytes that holds the file's content.
 
-## Techniques nemo does not implement
+The gap between allocated and used size is slack. See [slack-space](slack-space.html).
 
-These are out of scope per [Overview](../overview.html). Recognise them so you do not
-reach for one by accident, and so you know where nemo's guarantees stop.
+### Resident and non-resident
 
-**Unallocated-space hiding and file carving.** Writing a payload into blocks the
-filesystem currently marks free, or recovering files from there. The next
-allocation overwrites it, and recovering it is a data-recovery problem rather
-than a filesystem-parsing one. nemo only touches space the filesystem considers
-allocated.
+NTFS and APFS can store a small attribute value inside the file's metadata record. That is a resident value. Otherwise it gets its own allocated block and is non-resident.
 
-**Reserved metadata regions.** NTFS keeps about 16 MFT records reserved
-(`$MFT` through `$Extend`), and the `$Boot` file's tail is padding. ext4
-reserves inodes 1 through 10 and pads its group descriptors. Data parked there
-survives normal use, but any `fsck` or `chkdsk` flags or clobbers it, and
-writing there risks corrupting the volume.
+The cutoff is roughly the free space left in the record. That is about 700 bytes for a 1 KiB NTFS MFT record and about 3 KiB for an APFS xattr. Resident data has no cluster slack of its own. It shares the record's slack.
 
-**`$BadClus` and bad-block-list marking.** Telling NTFS (`$BadClus`) or ext4 (the
-bad-block inode) that a good cluster is bad so the filesystem routes around it,
-then reading it directly. Every modern forensic suite checks for this first.
+### MACB
 
-**Deleted-inode and deleted-MFT-record reuse.** Writing into the record of a
-just-deleted file before the filesystem reuses it. Racy and short-lived.
+The four timestamps an examiner builds a timeline from:
 
-**Steganography inside file formats.** Hiding a payload in the unused bits of a
-JPEG, PNG, or PDF. This has no filesystem component and is a large field of its
-own.
+- **M**odified: content changed.
+- **A**ccessed: content read.
+- **C**hanged: metadata changed (`ctime` on NTFS and ext4).
+- **B**irth: created (`crtime`).
 
-**Sparse-file holes.** A sparse file's unwritten ranges read as zeros and occupy
-no blocks, so there is nothing to hide in, only a size-versus-allocation
-mismatch to notice.
+Not every filesystem stores all four, and no two store them the same way. See [timestomping](timestomping.html).
 
-**Snapshot and VSS stashing.** Putting data in a Volume Shadow Copy or an APFS
-snapshot and deleting the live copy. This is "hide a normal file where most tools
-do not look," not a filesystem-structure technique, and it depends on snapshot
-retention you do not control.
+### Detectable
+
+A technique is detectable when an examiner has a reliable sign that data was hidden. That sign might be a structural oddity, a second copy of the same information that did not change in step, or a journal entry.
+
+"Nemo can't detect it", as with timestomp, describes nemo today. It does not say the technique is undetectable.
+
+### Custody log
+
+Every [`WriteAt`]({{ site.src }}/internal/image/image.go#L6) nemo performs goes through the `internal/custody` decorator, which SHA-256-hashes and logs it. A technique cannot opt out. The logging is built into the structure, not left to convention.
+
+Detection is read-only and never writes to the custody log.
+
+## Implementation Notes
+
+Each technique is a [`Technique`]({{ site.src }}/internal/technique/technique.go#L92) implementation in `internal/technique`, selected by name in [`technique.Get`]({{ site.src }}/internal/technique/technique.go#L105):
+
+- [`namedStreamTechnique`]({{ site.src }}/internal/technique/technique.go#L126)
+- [`slackSpaceTechnique`]({{ site.src }}/internal/technique/technique.go#L197)
+- [`timestompTechnique`]({{ site.src }}/internal/technique/technique.go#L376)
+
+A technique never imports a filesystem package. It checks whether the [`Entry`]({{ site.src }}/internal/filesystem/filesystem.go#L31) it receives implements the one capability interface it needs. If not, it returns [`technique.ErrUnsupported`]({{ site.src }}/internal/technique/technique.go#L29).
+
+The capability interfaces live in [`internal/filesystem/filesystem.go`]({{ site.src }}/internal/filesystem/filesystem.go):
+
+| Technique    | Capability interface | Methods |
+| ------------ | -------------------- | ------- |
+| named-stream | [`filesystem.NamedStreamCapable`]({{ site.src }}/internal/filesystem/filesystem.go#L39) | [`WriteStream`]({{ site.src }}/internal/filesystem/filesystem.go#L40) / [`ReadStream`]({{ site.src }}/internal/filesystem/filesystem.go#L41) / [`DeleteStream`]({{ site.src }}/internal/filesystem/filesystem.go#L42) |
+| slack-space  | [`filesystem.SlackSpaceCapable`]({{ site.src }}/internal/filesystem/filesystem.go#L52) | [`SlackRegions`]({{ site.src }}/internal/filesystem/filesystem.go#L53) |
+| timestomp    | [`filesystem.TimestompCapable`]({{ site.src }}/internal/filesystem/filesystem.go#L81) | [`Timestamp`]({{ site.src }}/internal/filesystem/filesystem.go#L82) / [`SupportsTimestamp`]({{ site.src }}/internal/filesystem/filesystem.go#L83) / [`SetTimestamp`]({{ site.src }}/internal/filesystem/filesystem.go#L84) |
+
+## Further reading
+
+All specs, docs, and tools are collected on the [References](../references.html) page.

@@ -6,59 +6,59 @@ nav_order: 6
 
 # Shared contract decisions
 
-These decisions are the shared boundaries used by the filesystem, technique,
-CLI, and live-mode implementations.
+These decisions set the boundaries shared by the filesystem, technique, CLI, and live-mode code.
 
 ## Custody logging
 
-Image mutations receive a custody-wrapped image before technique execution.
-The wrapper records successful write offsets, SHA-256 hashes and UTC timestamps
-in memory. The CLI then persists one logical operation record to
-`~/.nemo/logs/custody.jsonl` and echoes it on stdout: operation, technique, target,
-detail, payload byte count, hash and UTC timestamp. Native writes use that same
-logical audit path around their syscall.
+Image changes get a custody-wrapped image before the technique runs. The wrapper records each successful write's offset, SHA-256 hash, and UTC timestamp in memory.
 
-Audit/echo failure returns an error and is never reported as complete success.
-Logging occurs after mutation and does not roll back a write; these records are
-not a transactional write-ahead log, and per-offset wrapper events are not the
-persisted JSON Lines schema. Slack backups are persisted before overwriting bytes.
+The CLI then saves one record per logical operation to `~/.nemo/logs/custody.jsonl` and echoes it on stdout. The record holds the operation, technique, target, detail, payload byte count, hash, and UTC timestamp. Native writes use the same audit path around their syscall.
 
-See [Image and Custody](image.md) and [Live Mode](live-mode.md).
+- A failure to audit or echo returns an error. It is never reported as full success.
+- Logging happens after the change and does not roll it back.
+- The records are not a transactional write-ahead log.
+- Per-offset wrapper events are not the saved JSON Lines schema.
+- Slack backups are saved before bytes are overwritten.
+
+See [Image and custody](image.html) and [Modes](modes.html).
 
 ## Slack framing
 
-New slack payloads use a 28-byte `NEM2` header: magic, payload length, CRC32
-and a random 16-byte per-hide nonce. Historical 12-byte `NEMO` frames remain
-readable. The nonce prevents a repeated identical payload from qualifying a stale
-backup. Detection recognizes valid frames, not arbitrary non-zero residual bytes.
-Hide writes one frame in the first region that fits; it does not distribute a
-frame across regions. Insufficient capacity is rejected before a write.
+New slack payloads use a 28-byte `NEM2` header: magic, payload length, CRC32, and a random 16-byte nonce per hide. Older 12-byte `NEMO` frames stay readable.
 
-See [Technique Interfaces](technique.md) and
-[Slack-Space Hiding](../techniques/slack-space.md).
+- The nonce stops a repeated identical payload from matching a stale backup.
+- Detection recognizes valid frames, not arbitrary non-zero leftover bytes.
+- `hide` writes one frame into the first region that fits. It does not split a frame across regions.
+- Too little capacity is rejected before any write.
+
+See [Technique interfaces](technique.html) and [slack-space hiding](../techniques/slack-space.html).
 
 ## Clear backup manifest
 
-`hide` persists original slack bytes before mutation. Records carry the internal
-target, offset range, original bytes, backing-image identity and exact frame hash.
-File identity includes device/inode or Windows volume/file index and size; ext4
-also includes its filesystem UUID. `clear` validates identity and frame digest
-before restoring. An explicit manifest requires a match; the default manifest
-warns and zero-fills when only legacy/foreign records are available. A stale frame
-is rejected without mutation.
+`hide` saves the original slack bytes before changing anything. Each record holds:
 
-Timestamp hiding does not automatically save the original value. Timestamp clear
-requires the user-supplied original; detection has no historical anomaly baseline.
+- the internal target
+- the offset range
+- the original bytes
+- the backing image's identity
+- the exact frame hash
 
-See [Hide](../cli/hide.md), [Clear](../cli/clear.md), and
-[Technique Interfaces](technique.md).
+Image identity is device and inode, or Windows volume and file index, plus size. For ext4 it also includes the filesystem UUID.
+
+`clear` checks the identity and frame digest before restoring.
+
+- An explicit manifest must match.
+- With the default manifest, if only legacy or foreign records exist, `clear` warns and zero-fills.
+- A stale frame is rejected without any change.
+
+Timestamp hiding does not save the original value. Timestamp `clear` needs the original from the user. Detection has no historical baseline to flag anomalies against.
+
+See [hide](../cli/hide.html), [clear](../cli/clear.html), and [Technique interfaces](technique.html).
 
 ## Capability boundaries
 
-Filesystem entries expose named-stream, slack-space, and timestamp operations
-through separate optional capabilities. A technique requests only the
-capability it needs and receives a stable unsupported error when an entry or
-platform cannot provide it. This keeps unsupported live and filesystem cases
-explicit rather than silently falling back to another mode.
+Filesystem entries offer named-stream, slack-space, and timestamp operations as separate optional capabilities. A technique asks for only the one it needs. If the entry or platform cannot provide it, the technique gets a stable unsupported error.
 
-See [Filesystem Interfaces](filesystem.md) and [Live Mode](live-mode.md).
+That keeps unsupported live and filesystem cases explicit. Nemo never silently falls back to another mode.
+
+See [Filesystem interfaces](filesystem.html) and [Modes](modes.html).

@@ -6,18 +6,21 @@ nav_order: 2
 
 # Nemo's APFS parser
 
-This is about `internal/filesystem/apfs`. It covers detection, mounting,
-the B-tree code, the in-place write path, and every layout the parser
-refuses instead of misreading.
+This page covers `internal/filesystem/apfs`: detection, mounting, the B-tree code, the in-place write path, and every layout the parser refuses instead of misreading.
 
-For what named streams are and how detection works at the technique level,
-see [Named-Stream Hiding](../techniques/named-streams.html). For
-where this package sits in the overall layering, see
-[Architecture](../architecture/).
+- For what named streams are and how detection works at the technique level, see [named-stream hiding](../techniques/named-streams.html).
+- For where this package sits in the layering, see [Architecture](../architecture/).
+
+## At a glance
+
+- Image mode supports named streams, slack space, and timestomp.
+- Mounting is read-only. Writes rewrite one B-tree leaf in place. Nemo never allocates blocks or writes a checkpoint.
+- It refuses encrypted volumes and a tree-form checkpoint descriptor area. See [Limitations](#limitations).
+- Live mode runs on macOS only and covers APFS only. Live slack writes always fail on a mounted volume.
 
 ## Detection
 
-`sniff` decides if an image is APFS. It gets at most the first 4096 bytes.
+[`sniff`]({{ site.src }}/internal/filesystem/apfs/apfs.go#L92) decides if an image is APFS. It gets at most the first 4096 bytes.
 
 It checks two things.
 
@@ -26,12 +29,12 @@ It checks two things.
 - Does it have a GPT header at offset 512, with an `Apple_APFS` partition
   entry inside it? That means a GPT-wrapped container.
 
-Either match is enough. `sniff` must handle a short or empty slice without
+Either match is enough. [`sniff`]({{ site.src }}/internal/filesystem/apfs/apfs.go#L92) must handle a short or empty slice without
 panicking, since some images are smaller than 4096 bytes.
 
 ## Mounting
 
-`New(img)` is read-only. It walks from raw bytes to an open filesystem tree
+[`New(img)`]({{ site.src }}/internal/filesystem/apfs/apfs.go#L577) is read-only. It walks from raw bytes to an open filesystem tree
 in six steps.
 
 **1. Find the container.**
@@ -39,7 +42,7 @@ in six steps.
 Read block 0. If it starts with `NXSB`, the image is a bare container.
 
 If not, look for a GPT header and an `Apple_APFS` partition entry, matched
-by type GUID. If found, wrap the image in a `section`. This is a small
+by type GUID. If found, wrap the image in a [`section`]({{ site.src }}/internal/filesystem/apfs/apfs.go#L238). This is a small
 struct that shifts every read and write by the partition's start offset. It
 lets the rest of the parser treat the partition as if it started at byte 0.
 
@@ -85,11 +88,11 @@ tree.
 **6. Resolve the volume omap.**
 
 Then resolve the filesystem tree's root through it, and open that as a
-`tree` (see the next section). `FS.fsTree` is this tree. `FS.Root()` is the
+[`tree`]({{ site.src }}/internal/filesystem/apfs/btree.go#L148) (see the next section). [`FS.fsTree`]({{ site.src }}/internal/filesystem/apfs/apfs.go#L562) is this tree. [`FS.Root()`]({{ site.src }}/internal/filesystem/apfs/apfs.go#L683) is the
 fixed object id `2`, the volume's root directory.
 
 Every object read along the way, whether a superblock or a B-tree node,
-goes through `readObject`. That function checks the object's Fletcher-64
+goes through [`readObject`]({{ site.src }}/internal/filesystem/apfs/apfs.go#L294). That function checks the object's Fletcher-64
 checksum before anything looks at the bytes. A checksum mismatch is always
 a hard error. Nothing downstream ever sees unverified bytes.
 
@@ -99,14 +102,14 @@ APFS uses one on-disk B-tree format, `btree_node_phys_t`. The container
 omap, each volume's omap, and each volume's filesystem tree all use it.
 
 Only the key and value shape, and the comparator, differ between them.
-`tree` is a single generic implementation. Three things parameterize it.
+[`tree`]({{ site.src }}/internal/filesystem/apfs/btree.go#L148) is a single generic implementation. Three things parameterize it.
 
-- `resolve(oid) (paddr, error)` turns a child pointer into a physical block
-  address. The omap's own tree uses `omapResolveIdentity`, since an omap
+- [`resolve(oid) (paddr, error)`]({{ site.src }}/internal/filesystem/apfs/apfs.go#L441) turns a child pointer into a physical block
+  address. The omap's own tree uses [`omapResolveIdentity`]({{ site.src }}/internal/filesystem/apfs/apfs.go#L499), since an omap
   can't be indirected through another omap. Every other tree resolves
   through that volume's omap, at the mounted `xid`.
-- `cmp(a, b []byte) int` is the key comparator. It's `omapKeyCompare` for
-  `{oid, xid}` pairs, and `fsKeyCompare` for filesystem-tree records.
+- `cmp(a, b []byte) int` is the key comparator. It's [`omapKeyCompare`]({{ site.src }}/internal/filesystem/apfs/apfs.go#L503) for
+  `{oid, xid}` pairs, and [`fsKeyCompare`]({{ site.src }}/internal/filesystem/apfs/btree.go#L432) for filesystem-tree records.
 - `fixedKeySize`/`fixedValSize` only matter when a node's own
   `BTNODE_FIXED_KV_SIZE` flag is set. That's true for the omap tree, where
   keys and leaf values are a fixed size. It's always `0, 0` for the
@@ -114,7 +117,7 @@ Only the key and value shape, and the comparator, differ between them.
 
 ### Reading a node
 
-`decodeNode` reads one block and produces parallel `keys` and `vals`
+[`decodeNode`]({{ site.src }}/internal/filesystem/apfs/btree.go#L42) reads one block and produces parallel `keys` and `vals`
 slices. These alias the block buffer directly. There's no copying on the
 read path.
 
@@ -131,28 +134,28 @@ that into a clean bounds error instead.
 
 ### Walking the tree
 
-Traversal happens through a `cursor`.
+Traversal happens through a [`cursor`]({{ site.src }}/internal/filesystem/apfs/btree.go#L242).
 
-`seek(key)` walks root to leaf. At each level it picks a child with
-`lastLE`, the last key less than or equal to the target. A non-leaf key is
+[`seek(key)`]({{ site.src }}/internal/filesystem/apfs/btree.go#L249) walks root to leaf. At each level it picks a child with
+[`lastLE`]({{ site.src }}/internal/filesystem/apfs/btree.go#L225), the last key less than or equal to the target. A non-leaf key is
 only a lower bound on its child subtree. It's not necessarily an exact copy
 of the child's smallest key.
 
-`next()` moves the cursor forward, one record at a time, in key order.
+[`next()`]({{ site.src }}/internal/filesystem/apfs/btree.go#L318) moves the cursor forward, one record at a time, in key order.
 
-APFS nodes have no sibling pointers. So `cursor` keeps the whole descent
+APFS nodes have no sibling pointers. So [`cursor`]({{ site.src }}/internal/filesystem/apfs/btree.go#L242) keeps the whole descent
 stack, from root down to the current leaf. When a leaf runs out of
-records, `next()` pops back up the stack and re-descends into the next
+records, [`next()`]({{ site.src }}/internal/filesystem/apfs/btree.go#L318) pops back up the stack and re-descends into the next
 subtree, instead of following a next-leaf pointer that doesn't exist.
 
-A hard cap, `maxBtreeDepth` (64), bounds every descent. Real APFS trees are
+A hard cap, [`maxBtreeDepth`]({{ site.src }}/internal/filesystem/apfs/btree.go#L25) (64), bounds every descent. Real APFS trees are
 maybe ten levels deep, so this only ever fires on a corrupted or cyclic
 pointer chain. Without the cap, that kind of image could make a descent
 loop forever.
 
 ### The object map lookup
 
-`omap.resolve(oid, atXid)` looks up the physical address for an object id,
+[`omap.resolve(oid, atXid)`]({{ site.src }}/internal/filesystem/apfs/apfs.go#L441) looks up the physical address for an object id,
 as of a given transaction id.
 
 An object can have several versions in the omap, each a separate `(oid,
@@ -168,10 +171,10 @@ for an entry's xid to exactly equal the xid being looked up.
 ### Filesystem-tree keys
 
 `j_key_t` is one little-endian `u64`. The low 60 bits are the object id.
-The high 4 bits are the record type. `encodeJKey` and `decodeJKey` handle
+The high 4 bits are the record type. [`encodeJKey`]({{ site.src }}/internal/filesystem/apfs/btree.go#L416) and [`decodeJKey`]({{ site.src }}/internal/filesystem/apfs/btree.go#L397) handle
 the packing.
 
-`fsKeyCompare` only orders by `(oid, type)`. It doesn't model the per-type
+[`fsKeyCompare`]({{ site.src }}/internal/filesystem/apfs/btree.go#L432) only orders by `(oid, type)`. It doesn't model the per-type
 sub-key, things like a directory entry's name hash, an xattr's name, or a
 file extent's logical offset.
 
@@ -183,7 +186,7 @@ no longer matches.
 The record types this parser reads are `INODE` (3), `XATTR` (4),
 `DSTREAM_ID` (6), `FILE_EXTENT` (8), and `DIR_REC` (9).
 
-Directory entry names come from `decodeDrecKey`. APFS has two key layouts
+Directory entry names come from [`decodeDrecKey`]({{ site.src }}/internal/filesystem/apfs/btree.go#L520). APFS has two key layouts
 for directory records.
 
 - A "hashed" layout (`j_drec_hashed_key_t`), used by case-insensitive or
@@ -191,7 +194,7 @@ for directory records.
 - A plain layout (`j_drec_key_t`).
 
 Rather than read the volume's incompatible-features flag to know which one
-is in use, `decodeDrecKey` just tries the hashed layout first. If the
+is in use, [`decodeDrecKey`]({{ site.src }}/internal/filesystem/apfs/btree.go#L520) just tries the hashed layout first. If the
 result doesn't look like a real, printable name, it falls back to the
 plain layout.
 
@@ -202,19 +205,19 @@ the whole root-to-leaf path, updates the omap, and commits a new
 checkpoint.
 
 Nemo skips all of that. There's no space manager and no checkpoint writer
-here. Instead, `rewriteLeaf` rewrites exactly one leaf, in place, at its
+here. Instead, [`rewriteLeaf`]({{ site.src }}/internal/filesystem/apfs/btree_write.go#L235) rewrites exactly one leaf, in place, at its
 existing address.
 
-1. Descend to the leaf that owns the key (`descendToLeaf`).
+1. Descend to the leaf that owns the key ([`descendToLeaf`]({{ site.src }}/internal/filesystem/apfs/btree.go#L192)).
 2. Hand the leaf's records to a `mutate` closure. It inserts, replaces, or
    deletes one record.
-3. `encodeLeaf` repacks all the records. Keys go forward from the
+3. [`encodeLeaf`]({{ site.src }}/internal/filesystem/apfs/btree_write.go#L70) repacks all the records. Keys go forward from the
    table-of-contents. Values go backward from the end of the block, 8-byte
    aligned. It zeroes the rest of the block first, so no stale bytes from a
    shrunk record are left behind for a forensic reader to find.
-4. `writeNodeBlock` recomputes the Fletcher-64 checksum and writes the
+4. [`writeNodeBlock`]({{ site.src }}/internal/filesystem/apfs/btree_write.go#L173) recomputes the Fletcher-64 checksum and writes the
    block back.
-5. If the leaf wasn't the root, `bumpRootKeyCount` updates the root's
+5. If the leaf wasn't the root, [`bumpRootKeyCount`]({{ site.src }}/internal/filesystem/apfs/btree_write.go#L209) updates the root's
    trailing `btree_info_t`. That means the key count, and the
    longest-key/longest-val hints. The hints only ever grow, never shrink,
    since the root's own encode pass never sees a non-root leaf's change and
@@ -235,11 +238,11 @@ key below the leaf's old minimum doesn't break that bound.
 
 A delete only raises a leaf's true minimum. That only widens the gap above
 the parent's separator key. It never invalidates it. See the doc comment at
-the top of `btree_write.go` for the full argument.
+the top of [`btree_write.go`]({{ site.src }}/internal/filesystem/apfs/btree_write.go) for the full argument.
 
 **What it can't do.**
 
-It can't grow a node past its existing free space. `encodeLeaf` returns
+It can't grow a node past its existing free space. [`encodeLeaf`]({{ site.src }}/internal/filesystem/apfs/btree_write.go#L70) returns
 "node full" instead of splitting it. And it can't touch anything above the
 leaf besides the root's summary fields. Splitting a leaf, allocating a new
 block, and updating a non-root ancestor are all unimplemented.
@@ -257,10 +260,10 @@ A record's value is one of two kinds.
   `XATTR_MAX_EMBEDDED_SIZE`, which is 3804 bytes.
 - **Stream-backed.** A `j_xattr_dstream_t` points at a `DSTREAM_ID` object.
   Its data lives in `FILE_EXTENT` records. These must be contiguous and
-  start at logical offset 0. `extentsOf` rejects anything sparse or
+  start at logical offset 0. [`extentsOf`]({{ site.src }}/internal/filesystem/apfs/namedstream.go#L228) rejects anything sparse or
   out-of-order as unsupported.
 
-Reading a stream-backed value calls `readExtents`, which walks the file's
+Reading a stream-backed value calls [`readExtents`]({{ site.src }}/internal/filesystem/apfs/namedstream.go#L279), which walks the file's
 extents and concatenates their bytes. It caps the read at the bytes the
 extents actually cover, not at whatever size the (possibly corrupted)
 `j_xattr_dstream_t` claims. That stops a bogus multi-gigabyte size field
@@ -287,57 +290,59 @@ either. A true copy-on-write update would avoid this gap. Nemo's in-place
 path doesn't have one.
 
 Inserting a new xattr keeps the leaf's records sorted by name.
-`xattrKeyAfter` compares the new name against each existing record's name to
-find the right insertion point, since `fsKeyCompare` alone only orders by
+[`xattrKeyAfter`]({{ site.src }}/internal/filesystem/apfs/namedstream.go#L397) compares the new name against each existing record's name to
+find the right insertion point, since [`fsKeyCompare`]({{ site.src }}/internal/filesystem/apfs/btree.go#L432) alone only orders by
 `(oid, type)` and doesn't look at the name.
 
 ## Entries and paths (`apfs.go`)
 
-`FS.Open(path)` walks the path one component at a time, starting from the
+[`FS.Open(path)`]({{ site.src }}/internal/filesystem/apfs/apfs.go#L687) walks the path one component at a time, starting from the
 root. At each step it calls `Children()` on the current entry and looks for
 a name match. There's no shortcut lookup by full path. Every `Open` call
 costs one tree scan per path component.
 
-`Entry.Children()` seeks to the first `DIR_REC` record for the entry's
+[`Entry.Children()`]({{ site.src }}/internal/filesystem/apfs/apfs.go#L748) seeks to the first `DIR_REC` record for the entry's
 object id, then scans forward, decoding one child per record until the
 `(oid, type)` no longer matches.
 
-An `apfs.Entry` implements `filesystem.NamedStreamCapable`,
-`filesystem.TimestompCapable` (`timestomp.go`), and
-`filesystem.SlackSpaceCapable` (`slack.go`).
+An [`apfs.Entry`]({{ site.src }}/internal/filesystem/apfs/apfs.go#L731) implements [`filesystem.NamedStreamCapable`]({{ site.src }}/internal/filesystem/filesystem.go#L39),
+[`filesystem.TimestompCapable`]({{ site.src }}/internal/filesystem/filesystem.go#L81) ([`timestomp.go`]({{ site.src }}/internal/filesystem/apfs/timestomp.go)), and
+[`filesystem.SlackSpaceCapable`]({{ site.src }}/internal/filesystem/filesystem.go#L52) ([`slack.go`]({{ site.src }}/internal/filesystem/apfs/slack.go)).
 
 ## Timestomping (`timestomp.go`)
 
 The four timestamps live at fixed offsets in the `j_inode_val_t` INODE record:
 `create_time` (16), `mod_time` (24), `change_time` (32), `access_time` (40), each a
 `uint64` nanosecond count since the Unix epoch. `SetTimestamp` finds that record
-through `fsTree.rewriteLeaf` (the same in-place leaf rewrite `namedstream.go` uses)
+through `fsTree.rewriteLeaf` (the same in-place leaf rewrite [`namedstream.go`]({{ site.src }}/internal/filesystem/apfs/namedstream.go) uses)
 and overwrites 8 of its bytes, leaving the rest of the record, including `xfields`,
-untouched. The record's length never changes, so this is the same same-size-replace
-case `replaceXattr` already covers: no B-tree rebalance, no `btree_info_t` update
-beyond what `bumpRootKeyCount` already does for a zero-delta mutation.
+untouched. The record's length never changes, so this is the same-size-replace
+case [`replaceXattr`]({{ site.src }}/internal/filesystem/apfs/namedstream.go#L424) already covers: no B-tree rebalance, no `btree_info_t` update
+beyond what [`bumpRootKeyCount`]({{ site.src }}/internal/filesystem/apfs/btree_write.go#L209) already does for a zero-delta mutation.
 
-`change_time` maps to `filesystem.TimeChanged`, the fourth `TimeField`. It is the
-one MACB timestamp no live userland API can set; writing it through the image
-gives a stomp with no ctime/mtime mismatch to give it away.
+`change_time` maps to [`filesystem.TimeChanged`]({{ site.src }}/internal/filesystem/filesystem.go#L67), the fourth [`TimeField`]({{ site.src }}/internal/filesystem/filesystem.go#L57). It is the
+one MACB timestamp no live userland API can set. Writing it through the image
+gives a stomp with no ctime and mtime mismatch to give it away.
 
 ## Slack space (`slack.go`)
 
-`Entry.SlackRegions` reports the unused tail bytes past a file's logical
-size, as absolute byte offsets into the caller's `image.Image` (not into
-`FS.img`, which for a GPT-wrapped container is a partition-relative
-`section`; `slack.go` adds the container's own byte offset, `FS.base`, back
-in). Nemo's technique layer (`internal/technique`) does the actual
-hide/detect/clear against those regions: this package only has to say where
+[`Entry.SlackRegions`]({{ site.src }}/internal/filesystem/apfs/slack.go#L196) reports the unused tail bytes past a file's logical
+size, as absolute byte offsets into the caller's [`image.Image`]({{ site.src }}/internal/image/image.go#L4) (not into
+[`FS.img`]({{ site.src }}/internal/filesystem/apfs/apfs.go#L557), which for a GPT-wrapped container is a partition-relative
+[`section`]({{ site.src }}/internal/filesystem/apfs/apfs.go#L238)). [`slack.go`]({{ site.src }}/internal/filesystem/apfs/slack.go) adds the container's own byte offset, [`FS.base`]({{ site.src }}/internal/filesystem/apfs/apfs.go#L569), back
+in.
+
+Nemo's technique layer (`internal/technique`) does the actual
+hide, detect, and clear against those regions. This package only has to say where
 they are.
 
 A file's content is a data stream described by a `j_dstream_t`, which isn't
 a fixed-offset field of `j_inode_val_t` like the timestamps are. It's an
 extended field (xfield), `INO_EXT_TYPE_DSTREAM`, appended after the
-92-byte fixed part. `inodeDStream` walks the xfield table (`xf_blob_t` +
+92-byte fixed part. [`inodeDStream`]({{ site.src }}/internal/filesystem/apfs/slack.go#L45) walks the xfield table (`xf_blob_t` +
 `x_field_t[]` + values, each value padded up to the next 8-byte boundary) to
 find it. The stream's actual blocks are then read the same way a
-stream-backed xattr's are, via `extentsOf`, keyed by the inode's
+stream-backed xattr's are, via [`extentsOf`]({{ site.src }}/internal/filesystem/apfs/namedstream.go#L228), keyed by the inode's
 `private_id` (offset 8) rather than the inode's own object id.
 
 Slack is computed per extent, not once across the whole file: extents are
@@ -346,8 +351,8 @@ could point at unrelated blocks. Since every extent's length is a whole
 number of blocks, this also means a region never crosses a block boundary
 without meaning to.
 
-Two layouts make the dstream's logical size meaningless, so `SlackRegions`
-refuses them with an error wrapping `filesystem.ErrUnsupported` rather than
+Two layouts make the dstream's logical size meaningless, so [`SlackRegions`]({{ site.src }}/internal/filesystem/apfs/slack.go#L196)
+refuses them with an error wrapping [`filesystem.ErrUnsupported`]({{ site.src }}/internal/filesystem/filesystem.go#L11) rather than
 silently reporting a wrong (or simply absent) region:
 
 - **HFS-style compression.** A `com.apple.decmpfs` xattr means the
@@ -367,11 +372,11 @@ ordinary "insufficient slack space" path instead of turning a whole-image
 Slack space in a block a clone shares with another file isn't detected as
 unsafe: nemo doesn't read `EXTENT_REF`/reference-count records, so writing
 there could corrupt the clone's own content. Sparse (hole) extents are
-already refused by `extentsOf`, before `slack.go` ever sees them.
+already refused by [`extentsOf`]({{ site.src }}/internal/filesystem/apfs/namedstream.go#L228), before [`slack.go`]({{ site.src }}/internal/filesystem/apfs/slack.go) ever sees them.
 
 ## Limitations
 
-`New` refuses each of the layouts below with a clear error, rather than
+[`New`]({{ site.src }}/internal/filesystem/apfs/apfs.go#L577) refuses each of the layouts below with a clear error, rather than
 return a partial or wrong result.
 
 - **Encrypted volumes.** This is the `APFS_FS_UNENCRYPTED` bit clear in
@@ -394,70 +399,66 @@ Some things aren't attempted at all, not even refused with an error.
 - **The space manager and reaper.** Nothing here allocates or frees blocks.
   That's why every write path above is capped to "fits in what's already
   allocated."
-- **Clone-aware slack safety.** `slack.go` doesn't check whether a block is
+- **Clone-aware slack safety.** [`slack.go`]({{ site.src }}/internal/filesystem/apfs/slack.go) doesn't check whether a block is
   shared between clones before reporting it as slack.
 
 ## Live mode (macOS)
 
-`live_darwin.go` implements live mode for APFS on macOS: no volume parsing, every
-operation is a syscall against a path. It's a second, independent `filesystem.Entry`
-(`liveEntry`), not the image-mode `Entry` running with a different backing store; see
-[Live Mode](../architecture/live-mode.html) for why they're kept separate. Every other
-OS gets `live_unsupported.go` (`//go:build !darwin`), which returns
-`filesystem.ErrUnsupported` so cross-compiling stays clean.
+[`live_darwin.go`]({{ site.src }}/internal/filesystem/apfs/live_darwin.go) implements live mode for APFS on macOS: no volume parsing, every
+operation is a syscall against a path. It's a second, independent [`filesystem.Entry`]({{ site.src }}/internal/filesystem/filesystem.go#L31)
+([`liveEntry`]({{ site.src }}/internal/filesystem/apfs/live_darwin.go#L244)), not the image-mode [`Entry`]({{ site.src }}/internal/filesystem/apfs/apfs.go#L731) running on a different backing store. See
+[Modes](../architecture/modes.html) for why they're kept separate. Every other
+OS gets [`live_unsupported.go`]({{ site.src }}/internal/filesystem/apfs/live_unsupported.go) (`//go:build !darwin`), which returns
+[`filesystem.ErrUnsupported`]({{ site.src }}/internal/filesystem/filesystem.go#L11) so cross-compiling stays clean.
 
 ### Only APFS, nothing else, even on macOS
 
-`cmd`'s live-mode router calls `apfs.OpenLive`/`apfs.OpenLiveSlack` directly; it does
+`cmd`'s live-mode router calls [`apfs.OpenLive`]({{ site.src }}/internal/filesystem/apfs/live_darwin.go#L35)/[`apfs.OpenLiveSlack`]({{ site.src }}/internal/filesystem/apfs/live_darwin.go#L64) directly. It does
 not detect the target's filesystem and dispatch. So on macOS, live mode only ever
 means APFS, regardless of what's actually mounted at the target path:
 
 - A target on an HFS+, exFAT, or FAT32 volume, or an NTFS volume mounted through a
   third-party driver (native macOS NTFS support is read-only), refuses cleanly.
-  `OpenLive` checks the target's `f_fstypename` via `unix.Statfs` before doing
+  [`OpenLive`]({{ site.src }}/internal/filesystem/apfs/live_darwin.go#L35) checks the target's `f_fstypename` via `unix.Statfs` before doing
   anything else, so the error names the actual filesystem: `"/Volumes/X" is on a
   "ntfs" filesystem, not apfs`. Nothing gets misread as APFS.
 - An ext4 drive is further along the same road before you even get there: macOS has
   no native ext2/3/4 support at all, so it typically won't mount without third-party
   software (fuse-ext2, ext4fuse via macFUSE, Paragon extFS). With nothing installed,
   there's no live path to point nemo at in the first place.
-- NTFS and ext4 do have their own live implementations (`internal/filesystem/ntfs/live_windows.go`,
-  Windows-only and read-only; `internal/filesystem/ext4/live_linux.go`, Linux-only), but
-  they are reached only on their native OS, never from macOS. That's not a gap macOS
+- NTFS and ext4 do have their own live implementations. NTFS is in `internal/filesystem/ntfs/live_windows.go` (Windows-only and read-only). ext4 is in `internal/filesystem/ext4/live_linux.go` (Linux-only). Each is reached only on its native OS, never from macOS. That's not a gap macOS
   closes once those land elsewhere: live mode's design ties a filesystem's live
   implementation to running on that filesystem's native OS. See
   [NTFS](ntfs.html#live-mode-windows) and [ext4](ext4.html#slack-and-linux-live-mode).
 
 The workaround is the same regardless of which foreign filesystem it is: unmount the
 drive (or don't mount it, for ext4) and use `--image /dev/diskN` against the raw
-device instead. Image mode doesn't touch the live OS's mount at all, it parses raw
-bytes directly, so nemo's NTFS and ext4 parsers work identically on macOS, Linux, or
-Windows; only *live* access to a currently-mounted foreign filesystem is unavailable
+device instead. Image mode doesn't touch the live OS's mount at all. It parses raw
+bytes directly, so nemo's NTFS and ext4 parsers work the same on macOS, Linux, or
+Windows. Only *live* access to a currently mounted foreign filesystem is unavailable
 on macOS.
 
-**Named streams** map directly onto xattrs: `OpenLive`'s `liveEntry` implements
-`NamedStreamCapable` with `unix.Getxattr`/`Setxattr`/`Removexattr`/`Listxattr`
+**Named streams** map directly onto xattrs: [`OpenLive`]({{ site.src }}/internal/filesystem/apfs/live_darwin.go#L35)'s [`liveEntry`]({{ site.src }}/internal/filesystem/apfs/live_darwin.go#L244) implements
+[`NamedStreamCapable`]({{ site.src }}/internal/filesystem/filesystem.go#L39) with `unix.Getxattr`/`Setxattr`/`Removexattr`/`Listxattr`
 (`golang.org/x/sys/unix`, not in stdlib `syscall` on darwin). The resource fork is just
-the `com.apple.ResourceFork` xattr, same as image mode; writing it makes
+the `com.apple.ResourceFork` xattr, same as image mode. Writing it makes
 `path/..namedfork/rsrc` readable through the ordinary filesystem. A missing xattr
-(`ENOATTR`) is mapped onto `fs.ErrNotExist`, matching image-mode `Entry.ReadStream`. All
+(`ENOATTR`) is mapped onto `fs.ErrNotExist`, matching image-mode [`Entry.ReadStream`]({{ site.src }}/internal/filesystem/apfs/apfs.go#L791). All
 of this follows a symlink target rather than operating on the link itself, since none of
 the xattr calls pass `XATTR_NOFOLLOW`.
 
-**Timestomp** implements `TimestompCapable`. `modified` and `accessed` go through
-`os.Chtimes`. `created` (birthtime) needs `setattrlist(ATTR_CMN_CRTIME)`, which stdlib
-has no equivalent for. `changed` stays `filesystem.ErrUnsupported`, same as image mode:
-it's kernel-controlled metadata-change time with no live userland API to set directly.
-One APFS quirk: setting `modified` (or `accessed`) to a time earlier than
-the file's current birthtime also pulls the birthtime down to match, since APFS treats
-birthtime as "the earliest known point in this file's history." `live_darwin_test.go`
-pins this down explicitly so a future macOS change to it shows up as a test failure
-rather than a silent surprise.
+**Timestomp** implements [`TimestompCapable`]({{ site.src }}/internal/filesystem/filesystem.go#L81).
 
-`liveEntry` deliberately does not implement `SlackSpaceCapable`. The unused tail bytes
-of an allocated block have no path-based API on any OS; reaching them needs the raw
-container device, which `OpenLiveSlack` derives from `unix.Statfs`'s `f_mntfromname`
-(trailing volume-slice suffix stripped) and parses with `NewVolume` against the
+- `modified` and `accessed` go through `os.Chtimes`.
+- `created` (birthtime) needs `setattrlist(ATTR_CMN_CRTIME)`. The standard library has no equivalent.
+- `changed` stays [`filesystem.ErrUnsupported`]({{ site.src }}/internal/filesystem/filesystem.go#L11), same as image mode. It is kernel-controlled metadata-change time, and no live userland API can set it.
+
+One APFS quirk: setting `modified` or `accessed` to a time earlier than the file's current birthtime also pulls the birthtime down to match. APFS treats birthtime as "the earliest known point in this file's history." `live_darwin_test.go` pins this down, so a future macOS change shows up as a test failure, not a silent surprise.
+
+[`liveEntry`]({{ site.src }}/internal/filesystem/apfs/live_darwin.go#L244) deliberately does not implement [`SlackSpaceCapable`]({{ site.src }}/internal/filesystem/filesystem.go#L52). The unused tail bytes
+of an allocated block have no path-based API on any OS. Reaching them needs the raw
+container device, which [`OpenLiveSlack`]({{ site.src }}/internal/filesystem/apfs/live_darwin.go#L64) derives from `unix.Statfs`'s `f_mntfromname`
+(trailing volume-slice suffix stripped) and parses with [`NewVolume`]({{ site.src }}/internal/filesystem/apfs/apfs.go#L585) against the
 specific mounted volume (`f_mntonname`'s last path component).
 
 `hide` and `detect` open two different device nodes for this, because macOS's two
@@ -466,39 +467,40 @@ disk device types behave differently while a volume is mounted:
 - `hide` (and `clear`) open the **buffered** device (`/dev/diskN`) read-write. macOS
   refuses that outright while the volume is mounted (`EBUSY`): opening it would create
   a second, independent view into blocks the mount's own buffer cache already manages.
-  A live slack-space write can never succeed on a mounted volume; `nemo hide -t
+  A live slack-space write can never succeed on a mounted volume. `nemo hide -t
   slack-space` and `nemo clear -t slack-space` with no `--image` always fail with an
   error naming the busy device and suggesting `diskutil unmountDisk` or `--image`
   instead.
 - `detect` opens the **raw character** device (`/dev/rdiskN`) read-only, through
-  `image.OpenRawReadOnly`. That bypasses the buffer cache entirely, and macOS allows it
+  [`image.OpenRawReadOnly`]({{ site.src }}/internal/image/aligned.go#L47). That bypasses the buffer cache entirely, and macOS allows it
   even while the volume is mounted, the same way `sudo dd if=/dev/rdisk0 of=... `
   works against a running Mac's own boot disk. It does need every read
-  sector-aligned, which `AlignedRawDevice` (`internal/image/aligned.go`) handles by
+  sector-aligned, which [`AlignedRawDevice`]({{ site.src }}/internal/image/aligned.go#L34) (`internal/image/aligned.go`) handles by
   rounding each request out to the device's block size (via `DKIOCGETBLOCKSIZE`) and
   copying back only the requested bytes.
 
 Either way, whether the open succeeds without privilege depends on who owns the
-device node, not on hide vs. detect: a disk image you attached yourself is normally
-owned by your own user, so `nemo detect -t slack-space` against it needs no `sudo` at
-all; the container disk behind your boot volume is owned by root (group `operator`),
-so detecting there does need `sudo`, and a permission failure names the device and
-suggests it. `scripts/live-check.sh` exercises both halves (detect succeeding, hide
+device node, not on hide versus detect.
+
+- A disk image you attached yourself is normally owned by your own user. `nemo detect -t slack-space` against it needs no `sudo`.
+- The container disk behind your boot volume is owned by root (group `operator`). Detecting there does need `sudo`. A permission failure names the device and suggests it.
+
+`scripts/live-check.sh` exercises both halves (detect succeeding, hide
 failing with the busy message) against a scratch disk image when it has `sudo`.
 
 Because slack-space is the only technique that touches the raw device, and only when
 `--technique slack-space` is given explicitly, an unqualified `nemo detect` (no
 `--technique`) never attempts to open it. It scans named streams and timestomps
-through the ordinary path-backed `liveEntry` and silently skips slack space, the same
+through the ordinary path-backed [`liveEntry`]({{ site.src }}/internal/filesystem/apfs/live_darwin.go#L244) and silently skips slack space, the same
 way it already skips any technique a filesystem doesn't support.
 
-Every mutating operation, live or image mode, gets one `custody.Record` appended to the
-custody log by the command layer after it succeeds; that's unconditional, not
+Every mutating operation, live or image mode, gets one [`custody.Record`]({{ site.src }}/internal/custody/log.go#L15) appended to the
+custody log by the command layer after it succeeds. That's unconditional, not
 specific to live mode. What live mode adds is `internal/custody.Wrap` around the raw
-device for a live slack-space write (`cmd/live.go`'s `openLiveSlack`, mirroring
+device for a live slack-space write (`cmd/live.go`'s [`openLiveSlack`]({{ site.src }}/cmd/live.go#L61), mirroring
 `cmd/hide.go`'s image-mode `openImage`), so the same per-write SHA-256 event log applies
 whether the bytes underneath are an image file or `/dev/diskN`. Live named-stream and
-timestomp writes are plain xattr/setattrlist syscalls with no `image.Image` in the
+timestomp writes are plain xattr/setattrlist syscalls with no [`image.Image`]({{ site.src }}/internal/image/image.go#L4) in the
 picture at all, so only the top-level custody record applies to them, exactly as it does
 for every other technique.
 
@@ -511,7 +513,7 @@ or corrupted image, not just a well-formed one.
   crafted `nx_block_size` can't force a huge allocation.
 - The GPT partition-entry table size is capped at 1 MiB, computed in 64-bit
   arithmetic so it can't wrap around a 32-bit multiplication.
-- `maxBtreeDepth` stops a cyclic or corrupted child pointer chain from
+- [`maxBtreeDepth`]({{ site.src }}/internal/filesystem/apfs/btree.go#L25) stops a cyclic or corrupted child pointer chain from
   looping forever.
 - A non-leaf node's value length is always treated as 8 bytes, regardless
   of what the node claims, so a short value can't reach a
@@ -537,12 +539,9 @@ variants (`apfs-casesensitive`, `apfs-manyfiles`, `apfs-16k`,
 volume can't reach on its own. `testimage_test.go`'s `loadImage` decompresses
 one into a private, writable temp copy per test. `testdata/mkapfs.sh`
 (macOS-only, builtin `hdiutil`/`newfs_apfs`/`diskutil`) generates the whole
-set; CI just consumes the committed `.gz` files and never regenerates them.
-A couple of on-disk states — multiple non-contiguous extents on one stream,
-a filesystem-owned xattr — turned out not to be reliably producible with
-only builtin macOS tooling, so `fixtures_test.go` fabricates those directly
-through the package's own unexported btree insert path instead of via a
-fixture.
+set. CI just uses the committed `.gz` files and never regenerates them.
+
+Two on-disk states could not be reliably produced with builtin macOS tooling: multiple non-contiguous extents on one stream, and a filesystem-owned xattr. So `fixtures_test.go` builds those directly through the package's own unexported btree insert path.
 
 `live_darwin_test.go` (`//go:build darwin`) covers live mode against real temp files:
 xattr and resource-fork round trips including several Unicode filename and stream-name
@@ -551,5 +550,12 @@ birthtime-lowering quirk above. `live_unsupported_test.go` (`//go:build !darwin`
 confirms the stub. `scripts/live-check.sh` is a standalone shell script (not part of `go
 test`) that drives a built `bin/nemo` binary through the same checks end to end, plus
 the privileged slack-space device path against a scratch disk image when run with
-`sudo` available; see its header comment for what it needs and what it skips without
+`sudo` available. Its header comment lists what it needs and what it skips without
 root.
+
+## Further reading
+
+- [Apple File System Reference](https://developer.apple.com/support/downloads/Apple-File-System-Reference.pdf), the official spec.
+- [libfsapfs format notes](https://github.com/libyal/libfsapfs/blob/main/documentation/Apple%20File%20System%20%28APFS%29.asciidoc) for community notes on gaps in the spec.
+- [`setattrlist(2)`](https://developer.apple.com/library/archive/documentation/System/Conceptual/ManPages_iPhoneOS/man2/setattrlist.2.html) for live creation-time writes.
+- [More in References](../references.html).
