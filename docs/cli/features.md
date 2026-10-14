@@ -14,7 +14,9 @@ nemo features --mode image
 nemo features --mode live
 ```
 
-Run it before `hide` to check what a given image can do. The matrix is built from the same `internal/filesystem` and `internal/technique` registrations nemo uses at runtime, so it cannot drift from real behavior. [Filesystem interfaces](../architecture/filesystem.html#technique-selection-and-the-features-matrix) explains how it is assembled.
+Run it before `hide` to check what a given image can do.
+
+The matrix is built from the same registrations nemo uses at runtime, so it cannot drift from real behavior. [Filesystem interfaces](../architecture/filesystem.html#technique-selection-and-the-features-matrix) explains how it is assembled.
 
 ## Modes
 

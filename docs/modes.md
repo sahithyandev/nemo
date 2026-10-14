@@ -31,6 +31,6 @@ Live mode is limited to what each OS lets a program do without touching the raw 
 
 **Writes are narrower than reads.** Windows live mode is read-only. Linux live slack-space can only detect and extract. Even a supported row depends on the target's format, layout, and your permissions.
 
-If the live backend does not support a platform or target, nemo refuses the command. It never guesses.
+If the live backend does not support a platform or target, nemo refuses the command. It does not guess.
 
 For how the modes are wired in the code, see [Mode implementation](architecture/modes.html).

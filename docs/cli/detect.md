@@ -14,7 +14,9 @@ nemo detect [target] [--technique <technique>] [--image <path>]
 
 ## Arguments
 
-- `[target]`: a file or directory to check. A directory is scanned recursively. In live mode, it is a path on the local filesystem. In image mode, it is a path inside the image. If you omit it, nemo scans every file in the image. Omitting the target only works in image mode.
+- `[target]`: a file or directory to check. A directory is scanned recursively.
+  - Live mode: a path on the local filesystem. A target is required.
+  - Image mode: a path inside the image. If you omit it, nemo scans every file in the image.
 
 ## Options
 
@@ -50,6 +52,7 @@ Live slack-space detection:
 
 - A scan without `--technique` never tries it, just like any technique a filesystem lacks.
 - On macOS, `--technique slack-space` runs it. Nemo opens the volume's raw device read-only. You need root only if the current user cannot already read that device node.
-- On Linux and NTFS it is unsupported.
+- On Linux it is read-only and works only through a verified backing block device. Mounted slack writes are refused.
+- On Windows NTFS it is read-only and needs administrator access.
 
 See [Modes](../modes.html) and [APFS live mode](../file-systems/apfs.html#live-mode-macos).

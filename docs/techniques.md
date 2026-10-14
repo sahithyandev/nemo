@@ -30,7 +30,7 @@ Use it for a small payload when the file's size must not change. The data sits i
 
 It is fragile. Growing or rewriting the file can overwrite the payload. Capacity is under one block.
 
-In live mode it needs administrator (Windows) or root (macOS, Linux), because nemo opens the raw device. See [Modes](modes.html). `nemo detect` finds slack data that nemo wrote.
+In live mode, nemo opens the raw device, which needs administrator (Windows) or root (macOS, Linux). Live slack is read-only. See [Modes](modes.html). `nemo detect` finds slack data that nemo wrote.
 
 ## Timestomp
 

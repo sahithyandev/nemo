@@ -6,7 +6,7 @@ nav_order: 1
 
 # nemo
 
-Nemo is a command line tool for hiding, finding, and removing hidden data on NTFS, APFS, and ext4. It is written in Go and runs on Linux, macOS, and Windows.
+Nemo is a command line tool for hiding, finding, and removing hidden data on NTFS, APFS, and ext4. It is written in Go and runs on Linux, macOS, and Windows. Live writes on Windows are not supported yet.
 
 It has two modes:
 
@@ -128,7 +128,7 @@ curl -fsSLO https://raw.githubusercontent.com/sahithyandev/nemo/main/testdata/<i
 - NTFS, APFS, and ext4
 - Named-stream hiding, slack-space hiding, and timestomping
 - Image mode and live mode
-- Hide, detect, and clear commands
+- Hide, detect, extract, and clear commands
 - Chain-of-custody logging and SHA-256 hashing
 - Validation against a public dataset
 
