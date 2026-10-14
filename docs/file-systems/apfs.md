@@ -413,7 +413,7 @@ OS gets [`live_unsupported.go`]({{ site.src }}/internal/filesystem/apfs/live_uns
 
 ### Only APFS, nothing else, even on macOS
 
-`cmd`'s live-mode router calls [`apfs.OpenLive`]({{ site.src }}/internal/filesystem/apfs/live_darwin.go#L35)/[`apfs.OpenLiveSlack`]({{ site.src }}/internal/filesystem/apfs/live_darwin.go#L64) directly; it does
+`cmd`'s live-mode router calls [`apfs.OpenLive`]({{ site.src }}/internal/filesystem/apfs/live_darwin.go#L35)/[`apfs.OpenLiveSlack`]({{ site.src }}/internal/filesystem/apfs/live_darwin.go#L64) directly. It does
 not detect the target's filesystem and dispatch. So on macOS, live mode only ever
 means APFS, regardless of what's actually mounted at the target path:
 
@@ -550,5 +550,5 @@ birthtime-lowering quirk above. `live_unsupported_test.go` (`//go:build !darwin`
 confirms the stub. `scripts/live-check.sh` is a standalone shell script (not part of `go
 test`) that drives a built `bin/nemo` binary through the same checks end to end, plus
 the privileged slack-space device path against a scratch disk image when run with
-`sudo` available; see its header comment for what it needs and what it skips without
+`sudo` available. Its header comment lists what it needs and what it skips without
 root.

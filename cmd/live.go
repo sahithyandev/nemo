@@ -19,7 +19,7 @@ import (
 // needs the raw device backing target's mounted volume, which is only
 // attempted when tech explicitly asks for it. An unqualified detect scan
 // should not reach for a device it may not have permission to open; see
-// docs/architecture/live-mode.md.
+// docs/architecture/modes.md.
 func openLiveTarget(target, tech string, write bool) (openedTarget, error) {
 	if runtime.GOOS == "linux" {
 		if tech == technique.SlackSpace {
