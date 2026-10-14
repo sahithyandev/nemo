@@ -7,45 +7,37 @@ has_children: true
 
 # Validation
 
-nemo ships a validation harness (`tools/validate` over `internal/validation`)
-that scores `detect` against a manifest of known cases. It never downloads
-images, opens every image read-only, and compares findings as exact multisets of
-location and byte size, so an unexpected, missing, duplicate, or wrong-sized
-finding fails the case. Run it from the repository root:
+Nemo ships a validation harness (`tools/validate` over `internal/validation`). It scores `detect` against a manifest of known cases.
+
+- It never downloads images.
+- It opens every image read-only.
+- It compares findings as exact multisets of location and byte size. An unexpected, missing, duplicate, or wrong-sized finding fails the case.
+
+Run it from the repository root:
 
 ```sh
 go run ./tools/validate -manifest docs/validation/synthetic-ext4-v1.json /path/to/dataset
 ```
 
-The full manifest format, status codes (`pass`, `fail`, `missing`,
-`unsupported`, `error`), and exit-status rules are in the
-[harness reference]({{ site.src }}/docs/validation/README.md).
+The [harness reference]({{ site.src }}/docs/validation/README.md) has the full manifest format, the status codes (`pass`, `fail`, `missing`, `unsupported`, `error`), and the exit-status rules.
 
 ## Reproducible synthetic sample
 
-The [`create-sample.sh`]({{ site.src }}/docs/validation/create-sample.sh)
-script builds a real ext4 image (a positive `user.nemo` xattr plus a clean file)
-with no mount or root privileges, so the positive, clean-target, and clean-slack
-cases run anywhere e2fsprogs is available:
+The [`create-sample.sh`]({{ site.src }}/docs/validation/create-sample.sh) script builds a real ext4 image. It holds a positive `user.nemo` xattr and a clean file. It needs no mount and no root privileges. The positive, clean-target, and clean-slack cases run anywhere e2fsprogs is available.
 
 ```sh
 sh docs/validation/create-sample.sh /tmp/nemo-validation-demo
 go run ./tools/validate -manifest docs/validation/synthetic-ext4-v1.json /tmp/nemo-validation-demo
 ```
 
-[Recorded output]({{ site.src }}/docs/validation/synthetic-result-v1.json): 3
-pass, nothing else. This is the successful harness demonstration, and the image
-SHA-256 is unchanged before and after scanning.
+The [recorded output]({{ site.src }}/docs/validation/synthetic-result-v1.json) is 3 pass and nothing else. This is the successful harness demonstration. The image SHA-256 is the same before and after scanning.
 
 ## Public corpus benchmark
 
-The [fkie-cad/hide-and-seek-dataset](https://github.com/fkie-cad/hide-and-seek-dataset)
-NTFS ADS subset is pinned as a reproducible public benchmark. Its current status
-is **0 pass, 3 fail**: independent ntfs-3g tooling shows the advertised streams
-are separate POSIX files with literal colons in their names, not NTFS named DATA
-attributes, so these are recorded as corpus discrepancies rather than converted
-into passes or blamed on the parser. APFS and ext4 public-corpus coverage is
-still unmeasured.
+The NTFS ADS subset of [fkie-cad/hide-and-seek-dataset](https://github.com/fkie-cad/hide-and-seek-dataset) is pinned as a reproducible public benchmark. Its status is **0 pass, 3 fail**.
 
-See [Public NTFS ADS benchmark](public-ntfs-ads.html) for the full evidence and
-reproduction steps.
+Independent ntfs-3g tools show that the advertised streams are separate POSIX files with literal colons in their names. They are not NTFS named DATA attributes. So these are recorded as corpus discrepancies. They are not turned into passes, and they are not blamed on the parser.
+
+APFS and ext4 public-corpus coverage is not measured yet.
+
+See [Public NTFS ADS benchmark](public-ntfs-ads.html) for the full evidence and reproduction steps.
