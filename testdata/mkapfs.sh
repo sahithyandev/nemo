@@ -41,6 +41,40 @@ for f in apfs-*.img.dmg; do
 	[ -n "$dev" ] && hdiutil detach "$dev" >/dev/null 2>&1 || true
 done
 
+# Slack-space easter eggs are planted with nemo itself once an image is
+# finished, so the build needs a nemo binary (go is already required for the
+# repo). EGG_FILE and EGG_TEXT, set per image by set_egg, are the file and message.
+tmp=$(mktemp -d)
+trap 'cleanup; rm -rf "$tmp"' EXIT INT TERM
+nemo_bin="$tmp/nemo"
+(cd .. && go build -o "$nemo_bin" .)
+
+# Each image gets a different easter egg hidden in the slack space of
+# rsrc.txt's data block, planted with nemo once the image is finished. The
+# messages are base64 so reading this script does not spoil them. No extra
+# files or xattrs: the fixtures' volume root node has no room for more
+# records and the write tests need that headroom.
+set_egg() {
+	EGG_FILE=rsrc.txt
+	case "$1" in
+	bare) EGG_TEXT="SGVsbG8sIGZyaWVuZC4=" ;;
+	gpt) EGG_TEXT="SGFjayB0aGUgcGxhbmV0IQ==" ;;
+	casesensitive) EGG_TEXT="Rm9sbG93IHRoZSB3aGl0ZSByYWJiaXQu" ;;
+	16k) EGG_TEXT="U2hhbGwgd2UgcGxheSBhIGdhbWU/" ;;
+	manyfiles) EGG_TEXT="V2FrZSB1cCwgc2FtdXJhaS4gV2UgaGF2ZSBhIGNpdHkgdG8gYnVybi4=" ;;
+	multivol) EGG_TEXT="Y3RPUyBzZWVzIGV2ZXJ5dGhpbmcu" ;;
+	esac
+}
+
+# plant_egg IMAGE: hides EGG_TEXT in the slack space of /$EGG_FILE.
+plant_egg() {
+	[ -n "${EGG_FILE:-}" ] || return 0
+	printf '%s' "$EGG_TEXT" | base64 -d >"$tmp/payload"
+	"$nemo_bin" hide "/$EGG_FILE" -t slack-space -d "$tmp/payload" -i "$1" \
+		--manifest "$tmp/manifest.jsonl" >/dev/null
+	EGG_FILE=""
+}
+
 populate() {
 	# $1 = mountpoint
 	printf 'hello from nemo test fixture\n' >"$1/hello.txt"
@@ -71,6 +105,7 @@ populate_manyfiles() {
 
 finish() {
 	# $1 = raw image path (no extension)
+	plant_egg "$1"
 	gzip -9 -f "$1"
 	rm -f "$1"
 	echo "wrote $1.gz"
@@ -152,24 +187,29 @@ build_bare() {
 }
 
 # --- apfs-gpt.img: default GPT-wrapped APFS container ------------------
+set_egg gpt
 POPULATE_FN=populate
 build_gpt apfs-gpt APFS
 
 # --- apfs-bare.img: APFS container with no partition map ---------------
+set_egg bare
 POPULATE_FN=populate
 build_bare apfs-bare
 
 # --- apfs-casesensitive.img: case-sensitive APFS volume -----------------
 # Exercises decodeDrecKey's plain (non-hashed) directory-record key layout,
 # which a case-insensitive volume never selects.
+set_egg casesensitive
 POPULATE_FN=populate
 build_gpt apfs-casesensitive "Case-sensitive APFS"
 
 # --- apfs-manyfiles.img: enough files to force a multi-level B-tree ----
+set_egg manyfiles
 POPULATE_FN=populate_manyfiles
 build_gpt apfs-manyfiles APFS
 
 # --- apfs-16k.img: 16 KiB block size, instead of the usual 4 KiB -------
+set_egg 16k
 POPULATE_FN=populate
 build_bare apfs-16k -b 16384
 
@@ -194,6 +234,7 @@ populate_multivol() {
 	diskutil unmount "$mnt2" >/dev/null
 	populate "$1"
 }
+set_egg multivol
 POPULATE_FN=populate_multivol
 # APFS refuses to add a second volume to a container this small (~69493);
 # 600m is comfortably past whatever the real per-volume reserve threshold is.
@@ -203,6 +244,7 @@ build_gpt apfs-multivol APFS 600m
 # Exercises the parser's encrypted-volume refusal against a real APSB
 # rather than a synthetic flag flip. Nothing needs to be written to it.
 unset POPULATE_FN
+EGG_FILE=
 build_bare apfs-encrypted -E -S nemo-test-passphrase
 
 echo "done. sizes:"
