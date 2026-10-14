@@ -52,3 +52,16 @@ case ":$PATH:" in
 	*":$bindir:"*) ;;
 	*) echo "add $bindir to your PATH to run 'nemo' directly" ;;
 esac
+
+# zsh completion: save the script once and source it from ~/.zshrc
+case "${SHELL:-}" in
+	*/zsh)
+		mkdir -p "$HOME/.nemo"
+		"$bindir/nemo" completion zsh >"$HOME/.nemo/_nemo"
+		line='[ -s ~/.nemo/_nemo ] && source ~/.nemo/_nemo'
+		if ! grep -qsF "$line" "$HOME/.zshrc"; then
+			echo "$line" >>"$HOME/.zshrc"
+		fi
+		echo "zsh completion installed, open a new terminal to use it"
+		;;
+esac
