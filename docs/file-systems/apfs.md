@@ -6,14 +6,17 @@ nav_order: 2
 
 # Nemo's APFS parser
 
-This is about `internal/filesystem/apfs`. It covers detection, mounting,
-the B-tree code, the in-place write path, and every layout the parser
-refuses instead of misreading.
+This page covers `internal/filesystem/apfs`: detection, mounting, the B-tree code, the in-place write path, and every layout the parser refuses instead of misreading.
 
-For what named streams are and how detection works at the technique level,
-see [Named-Stream Hiding](../techniques/named-streams.html). For
-where this package sits in the overall layering, see
-[Architecture](../architecture/).
+- For what named streams are and how detection works at the technique level, see [named-stream hiding](../techniques/named-streams.html).
+- For where this package sits in the layering, see [Architecture](../architecture/).
+
+## At a glance
+
+- Image mode supports named streams, slack space, and timestomp.
+- Mounting is read-only. Writes rewrite one B-tree leaf in place. Nemo never allocates blocks or writes a checkpoint.
+- It refuses encrypted volumes and a tree-form checkpoint descriptor area. See [Limitations](#limitations).
+- Live mode runs on macOS only and covers APFS only. Live slack writes always fail on a mounted volume.
 
 ## Detection
 
@@ -318,17 +321,19 @@ case [`replaceXattr`]({{ site.src }}/internal/filesystem/apfs/namedstream.go#L42
 beyond what [`bumpRootKeyCount`]({{ site.src }}/internal/filesystem/apfs/btree_write.go#L209) already does for a zero-delta mutation.
 
 `change_time` maps to [`filesystem.TimeChanged`]({{ site.src }}/internal/filesystem/filesystem.go#L67), the fourth [`TimeField`]({{ site.src }}/internal/filesystem/filesystem.go#L57). It is the
-one MACB timestamp no live userland API can set; writing it through the image
-gives a stomp with no ctime/mtime mismatch to give it away.
+one MACB timestamp no live userland API can set. Writing it through the image
+gives a stomp with no ctime and mtime mismatch to give it away.
 
 ## Slack space (`slack.go`)
 
 [`Entry.SlackRegions`]({{ site.src }}/internal/filesystem/apfs/slack.go#L196) reports the unused tail bytes past a file's logical
 size, as absolute byte offsets into the caller's [`image.Image`]({{ site.src }}/internal/image/image.go#L4) (not into
 [`FS.img`]({{ site.src }}/internal/filesystem/apfs/apfs.go#L557), which for a GPT-wrapped container is a partition-relative
-[`section`]({{ site.src }}/internal/filesystem/apfs/apfs.go#L238); [`slack.go`]({{ site.src }}/internal/filesystem/apfs/slack.go) adds the container's own byte offset, [`FS.base`]({{ site.src }}/internal/filesystem/apfs/apfs.go#L569), back
-in). Nemo's technique layer (`internal/technique`) does the actual
-hide/detect/clear against those regions: this package only has to say where
+[`section`]({{ site.src }}/internal/filesystem/apfs/apfs.go#L238)). [`slack.go`]({{ site.src }}/internal/filesystem/apfs/slack.go) adds the container's own byte offset, [`FS.base`]({{ site.src }}/internal/filesystem/apfs/apfs.go#L569), back
+in.
+
+Nemo's technique layer (`internal/technique`) does the actual
+hide, detect, and clear against those regions. This package only has to say where
 they are.
 
 A file's content is a data stream described by a `j_dstream_t`, which isn't
@@ -401,7 +406,7 @@ Some things aren't attempted at all, not even refused with an error.
 
 [`live_darwin.go`]({{ site.src }}/internal/filesystem/apfs/live_darwin.go) implements live mode for APFS on macOS: no volume parsing, every
 operation is a syscall against a path. It's a second, independent [`filesystem.Entry`]({{ site.src }}/internal/filesystem/filesystem.go#L31)
-([`liveEntry`]({{ site.src }}/internal/filesystem/apfs/live_darwin.go#L244)), not the image-mode [`Entry`]({{ site.src }}/internal/filesystem/apfs/apfs.go#L731) running with a different backing store; see
+([`liveEntry`]({{ site.src }}/internal/filesystem/apfs/live_darwin.go#L244)), not the image-mode [`Entry`]({{ site.src }}/internal/filesystem/apfs/apfs.go#L731) running on a different backing store. See
 [Modes](../architecture/modes.html) for why they're kept separate. Every other
 OS gets [`live_unsupported.go`]({{ site.src }}/internal/filesystem/apfs/live_unsupported.go) (`//go:build !darwin`), which returns
 [`filesystem.ErrUnsupported`]({{ site.src }}/internal/filesystem/filesystem.go#L11) so cross-compiling stays clean.
@@ -421,41 +426,37 @@ means APFS, regardless of what's actually mounted at the target path:
   no native ext2/3/4 support at all, so it typically won't mount without third-party
   software (fuse-ext2, ext4fuse via macFUSE, Paragon extFS). With nothing installed,
   there's no live path to point nemo at in the first place.
-- NTFS and ext4 do have their own live implementations (`internal/filesystem/ntfs/live_windows.go`,
-  Windows-only and read-only; `internal/filesystem/ext4/live_linux.go`, Linux-only), but
-  they are reached only on their native OS, never from macOS. That's not a gap macOS
+- NTFS and ext4 do have their own live implementations. NTFS is in `internal/filesystem/ntfs/live_windows.go` (Windows-only and read-only). ext4 is in `internal/filesystem/ext4/live_linux.go` (Linux-only). Each is reached only on its native OS, never from macOS. That's not a gap macOS
   closes once those land elsewhere: live mode's design ties a filesystem's live
   implementation to running on that filesystem's native OS. See
   [NTFS](ntfs.html#live-mode-windows) and [ext4](ext4.html#slack-and-linux-live-mode).
 
 The workaround is the same regardless of which foreign filesystem it is: unmount the
 drive (or don't mount it, for ext4) and use `--image /dev/diskN` against the raw
-device instead. Image mode doesn't touch the live OS's mount at all, it parses raw
-bytes directly, so nemo's NTFS and ext4 parsers work identically on macOS, Linux, or
-Windows; only *live* access to a currently-mounted foreign filesystem is unavailable
+device instead. Image mode doesn't touch the live OS's mount at all. It parses raw
+bytes directly, so nemo's NTFS and ext4 parsers work the same on macOS, Linux, or
+Windows. Only *live* access to a currently mounted foreign filesystem is unavailable
 on macOS.
 
 **Named streams** map directly onto xattrs: [`OpenLive`]({{ site.src }}/internal/filesystem/apfs/live_darwin.go#L35)'s [`liveEntry`]({{ site.src }}/internal/filesystem/apfs/live_darwin.go#L244) implements
 [`NamedStreamCapable`]({{ site.src }}/internal/filesystem/filesystem.go#L39) with `unix.Getxattr`/`Setxattr`/`Removexattr`/`Listxattr`
 (`golang.org/x/sys/unix`, not in stdlib `syscall` on darwin). The resource fork is just
-the `com.apple.ResourceFork` xattr, same as image mode; writing it makes
+the `com.apple.ResourceFork` xattr, same as image mode. Writing it makes
 `path/..namedfork/rsrc` readable through the ordinary filesystem. A missing xattr
 (`ENOATTR`) is mapped onto `fs.ErrNotExist`, matching image-mode [`Entry.ReadStream`]({{ site.src }}/internal/filesystem/apfs/apfs.go#L791). All
 of this follows a symlink target rather than operating on the link itself, since none of
 the xattr calls pass `XATTR_NOFOLLOW`.
 
-**Timestomp** implements [`TimestompCapable`]({{ site.src }}/internal/filesystem/filesystem.go#L81). `modified` and `accessed` go through
-`os.Chtimes`. `created` (birthtime) needs `setattrlist(ATTR_CMN_CRTIME)`, which stdlib
-has no equivalent for. `changed` stays [`filesystem.ErrUnsupported`]({{ site.src }}/internal/filesystem/filesystem.go#L11), same as image mode:
-it's kernel-controlled metadata-change time with no live userland API to set directly.
-One APFS quirk: setting `modified` (or `accessed`) to a time earlier than
-the file's current birthtime also pulls the birthtime down to match, since APFS treats
-birthtime as "the earliest known point in this file's history." `live_darwin_test.go`
-pins this down explicitly so a future macOS change to it shows up as a test failure
-rather than a silent surprise.
+**Timestomp** implements [`TimestompCapable`]({{ site.src }}/internal/filesystem/filesystem.go#L81).
+
+- `modified` and `accessed` go through `os.Chtimes`.
+- `created` (birthtime) needs `setattrlist(ATTR_CMN_CRTIME)`. The standard library has no equivalent.
+- `changed` stays [`filesystem.ErrUnsupported`]({{ site.src }}/internal/filesystem/filesystem.go#L11), same as image mode. It is kernel-controlled metadata-change time, and no live userland API can set it.
+
+One APFS quirk: setting `modified` or `accessed` to a time earlier than the file's current birthtime also pulls the birthtime down to match. APFS treats birthtime as "the earliest known point in this file's history." `live_darwin_test.go` pins this down, so a future macOS change shows up as a test failure, not a silent surprise.
 
 [`liveEntry`]({{ site.src }}/internal/filesystem/apfs/live_darwin.go#L244) deliberately does not implement [`SlackSpaceCapable`]({{ site.src }}/internal/filesystem/filesystem.go#L52). The unused tail bytes
-of an allocated block have no path-based API on any OS; reaching them needs the raw
+of an allocated block have no path-based API on any OS. Reaching them needs the raw
 container device, which [`OpenLiveSlack`]({{ site.src }}/internal/filesystem/apfs/live_darwin.go#L64) derives from `unix.Statfs`'s `f_mntfromname`
 (trailing volume-slice suffix stripped) and parses with [`NewVolume`]({{ site.src }}/internal/filesystem/apfs/apfs.go#L585) against the
 specific mounted volume (`f_mntonname`'s last path component).
@@ -466,7 +467,7 @@ disk device types behave differently while a volume is mounted:
 - `hide` (and `clear`) open the **buffered** device (`/dev/diskN`) read-write. macOS
   refuses that outright while the volume is mounted (`EBUSY`): opening it would create
   a second, independent view into blocks the mount's own buffer cache already manages.
-  A live slack-space write can never succeed on a mounted volume; `nemo hide -t
+  A live slack-space write can never succeed on a mounted volume. `nemo hide -t
   slack-space` and `nemo clear -t slack-space` with no `--image` always fail with an
   error naming the busy device and suggesting `diskutil unmountDisk` or `--image`
   instead.
@@ -479,11 +480,12 @@ disk device types behave differently while a volume is mounted:
   copying back only the requested bytes.
 
 Either way, whether the open succeeds without privilege depends on who owns the
-device node, not on hide vs. detect: a disk image you attached yourself is normally
-owned by your own user, so `nemo detect -t slack-space` against it needs no `sudo` at
-all; the container disk behind your boot volume is owned by root (group `operator`),
-so detecting there does need `sudo`, and a permission failure names the device and
-suggests it. `scripts/live-check.sh` exercises both halves (detect succeeding, hide
+device node, not on hide versus detect.
+
+- A disk image you attached yourself is normally owned by your own user. `nemo detect -t slack-space` against it needs no `sudo`.
+- The container disk behind your boot volume is owned by root (group `operator`). Detecting there does need `sudo`. A permission failure names the device and suggests it.
+
+`scripts/live-check.sh` exercises both halves (detect succeeding, hide
 failing with the busy message) against a scratch disk image when it has `sudo`.
 
 Because slack-space is the only technique that touches the raw device, and only when
@@ -493,7 +495,7 @@ through the ordinary path-backed [`liveEntry`]({{ site.src }}/internal/filesyste
 way it already skips any technique a filesystem doesn't support.
 
 Every mutating operation, live or image mode, gets one [`custody.Record`]({{ site.src }}/internal/custody/log.go#L15) appended to the
-custody log by the command layer after it succeeds; that's unconditional, not
+custody log by the command layer after it succeeds. That's unconditional, not
 specific to live mode. What live mode adds is `internal/custody.Wrap` around the raw
 device for a live slack-space write (`cmd/live.go`'s [`openLiveSlack`]({{ site.src }}/cmd/live.go#L61), mirroring
 `cmd/hide.go`'s image-mode `openImage`), so the same per-write SHA-256 event log applies
@@ -537,12 +539,9 @@ variants (`apfs-casesensitive`, `apfs-manyfiles`, `apfs-16k`,
 volume can't reach on its own. `testimage_test.go`'s `loadImage` decompresses
 one into a private, writable temp copy per test. `testdata/mkapfs.sh`
 (macOS-only, builtin `hdiutil`/`newfs_apfs`/`diskutil`) generates the whole
-set; CI just consumes the committed `.gz` files and never regenerates them.
-A couple of on-disk states — multiple non-contiguous extents on one stream,
-a filesystem-owned xattr — turned out not to be reliably producible with
-only builtin macOS tooling, so `fixtures_test.go` fabricates those directly
-through the package's own unexported btree insert path instead of via a
-fixture.
+set. CI just uses the committed `.gz` files and never regenerates them.
+
+Two on-disk states could not be reliably produced with builtin macOS tooling: multiple non-contiguous extents on one stream, and a filesystem-owned xattr. So `fixtures_test.go` builds those directly through the package's own unexported btree insert path.
 
 `live_darwin_test.go` (`//go:build darwin`) covers live mode against real temp files:
 xattr and resource-fork round trips including several Unicode filename and stream-name
