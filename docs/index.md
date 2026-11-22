@@ -31,6 +31,21 @@ powershell -c "irm https://raw.githubusercontent.com/sahithyandev/nemo/main/scri
 
 Each script downloads the latest release for your OS and architecture from the [releases page](https://github.com/sahithyandev/nemo/releases). If you'd rather not pipe a script into your shell, read it first.
 
+Run the install command again any time to update. If nemo is already on the latest release, the script says so and stops.
+
+To check that the installed binary matches the one on the release, compare it with the binary inside the release archive, after checking the archive against `checksums.txt` (Linux or macOS):
+
+```sh
+v=$(nemo version)
+a=nemo_${v}_$(uname -s | tr A-Z a-z)_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz
+r=https://github.com/sahithyandev/nemo/releases/download/v$v
+bin=$(command -v nemo)
+cd "$(mktemp -d)"
+curl -fsSLO "$r/$a"
+curl -fsSL "$r/checksums.txt" | grep " $a\$" | shasum -a 256 -c -
+tar -xzf "$a" nemo && cmp nemo "$bin" && echo "installed nemo matches release v$v"
+```
+
 ## A quick example
 
 No disk image of your own? Download `apfs-bare` and unpack it:

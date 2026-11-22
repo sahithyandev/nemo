@@ -28,6 +28,15 @@ esac
 tag=$(curl -fsSL "https://api.github.com/repos/$repo/releases/latest" |
 	grep -m1 '"tag_name"' | sed -E 's/.*"tag_name": *"([^"]+)".*/\1/')
 version=${tag#v}
+
+if installed=$(nemo version 2>/dev/null); then
+	if [ "$installed" = "$version" ]; then
+		echo "nemo $version is already up to date"
+		exit 0
+	fi
+	echo "updating nemo $installed -> $version"
+fi
+
 archive="nemo_${version}_${os}_${arch}.tar.gz"
 url="https://github.com/$repo/releases/download/$tag/$archive"
 
